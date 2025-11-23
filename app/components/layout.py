@@ -18,6 +18,7 @@ def sidebar_item(
             class_name="flex items-center",
         ),
         href=url,
+        on_click=DashboardState.close_sidebar,
         class_name=f"flex items-center px-4 py-3 rounded-xl transition-all duration-200 group mb-1 {('bg-orange-50' if is_active else 'hover:bg-gray-50')}",
     )
 
@@ -107,13 +108,22 @@ def sidebar(active_item: str = "Dashboard") -> rx.Component:
             ),
             class_name="p-4 mx-4 mb-4 bg-white border border-gray-100 rounded-xl flex items-center justify-between shadow-sm",
         ),
-        class_name="w-72 h-screen bg-white border-r border-gray-100 flex flex-col fixed left-0 top-0 z-50 hidden lg:flex",
+        class_name=rx.cond(
+            DashboardState.is_sidebar_open,
+            "w-72 h-screen bg-white border-r border-gray-100 flex flex-col fixed left-0 top-0 z-50 shadow-2xl transition-transform duration-300 transform translate-x-0",
+            "w-72 h-screen bg-white border-r border-gray-100 flex-col fixed left-0 top-0 z-50 hidden lg:flex transition-transform duration-300",
+        ),
     )
 
 
 def header() -> rx.Component:
     return rx.el.header(
         rx.el.div(
+            rx.el.button(
+                rx.icon("menu", class_name="w-6 h-6 text-gray-700"),
+                on_click=DashboardState.toggle_sidebar,
+                class_name="lg:hidden p-2 mr-2 hover:bg-gray-100 rounded-lg",
+            ),
             rx.el.div(
                 rx.icon(
                     "search",
