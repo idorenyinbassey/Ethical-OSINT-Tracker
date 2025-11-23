@@ -88,7 +88,16 @@ class DashboardState(rx.State):
         {"name": "DDoS", "open": 8, "closed": 12, "archived": 2},
         {"name": "Social", "open": 22, "closed": 15, "archived": 8},
     ]
+    is_sidebar_open: bool = False
 
     @rx.event
     def set_search_query(self, query: str):
         self.search_query = query
+
+    @rx.event
+    def toggle_sidebar(self):
+        self.is_sidebar_open = not self.is_sidebar_open
+
+    @rx.event
+    def close_sidebar(self):
+        self.is_sidebar_open = False

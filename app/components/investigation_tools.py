@@ -40,6 +40,164 @@ def result_row(label: str, value: str, is_highlight: bool = False) -> rx.Compone
     )
 
 
+def network_node_card(node: dict) -> rx.Component:
+    return rx.el.div(
+        rx.icon(node["icon"], class_name="w-6 h-6 text-orange-500 mb-2"),
+        rx.el.h4(
+            node["label"],
+            class_name="text-sm font-bold text-gray-800 truncate w-full text-center",
+        ),
+        rx.el.span(
+            node["type"],
+            class_name="text-xs text-gray-400 uppercase tracking-wider mt-1",
+        ),
+        class_name="flex flex-col items-center p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all min-w-[120px] max-w-[150px]",
+    )
+
+
+def category_section(
+    title: str, nodes: list[dict], icon: str, color: str
+) -> rx.Component:
+    return rx.cond(
+        nodes.length() > 0,
+        rx.el.div(
+            rx.el.div(
+                rx.icon(icon, class_name=f"w-5 h-5 {color} mr-2"),
+                rx.el.h4(title, class_name="text-md font-bold text-gray-800"),
+                class_name="flex items-center mb-4 pb-2 border-b border-gray-100",
+            ),
+            rx.el.div(
+                rx.foreach(nodes, network_node_card),
+                class_name="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8",
+            ),
+        ),
+    )
+
+
+def network_map_tool() -> rx.Component:
+    return rx.el.div(
+        ethical_reminder_card(
+            "Investigation Map",
+            "Visualizing connections helps identify patterns. Use this data to build a case, not to draw premature conclusions without verification.",
+        ),
+        rx.el.div(
+            rx.el.div(
+                rx.el.div(
+                    rx.el.h3(
+                        "Target Network Graph",
+                        class_name="text-lg font-semibold text-gray-800",
+                    ),
+                    rx.el.p(
+                        "Correlated entities from your investigation",
+                        class_name="text-xs text-gray-500",
+                    ),
+                    class_name="flex flex-col",
+                ),
+                rx.cond(
+                    InvestigationState.network_nodes.length() > 0,
+                    rx.el.div(
+                        rx.el.button(
+                            rx.icon("download", class_name="w-4 h-4 mr-2"),
+                            "Export",
+                            on_click=rx.toast("Graph data exported to JSON"),
+                            class_name="text-sm text-gray-600 hover:text-gray-900 font-medium flex items-center px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors",
+                        ),
+                        rx.el.button(
+                            rx.icon("trash-2", class_name="w-4 h-4 mr-2"),
+                            "Clear Graph",
+                            on_click=InvestigationState.clear_graph,
+                            class_name="text-sm text-red-600 hover:text-red-700 font-medium flex items-center px-3 py-2 rounded-lg hover:bg-red-50 transition-colors",
+                        ),
+                        class_name="flex gap-2",
+                    ),
+                ),
+                class_name="flex justify-between items-start mb-6",
+            ),
+            rx.cond(
+                InvestigationState.network_nodes.length() > 0,
+                rx.el.div(
+                    rx.el.div(
+                        category_section(
+                            "Identity Entities",
+                            InvestigationState.nodes_by_category["Identity"],
+                            "fingerprint",
+                            "text-blue-500",
+                        ),
+                        category_section(
+                            "Infrastructure & Network",
+                            InvestigationState.nodes_by_category["Infrastructure"],
+                            "server",
+                            "text-orange-500",
+                        ),
+                        category_section(
+                            "Evidence & Alerts",
+                            InvestigationState.nodes_by_category["Evidence"],
+                            "file-warning",
+                            "text-red-500",
+                        ),
+                        category_section(
+                            "Other Entities",
+                            InvestigationState.nodes_by_category["Other"],
+                            "circle_plus",
+                            "text-gray-500",
+                        ),
+                        class_name="animate-in fade-in slide-in-from-bottom-4 duration-500",
+                    ),
+                    rx.el.div(
+                        rx.el.h4(
+                            "Connection Log",
+                            class_name="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3",
+                        ),
+                        rx.el.div(
+                            rx.foreach(
+                                InvestigationState.network_edges,
+                                lambda edge: rx.el.div(
+                                    rx.icon(
+                                        "link", class_name="w-3 h-3 text-gray-300 mr-2"
+                                    ),
+                                    rx.el.span(
+                                        edge["source"],
+                                        class_name="font-medium text-gray-700 truncate max-w-[120px] md:max-w-xs",
+                                    ),
+                                    rx.icon(
+                                        "arrow-right",
+                                        class_name="w-3 h-3 text-orange-500 mx-2 flex-shrink-0",
+                                    ),
+                                    rx.el.span(
+                                        edge["target"],
+                                        class_name="font-medium text-gray-700 truncate max-w-[120px] md:max-w-xs",
+                                    ),
+                                    rx.el.span(
+                                        f"({edge['label']})",
+                                        class_name="text-xs text-gray-400 ml-auto italic whitespace-nowrap pl-2",
+                                    ),
+                                    class_name="flex items-center p-2 bg-gray-50 rounded-lg mb-2 text-sm hover:bg-orange-50 transition-colors border border-transparent hover:border-orange-100",
+                                ),
+                            ),
+                            class_name="max-h-64 overflow-y-auto custom-scrollbar pr-2",
+                        ),
+                        class_name="bg-white border border-gray-200 rounded-xl p-4 mt-8",
+                    ),
+                ),
+                rx.el.div(
+                    rx.icon("share-2", class_name="w-12 h-12 text-gray-200 mb-3"),
+                    rx.el.p(
+                        "No entities mapped yet.",
+                        class_name="text-gray-600 font-medium mb-1",
+                    ),
+                    rx.el.p(
+                        "Start an investigation (Domain, Phone, Email, etc.) to see connections appearing here automatically.",
+                        class_name="text-gray-400 text-sm max-w-md text-center",
+                    ),
+                    class_name="flex flex-col items-center justify-center py-16 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50",
+                ),
+            ),
+            class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
+        ),
+        class_name="max-w-5xl mx-auto",
+    )
+
+
 def domain_tool() -> rx.Component:
     return rx.el.div(
         ethical_reminder_card(
@@ -720,6 +878,212 @@ def image_tool() -> rx.Component:
     )
 
 
+def imei_tool() -> rx.Component:
+    return rx.el.div(
+        ethical_reminder_card(
+            "IMEI Device Tracking",
+            "IMEI lookup should only be used for verifying device status for theft recovery, loss prevention, or legitimate ownership verification. Do not use for unauthorized tracking.",
+        ),
+        rx.el.div(
+            rx.el.div(
+                rx.el.input(
+                    placeholder="Enter IMEI (15 digits, e.g. 3548...)",
+                    on_change=InvestigationState.set_imei_query,
+                    class_name="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-100 focus:border-orange-300 outline-none transition-all",
+                    default_value=InvestigationState.imei_query,
+                ),
+                rx.el.button(
+                    rx.cond(
+                        InvestigationState.is_loading_imei,
+                        rx.spinner(size="1"),
+                        "Check Device",
+                    ),
+                    on_click=InvestigationState.search_imei,
+                    disabled=InvestigationState.is_loading_imei,
+                    class_name="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center gap-2",
+                ),
+                class_name="flex gap-3 mb-6",
+            ),
+            rx.cond(
+                InvestigationState.imei_result,
+                rx.el.div(
+                    rx.el.div(
+                        rx.cond(
+                            InvestigationState.imei_result["valid"],
+                            rx.el.div(
+                                rx.el.div(
+                                    rx.el.div(
+                                        rx.el.span(
+                                            "Status",
+                                            class_name="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block",
+                                        ),
+                                        rx.el.div(
+                                            rx.icon(
+                                                rx.cond(
+                                                    InvestigationState.imei_result[
+                                                        "theft_record"
+                                                    ],
+                                                    "alert-triangle",
+                                                    "check-circle",
+                                                ),
+                                                class_name=rx.cond(
+                                                    InvestigationState.imei_result[
+                                                        "theft_record"
+                                                    ],
+                                                    "text-red-500",
+                                                    "text-green-500",
+                                                )
+                                                + " w-8 h-8 mb-2",
+                                            ),
+                                            rx.el.h3(
+                                                InvestigationState.imei_result[
+                                                    "blacklist_status"
+                                                ],
+                                                class_name=rx.cond(
+                                                    InvestigationState.imei_result[
+                                                        "theft_record"
+                                                    ],
+                                                    "text-xl font-bold text-red-600",
+                                                    "text-xl font-bold text-green-600",
+                                                ),
+                                            ),
+                                            rx.el.div(
+                                                rx.el.span(
+                                                    "Source: ",
+                                                    class_name="text-xs text-gray-400",
+                                                ),
+                                                rx.el.span(
+                                                    InvestigationState.imei_result[
+                                                        "db_source"
+                                                    ],
+                                                    class_name="text-xs font-semibold text-gray-600",
+                                                ),
+                                                class_name="mt-1 px-2 py-1 bg-white rounded border border-gray-200 inline-block",
+                                            ),
+                                        ),
+                                        rx.el.div(
+                                            rx.el.span(
+                                                "Risk Score",
+                                                class_name="text-xs font-medium text-gray-400 mt-4 block",
+                                            ),
+                                            rx.el.div(
+                                                rx.el.span(
+                                                    InvestigationState.imei_result[
+                                                        "risk_score"
+                                                    ],
+                                                    class_name="text-2xl font-bold text-gray-800",
+                                                ),
+                                                rx.el.span(
+                                                    "/100",
+                                                    class_name="text-sm text-gray-400",
+                                                ),
+                                                class_name="flex items-baseline gap-1",
+                                            ),
+                                        ),
+                                        class_name="bg-gray-50 rounded-xl p-4 border border-gray-100 text-center w-full md:w-48 flex flex-col",
+                                    ),
+                                    rx.el.div(
+                                        rx.el.h4(
+                                            "Device Specifications",
+                                            class_name="text-sm font-bold text-gray-900 mb-4",
+                                        ),
+                                        rx.el.div(
+                                            result_row(
+                                                "Manufacturer",
+                                                InvestigationState.imei_result["brand"],
+                                            ),
+                                            result_row(
+                                                "Model",
+                                                InvestigationState.imei_result["model"],
+                                                is_highlight=True,
+                                            ),
+                                            result_row(
+                                                "Configuration",
+                                                InvestigationState.imei_result["specs"],
+                                            ),
+                                            result_row(
+                                                "Purchase Date",
+                                                InvestigationState.imei_result[
+                                                    "purchase_date"
+                                                ],
+                                            ),
+                                            result_row(
+                                                "Warranty",
+                                                InvestigationState.imei_result[
+                                                    "warranty_status"
+                                                ],
+                                            ),
+                                            result_row(
+                                                "Country of Sale",
+                                                InvestigationState.imei_result[
+                                                    "country_sold"
+                                                ],
+                                            ),
+                                            result_row(
+                                                "Carrier Lock",
+                                                InvestigationState.imei_result[
+                                                    "carrier_lock"
+                                                ],
+                                                is_highlight=True,
+                                            ),
+                                            rx.el.div(
+                                                rx.el.h5(
+                                                    "Risk Analysis",
+                                                    class_name="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 mt-6 pt-6 border-t border-gray-100",
+                                                ),
+                                                rx.foreach(
+                                                    InvestigationState.imei_result[
+                                                        "risk_factors"
+                                                    ],
+                                                    lambda factor: rx.el.div(
+                                                        rx.icon(
+                                                            "shield-alert",
+                                                            class_name="w-3 h-3 text-orange-500 mr-2",
+                                                        ),
+                                                        rx.el.span(
+                                                            factor,
+                                                            class_name="text-sm text-gray-600",
+                                                        ),
+                                                        class_name="flex items-center mb-2",
+                                                    ),
+                                                ),
+                                                class_name="w-full",
+                                            ),
+                                            class_name="flex-1",
+                                        ),
+                                        class_name="flex-1 bg-white rounded-xl p-6 border border-gray-100 shadow-sm",
+                                    ),
+                                    class_name="col-span-12 flex flex-col md:flex-row gap-6",
+                                )
+                            ),
+                            rx.el.div(
+                                rx.el.div(
+                                    rx.icon(
+                                        "ban", class_name="w-12 h-12 text-red-400 mb-3"
+                                    ),
+                                    rx.el.h3(
+                                        "Invalid IMEI Format",
+                                        class_name="text-lg font-bold text-gray-900",
+                                    ),
+                                    rx.el.p(
+                                        "The IMEI provided does not match the standard 15-digit format. Please check the number and try again.",
+                                        class_name="text-sm text-gray-500 mt-1 max-w-xs mx-auto",
+                                    ),
+                                ),
+                                class_name="md:col-span-8 bg-white",
+                            ),
+                        ),
+                        class_name="grid grid-cols-1 md:grid-cols-12 gap-8",
+                    ),
+                    class_name="animate-in fade-in slide-in-from-bottom-4 duration-500 mt-8 pt-8 border-t border-gray-100",
+                ),
+            ),
+            class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
+        ),
+        class_name="max-w-3xl mx-auto",
+    )
+
+
 def tools_tabs() -> rx.Component:
     return rx.el.div(
         rx.el.div(
@@ -729,6 +1093,8 @@ def tools_tabs() -> rx.Component:
             tab_button("Social", "social", "users"),
             tab_button("Phone", "phone", "phone"),
             tab_button("Image", "image", "scan-face"),
+            tab_button("IMEI", "imei", "smartphone"),
+            tab_button("Map", "map", "network"),
             class_name="flex flex-nowrap border-b border-gray-200 mb-8 overflow-x-auto w-full pb-px gap-1",
         ),
         rx.match(
@@ -739,6 +1105,8 @@ def tools_tabs() -> rx.Component:
             ("social", social_tool()),
             ("phone", phone_tool()),
             ("image", image_tool()),
+            ("imei", imei_tool()),
+            ("map", network_map_tool()),
             domain_tool(),
         ),
         class_name="w-full",
