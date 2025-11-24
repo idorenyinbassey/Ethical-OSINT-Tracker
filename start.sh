@@ -20,10 +20,17 @@ source .venv/bin/activate
 echo "📚 Installing dependencies..."
 pip install -q -r requirements.txt
 
-# Optional: Run migrations
+# Set default DB_URL if not provided (can be overridden externally)
+if [ -z "$DB_URL" ]; then
+    export DB_URL="sqlite:///./dev.db"
+fi
+
+echo "🗄  Using database URL: $DB_URL"
+
+# Optional: Run migrations (Alembic)
 if [ -d "alembic/versions" ] && [ "$(ls -A alembic/versions)" ]; then
-    echo "🔄 Running database migrations..."
-    alembic upgrade head
+        echo "🔄 Running database migrations (alembic upgrade head)..."
+        alembic upgrade head || echo "⚠️ Alembic migration failed; continuing with SQLModel create_all fallback"
 fi
 
 # Initialize database
