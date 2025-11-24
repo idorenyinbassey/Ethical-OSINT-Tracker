@@ -105,6 +105,7 @@ Detailed documentation is available in the [`docs/`](./docs/) directory:
 - [API Integration](./docs/API_INTEGRATION.md) - External service configuration
 - [Development Guide](./docs/DEVELOPMENT.md) - Contributing and extending
 - [Deployment](./docs/DEPLOYMENT.md) - Production deployment strategies
+- [Termux Guide](./docs/TERMUX.md) - Running on Android (Termux), headless mode
 
 ## 🔧 Configuration
 

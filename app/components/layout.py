@@ -319,7 +319,7 @@ def header() -> rx.Component:
                 ),
                 class_name="flex items-center gap-3",
             ),
-            class_name="flex justify-between items-center h-20 px-8 border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-40",
+            class_name="flex justify-between items-center h-16 md:h-20 px-4 md:px-8 border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-40",
         ),
         class_name="w-full",
     )

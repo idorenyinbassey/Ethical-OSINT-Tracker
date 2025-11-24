@@ -40,8 +40,12 @@ python -c "from app.db import init_db; init_db(); print('✅ Database initialize
 # Start the application
 echo ""
 echo "✨ Starting Reflex application..."
-echo "📍 Dashboard: http://localhost:3000"
-echo "🔑 Demo credentials: admin / changeme"
+echo "📍 Demo credentials: admin / changeme"
 echo ""
 
-reflex run
+if [ "$HEADLESS" = "1" ] || [ "$HEADLESS" = "true" ]; then
+    echo "🌀 Headless mode enabled (backend-only). Set HEADLESS=0 to restore full UI."
+    reflex run --env prod --backend-only
+else
+    reflex run --env dev
+fi
