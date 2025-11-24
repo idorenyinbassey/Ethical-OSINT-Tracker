@@ -25,6 +25,11 @@ if config.config_file_name is not None:
 from sqlmodel import SQLModel  # noqa
 from app.models.user import User  # noqa
 from app.models.investigation import Investigation  # noqa
+from app.models.api_config import APIConfig  # noqa
+from app.models.case import Case  # noqa
+from app.models.intelligence_report import IntelligenceReport  # noqa
+from app.models.team import Team, TeamMember  # noqa
+from app.models.audit_log import AuditLog  # noqa
 
 target_metadata = SQLModel.metadata
 

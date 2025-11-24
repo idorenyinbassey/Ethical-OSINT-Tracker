@@ -214,46 +214,67 @@ Follow this pattern to add a new tool (e.g., for "Username" lookup):
 
 ## Database Migrations
 
-We use Alembic for database schema migrations, which is integrated into Reflex.
+We use **Alembic** directly (not Reflex wrapper commands) for schema migrations. The migration environment lives in the `alembic/` directory and is configured via `alembic.ini` and `alembic/env.py`.
+
+### Why sys.path Injection?
+
+Alembic executes `env.py` from its own context; depending on how it's invoked, the project root might not be on `sys.path`. We inject the project root at the top of `alembic/env.py` so that imports like `from app.models.user import User` are reliable across environments (CI, local shells, container runs). This prevents `ModuleNotFoundError: No module named 'app'` during migration operations.
 
 ### When to Create a Migration
+Create a migration whenever you modify models in `app/models/`:
+1. Adding or removing a table/model.
+2. Changing column definitions (type, nullable, constraints, indexes).
+3. Adding/removing relationships or foreign keys.
 
-Create a migration whenever you make changes to the SQLModel definitions in `app/models/`, such as:
-- Adding or removing a model.
-- Adding, removing, or modifying a field in a model.
-- Changing a relationship.
+### Preparing for Autogenerate
+Alembic only sees models that are imported in `alembic/env.py`. Always add new model imports there before generating a revision to avoid false positives (e.g., unintended table drop operations).
 
-### How to Create a Migration
-
-1. **Ensure your database is up to date**:
-   ```bash
-   reflex db upgrade
-   ```
-2. **Generate the migration script**:
-   ```bash
-   reflex db makemigrations -m "A short description of the change"
-   ```
-   This will create a new file in `alembic/versions/`.
-
-3. **Review the generated script** to ensure it correctly reflects your changes.
-
-4. **Apply the migration**:
-   ```bash
-   reflex db upgrade
-   ```
-
-5. **Commit the migration script** along with your model changes.
-
-### Downgrading a Migration
-
-To revert to a previous migration:
+### Generating a Migration
 ```bash
-# Downgrade one version
-reflex db downgrade -1
-
-# Downgrade to a specific version
-reflex db downgrade <version_hash>
+source .venv/bin/activate
+export DB_URL=sqlite:///./dev.db   # or mysql+pymysql://user:pass@host/db
+alembic revision --autogenerate -m "add audit_log table"
 ```
+Review the generated file in `alembic/versions/`. Ensure only intended changes appear (create/drop/alter). Remove accidental operations before committing.
+
+### Applying Migrations
+```bash
+alembic upgrade head            # Apply all pending migrations
+alembic upgrade <revision_id>   # Apply up to a specific revision
+```
+
+### Downgrading (Use Sparingly)
+```bash
+alembic downgrade -1            # Step back one revision
+alembic downgrade <revision_id> # Downgrade to a specific revision
+```
+Downgrades can be destructive—avoid running them in production unless absolutely necessary.
+
+### Adding a Test/Demo Migration
+Example: Adding an `auditlog` table for event tracking (see model in `app/models/audit_log.py`). After adding the model and importing it in `env.py`, the revision was generated:
+```bash
+alembic revision --autogenerate -m "add audit_log table"
+alembic upgrade head
+```
+Resulting migration creates the `auditlog` table with fields `id`, `event`, `detail`, `created_at`.
+
+### Common Pitfalls
+- Missing imports in `env.py` → Alembic thinks tables were removed.
+- Forgetting to set `DB_URL` → Falls back to default SQLite; unexpected environment.
+- Manual edits introducing syntax errors (e.g., leaving plain text in migration body). Always keep migration body valid Python.
+
+### Production Recommendations
+1. Use **MySQL/PostgreSQL** for multi-user deployments (set `DB_URL`).
+2. Run migrations as part of deployment pipeline (CI/CD step before app start).
+3. Keep migration messages concise but descriptive (e.g. `add team member table`).
+4. Never autogenerate inside a dirty working directory (uncommitted model changes cause confusion).
+
+### Inspect Current Revision State
+```bash
+alembic current      # Show current applied revision
+alembic history      # List all revisions
+```
+Include output in PRs when submitting schema changes.
 
 ## Submitting Contributions
 
