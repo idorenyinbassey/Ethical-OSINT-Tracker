@@ -1,5 +1,7 @@
 import reflex as rx
 from app.states.dashboard_state import DashboardState
+from app.states.notification_state import NotificationState
+from app.states.auth_state import AuthState
 
 
 def sidebar_item(
@@ -62,9 +64,17 @@ def sidebar(active_item: str = "Dashboard") -> rx.Component:
                     url="/investigate",
                 ),
                 sidebar_item(
-                    "Threat Map", "globe", is_active=active_item == "Threat Map"
+                    "Threat Map",
+                    "globe",
+                    is_active=active_item == "Threat Map",
+                    url="/threat-map",
                 ),
-                sidebar_item("Cases", "folder-open", is_active=active_item == "Cases"),
+                sidebar_item(
+                    "Cases",
+                    "folder-open",
+                    is_active=active_item == "Cases",
+                    url="/cases",
+                ),
                 class_name="mb-8",
             ),
             rx.el.div(
@@ -72,8 +82,18 @@ def sidebar(active_item: str = "Dashboard") -> rx.Component:
                     "ANALYTICS",
                     class_name="px-4 text-xs font-semibold text-gray-400 mb-2 tracking-wider",
                 ),
-                sidebar_item("Reports", "file-bar-chart"),
-                sidebar_item("Intelligence", "brain-circuit"),
+                sidebar_item(
+                    "Reports",
+                    "file-bar-chart",
+                    is_active=active_item == "Reports",
+                    url="/report",
+                ),
+                sidebar_item(
+                    "Intelligence",
+                    "brain-circuit",
+                    is_active=active_item == "Intelligence",
+                    url="#",
+                ),
                 class_name="mb-8",
             ),
             rx.el.div(
@@ -81,8 +101,18 @@ def sidebar(active_item: str = "Dashboard") -> rx.Component:
                     "SETTINGS",
                     class_name="px-4 text-xs font-semibold text-gray-400 mb-2 tracking-wider",
                 ),
-                sidebar_item("Team", "users"),
-                sidebar_item("Settings", "settings"),
+                sidebar_item(
+                    "Team",
+                    "users",
+                    is_active=active_item == "Team",
+                    url="/team",
+                ),
+                sidebar_item(
+                    "Settings",
+                    "settings",
+                    is_active=active_item == "Settings",
+                    url="/settings",
+                ),
                 class_name="mb-8",
             ),
             class_name="flex-1 px-4 overflow-y-auto",
@@ -116,8 +146,116 @@ def sidebar(active_item: str = "Dashboard") -> rx.Component:
     )
 
 
+def notification_item(notification) -> rx.Component:
+    return rx.el.div(
+        rx.el.div(
+            rx.cond(
+                notification["type"] == "success",
+                rx.icon("circle-check-big", class_name="w-5 h-5 text-green-500"),
+                rx.cond(
+                    notification["type"] == "error",
+                    rx.icon("circle-alert", class_name="w-5 h-5 text-red-500"),
+                    rx.icon("info", class_name="w-5 h-5 text-blue-500"),
+                ),
+            ),
+            rx.el.div(
+                rx.el.h4(
+                    notification["title"],
+                    class_name="text-sm font-semibold text-gray-900",
+                ),
+                rx.el.p(
+                    notification["message"],
+                    class_name="text-xs text-gray-600 mt-0.5",
+                ),
+                rx.el.p(
+                    notification["timestamp"],
+                    class_name="text-xs text-gray-400 mt-1",
+                ),
+                class_name="ml-3 flex-1",
+            ),
+            rx.cond(
+                ~notification["read"],
+                rx.el.button(
+                    rx.icon("x", class_name="w-4 h-4"),
+                    on_click=lambda: NotificationState.mark_as_read(notification["id"]),
+                    class_name="p-1 text-gray-400 hover:text-gray-600 rounded",
+                ),
+            ),
+            class_name="flex items-start",
+        ),
+        class_name=rx.cond(
+            notification["read"],
+            "p-4 border-b border-gray-100 bg-gray-50",
+            "p-4 border-b border-gray-100 bg-white",
+        ),
+    )
+
+
+def notification_drawer() -> rx.Component:
+    return rx.cond(
+        NotificationState.is_drawer_open,
+        rx.el.div(
+            rx.el.div(
+                on_click=NotificationState.toggle_drawer,
+                class_name="fixed inset-0 bg-black/20 z-40",
+            ),
+            rx.el.div(
+                rx.el.div(
+                    rx.el.h3(
+                        "Notifications",
+                        class_name="text-lg font-bold text-gray-900",
+                    ),
+                    rx.el.div(
+                        rx.el.button(
+                            "Mark All Read",
+                            on_click=NotificationState.mark_all_read,
+                            class_name="text-xs text-orange-500 hover:text-orange-600 font-medium",
+                        ),
+                        rx.el.button(
+                            rx.icon("x", class_name="w-5 h-5"),
+                            on_click=NotificationState.toggle_drawer,
+                            class_name="ml-3 p-1 text-gray-400 hover:text-gray-600 rounded",
+                        ),
+                        class_name="flex items-center",
+                    ),
+                    class_name="flex items-center justify-between p-4 border-b border-gray-100",
+                ),
+                rx.el.div(
+                    rx.cond(
+                        NotificationState.notifications.length() > 0,
+                        rx.foreach(
+                            NotificationState.notifications,
+                            notification_item,
+                        ),
+                        rx.el.div(
+                            rx.icon("bell-off", class_name="w-12 h-12 text-gray-300 mb-2"),
+                            rx.el.p(
+                                "No notifications",
+                                class_name="text-sm text-gray-500",
+                            ),
+                            class_name="flex flex-col items-center justify-center py-12",
+                        ),
+                    ),
+                    class_name="overflow-y-auto flex-1",
+                ),
+                rx.el.div(
+                    rx.el.button(
+                        "Clear All",
+                        on_click=NotificationState.clear_notifications,
+                        class_name="w-full py-3 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors",
+                    ),
+                    class_name="border-t border-gray-100 bg-gray-50",
+                ),
+                class_name="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 flex flex-col",
+            ),
+            class_name="fixed inset-0 z-40",
+        ),
+    )
+
+
 def header() -> rx.Component:
     return rx.el.header(
+        notification_drawer(),
         rx.el.div(
             rx.el.button(
                 rx.icon("menu", class_name="w-6 h-6 text-gray-700"),
@@ -140,19 +278,41 @@ def header() -> rx.Component:
             rx.el.div(
                 rx.el.button(
                     rx.icon("bell", class_name="w-5 h-5 text-gray-600"),
-                    rx.el.div(
-                        class_name="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"
+                    rx.cond(
+                        NotificationState.unread_count > 0,
+                        rx.el.div(
+                            NotificationState.unread_count,
+                            class_name="absolute top-1 right-1 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1",
+                        ),
                     ),
+                    on_click=NotificationState.toggle_drawer,
                     class_name="p-2.5 bg-white rounded-xl border border-gray-100 hover:bg-gray-50 relative transition-colors",
                 ),
-                rx.el.button(
-                    rx.icon("circle_plus", class_name="w-5 h-5 text-gray-600"),
-                    class_name="p-2.5 bg-white rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors",
+                rx.menu.root(
+                    rx.menu.trigger(
+                        rx.el.button(
+                            rx.icon("circle_plus", class_name="w-5 h-5 text-gray-600"),
+                            class_name="p-2.5 bg-white rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors",
+                        ),
+                    ),
+                    rx.menu.content(
+                        rx.menu.item("New Investigation", on_click=rx.redirect("/investigate")),
+                        rx.menu.separator(),
+                        rx.menu.item("Export Data", on_click=rx.toast.info("Export feature coming soon")),
+                        rx.menu.item("Generate Report", on_click=rx.toast.info("Report feature coming soon")),
+                        rx.menu.separator(),
+                        rx.menu.item(
+                            "Logout",
+                            on_click=AuthState.logout,
+                            color="red",
+                        ),
+                    ),
                 ),
                 rx.el.div(
-                    rx.el.button(
+                    rx.el.a(
                         "New Investigation",
                         rx.icon("plus", class_name="w-4 h-4 ml-2"),
+                        href="/investigate",
                         class_name="flex items-center px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 transition-colors shadow-lg shadow-gray-200",
                     ),
                     class_name="ml-2",

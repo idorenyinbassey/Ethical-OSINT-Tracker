@@ -1,2 +1,4 @@
 
 reflex==0.8.20
+PyMySQL==1.1.1
+argon2-cffi==23.1.0
