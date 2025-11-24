@@ -163,7 +163,7 @@ def domain_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -246,7 +246,7 @@ def ip_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -324,7 +324,7 @@ def email_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -395,7 +395,7 @@ def social_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -514,7 +514,7 @@ def phone_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -776,7 +776,7 @@ def image_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 
@@ -982,7 +982,7 @@ def imei_tool() -> rx.Component:
             ),
             class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
         ),
-        class_name="max-w-3xl mx-auto",
+        class_name="max-w-3xl mx-auto px-4",
     )
 
 

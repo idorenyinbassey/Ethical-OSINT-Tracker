@@ -120,7 +120,7 @@ def quick_actions_grid() -> rx.Component:
             quick_action_btn("New Case", "folder-plus", "bg-gray-700", rx.redirect("/cases")),
             quick_action_btn("Run Analysis", "activity", "bg-blue-500", rx.redirect("/report")),
             quick_action_btn("Report", "file-text", "bg-emerald-500", rx.redirect("/report")),
-            class_name="grid grid-cols-2 md:grid-cols-4 gap-4",
+            class_name="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4",
         ),
         class_name="w-full mb-8",
     )
