@@ -1,5 +1,15 @@
 import reflex as rx
-from app.states.investigation_state import InvestigationState, SocialResult
+from app.states.investigation_state import (
+    InvestigationState,
+    DomainResult,
+    IPResult,
+    EmailResult,
+    SocialResult,
+    PhoneResult,
+    ImageResult,
+    IMEIResult,
+)
+from app.components.network_tree import network_tree_view, connections_list_view
 
 
 def tab_button(label: str, value: str, icon: str) -> rx.Component:
@@ -81,120 +91,12 @@ def network_map_tool() -> rx.Component:
             "Visualizing connections helps identify patterns. Use this data to build a case, not to draw premature conclusions without verification.",
         ),
         rx.el.div(
-            rx.el.div(
-                rx.el.div(
-                    rx.el.h3(
-                        "Target Network Graph",
-                        class_name="text-lg font-semibold text-gray-800",
-                    ),
-                    rx.el.p(
-                        "Correlated entities from your investigation",
-                        class_name="text-xs text-gray-500",
-                    ),
-                    class_name="flex flex-col",
-                ),
-                rx.cond(
-                    InvestigationState.network_nodes.length() > 0,
-                    rx.el.div(
-                        rx.el.button(
-                            rx.icon("download", class_name="w-4 h-4 mr-2"),
-                            "Export",
-                            on_click=rx.toast("Graph data exported to JSON"),
-                            class_name="text-sm text-gray-600 hover:text-gray-900 font-medium flex items-center px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors",
-                        ),
-                        rx.el.button(
-                            rx.icon("trash-2", class_name="w-4 h-4 mr-2"),
-                            "Clear Graph",
-                            on_click=InvestigationState.clear_graph,
-                            class_name="text-sm text-red-600 hover:text-red-700 font-medium flex items-center px-3 py-2 rounded-lg hover:bg-red-50 transition-colors",
-                        ),
-                        class_name="flex gap-2",
-                    ),
-                ),
-                class_name="flex justify-between items-start mb-6",
-            ),
-            rx.cond(
-                InvestigationState.network_nodes.length() > 0,
-                rx.el.div(
-                    rx.el.div(
-                        category_section(
-                            "Identity Entities",
-                            InvestigationState.nodes_by_category["Identity"],
-                            "fingerprint",
-                            "text-blue-500",
-                        ),
-                        category_section(
-                            "Infrastructure & Network",
-                            InvestigationState.nodes_by_category["Infrastructure"],
-                            "server",
-                            "text-orange-500",
-                        ),
-                        category_section(
-                            "Evidence & Alerts",
-                            InvestigationState.nodes_by_category["Evidence"],
-                            "file-warning",
-                            "text-red-500",
-                        ),
-                        category_section(
-                            "Other Entities",
-                            InvestigationState.nodes_by_category["Other"],
-                            "circle_plus",
-                            "text-gray-500",
-                        ),
-                        class_name="animate-in fade-in slide-in-from-bottom-4 duration-500",
-                    ),
-                    rx.el.div(
-                        rx.el.h4(
-                            "Connection Log",
-                            class_name="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3",
-                        ),
-                        rx.el.div(
-                            rx.foreach(
-                                InvestigationState.network_edges,
-                                lambda edge: rx.el.div(
-                                    rx.icon(
-                                        "link", class_name="w-3 h-3 text-gray-300 mr-2"
-                                    ),
-                                    rx.el.span(
-                                        edge["source"],
-                                        class_name="font-medium text-gray-700 truncate max-w-[120px] md:max-w-xs",
-                                    ),
-                                    rx.icon(
-                                        "arrow-right",
-                                        class_name="w-3 h-3 text-orange-500 mx-2 flex-shrink-0",
-                                    ),
-                                    rx.el.span(
-                                        edge["target"],
-                                        class_name="font-medium text-gray-700 truncate max-w-[120px] md:max-w-xs",
-                                    ),
-                                    rx.el.span(
-                                        f"({edge['label']})",
-                                        class_name="text-xs text-gray-400 ml-auto italic whitespace-nowrap pl-2",
-                                    ),
-                                    class_name="flex items-center p-2 bg-gray-50 rounded-lg mb-2 text-sm hover:bg-orange-50 transition-colors border border-transparent hover:border-orange-100",
-                                ),
-                            ),
-                            class_name="max-h-64 overflow-y-auto custom-scrollbar pr-2",
-                        ),
-                        class_name="bg-white border border-gray-200 rounded-xl p-4 mt-8",
-                    ),
-                ),
-                rx.el.div(
-                    rx.icon("share-2", class_name="w-12 h-12 text-gray-200 mb-3"),
-                    rx.el.p(
-                        "No entities mapped yet.",
-                        class_name="text-gray-600 font-medium mb-1",
-                    ),
-                    rx.el.p(
-                        "Start an investigation (Domain, Phone, Email, etc.) to see connections appearing here automatically.",
-                        class_name="text-gray-400 text-sm max-w-md text-center",
-                    ),
-                    class_name="flex flex-col items-center justify-center py-16 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50",
-                ),
-            ),
-            class_name="bg-white p-6 rounded-2xl shadow-sm border border-gray-100",
+            network_tree_view(),
+            rx.el.div(class_name="h-6"),
+            connections_list_view(),
+            class_name="space-y-6",
         ),
-        class_name="max-w-5xl mx-auto",
+        class_name="max-w-6xl mx-auto",
     )
 
 
