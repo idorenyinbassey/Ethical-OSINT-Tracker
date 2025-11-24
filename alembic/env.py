@@ -2,6 +2,14 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 import os
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so 'app' package resolves even if Alembic
+# is invoked from a different working directory.
+project_root = Path(__file__).resolve().parents[1]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
