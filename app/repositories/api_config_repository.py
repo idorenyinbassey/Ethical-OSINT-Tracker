@@ -1,6 +1,7 @@
 from typing import List
 from sqlmodel import select
 from app.models.api_config import APIConfig
+from app.utils.crypto import encrypt_api_key, decrypt_api_key
 from app.repositories.base import session_scope
 
 
@@ -11,6 +12,11 @@ def get_all_configs() -> List[APIConfig]:
         configs = list(session.exec(stmt))
         # Detach objects from session so they can be used outside
         for config in configs:
+            # Decrypt API key before returning to callers
+            try:
+                config.api_key = decrypt_api_key(config.api_key)
+            except Exception:
+                pass
             session.expunge(config)
         return configs
 
@@ -21,6 +27,10 @@ def get_by_service(service_name: str) -> APIConfig | None:
         stmt = select(APIConfig).where(APIConfig.service_name == service_name)
         config = session.exec(stmt).first()
         if config:
+            try:
+                config.api_key = decrypt_api_key(config.api_key)
+            except Exception:
+                pass
             session.expunge(config)
         return config
 
@@ -34,7 +44,11 @@ def create_or_update_config(service_name: str, api_key: str, base_url: str,
         existing = session.exec(stmt).first()
         
         if existing:
-            existing.api_key = api_key
+            # Encrypt API key before storing
+            try:
+                existing.api_key = encrypt_api_key(api_key)
+            except Exception:
+                existing.api_key = api_key
             existing.base_url = base_url
             existing.is_enabled = is_enabled
             existing.rate_limit = rate_limit
@@ -46,7 +60,7 @@ def create_or_update_config(service_name: str, api_key: str, base_url: str,
         else:
             config = APIConfig(
                 service_name=service_name,
-                api_key=api_key,
+                api_key=encrypt_api_key(api_key) if api_key else api_key,
                 base_url=base_url,
                 is_enabled=is_enabled,
                 rate_limit=rate_limit,
