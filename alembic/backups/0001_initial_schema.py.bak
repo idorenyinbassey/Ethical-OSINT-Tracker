@@ -1,0 +1,28 @@
+"""initial schema
+Revision ID: 0001
+Revises: 
+Create Date: 2025-11-25 12:00:00.000000
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+import reflex as rx
+
+# revision identifiers, used by Alembic.
+revision: str = '0001'
+down_revision: str | None = None
+branch_labels: str | None = None
+depends_on: str | None = None
+
+def upgrade() -> None:
+    """Create the tables."""
+    # The Alembic autogenerate feature will automatically detect and create the tables.
+    # If you have specific database objects to create, you can add them here.
+    pass
+
+def downgrade() -> None:
+    """Drop the tables."""
+    # The Alembic autogenerate feature will automatically detect and drop the tables.
+    # If you have specific database objects to drop, you can add them here.
+    pass
