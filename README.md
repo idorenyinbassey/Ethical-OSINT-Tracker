@@ -313,3 +313,20 @@ This software is provided for **educational and lawful purposes only**. Users ar
 **Built with ❤️ for the ethical OSINT community**
 
 Star ⭐ this repo if you find it useful!
+
+## Supported API service keys
+
+The Settings page accepts a set of known service keys which pre-fill sensible defaults. Supported keys:
+
+- `WhoisXML` — WhoisXML API (domain WHOIS)
+- `HIBP` — Have I Been Pwned (breach data)
+- `IPInfo` — IPInfo.io (IP geolocation)
+- `Shodan` — Shodan (device search)
+- `VirusTotal` — VirusTotal (threat analysis)
+- `Hunter.io` — Hunter.io (email verification)
+- `NumVerify` — NumVerify (phone validation)
+- `ImageRecognition` — Example: DeepAI (image analysis)
+- `IMEIService` — Example: imei.info (IMEI/device lookup)
+- `SocialSearch` — Example: GitHub/Reddit public APIs or aggregators
+
+You may save custom service names; the UI will warn if a name isn't one of the supported keys above but will still allow saving. For production, encrypt API keys at rest (see `app/utils/crypto.py`) and never commit keys to source control.
