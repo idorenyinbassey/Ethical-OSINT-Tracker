@@ -833,7 +833,7 @@ class InvestigationState(rx.State):
             }
         )
         self._add_to_graph(
-            {"id": f"loc_{seed}", "type": "location", "label": location, "icon": "map"},
+            {"id": f"loc_{seed}", "type": "location", "label": full_location, "icon": "map"},
             connected_to_id=self.phone_query,
             edge_label="located_in",
         )

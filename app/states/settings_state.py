@@ -58,6 +58,47 @@ API_SERVICES = {
     },
 }
 
+# Supported service keys (use Option B: allow custom names with a warning)
+SUPPORTED_API_SERVICE_KEYS = [
+    "WhoisXML",
+    "HIBP",
+    "IPInfo",
+    "Shodan",
+    "VirusTotal",
+    "Hunter.io",
+    "NumVerify",
+    "ImageRecognition",
+    "IMEIService",
+    "SocialSearch",
+]
+
+# Additional example templates for image, imei and social services
+API_SERVICES.update(
+    {
+        "ImageRecognition": {
+            "name": "DeepAI Image Recognition (example)",
+            "default_url": "https://api.deepai.org/api",
+            "description": "Image analysis and reverse image search (example provider)",
+            "docs_url": "https://deepai.org",
+            "free_key_notes": "DeepAI offers a free-tier API key for testing; replace with your provider key.",
+        },
+        "IMEIService": {
+            "name": "IMEI.info (example)",
+            "default_url": "https://api.imei.info",
+            "description": "IMEI / device lookup (example provider)",
+            "docs_url": "https://imei.info/docs",
+            "free_key_notes": "Some IMEI services provide limited free lookups or demo keys; check provider docs.",
+        },
+        "SocialSearch": {
+            "name": "SocialSearch (GitHub/Reddit example)",
+            "default_url": "https://api.github.com",
+            "description": "Social profile and public post lookups (example providers)",
+            "docs_url": "https://docs.github.com",
+            "free_key_notes": "Use platform public APIs (GitHub, Reddit) or aggregator services; follow each ToS.",
+        },
+    }
+)
+
 
 class SettingsState(rx.State):
     # API Configuration
@@ -168,7 +209,13 @@ class SettingsState(rx.State):
             self.save_success = True
             self.show_add_form = False
             self.load_configs()
-            yield rx.toast.success(f"API configuration for {self.form_service_name} saved successfully")
+            # If the user saved a custom/unsupported service name, warn but allow it
+            if self.form_service_name not in SUPPORTED_API_SERVICE_KEYS:
+                yield rx.toast.warning(
+                    f"Saved custom service '{self.form_service_name}'. Consider using a supported key or check docs."
+                )
+            else:
+                yield rx.toast.success(f"API configuration for {self.form_service_name} saved successfully")
             # Final yield to ensure updated list renders
             yield
         except Exception as e:
