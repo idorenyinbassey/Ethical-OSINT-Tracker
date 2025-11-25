@@ -48,6 +48,27 @@ A comprehensive ethical Open Source Intelligence (OSINT) investigation platform 
 
 ### 1. Clone the Repository
 
+## Database setup (SQLite + Alembic)
+
+To make initializing the local database and migrations easy for new contributors, this repo includes a small helper script.
+
+1. From the project root run (this will create a `.venv` if missing, install requirements, and run migrations):
+
+```bash
+bash scripts/setup_migrations.sh
+```
+
+2. The script uses `DB_URL` if present; by default it uses `sqlite:///./dev.db`.
+
+3. To check database tables:
+
+```bash
+sqlite3 dev.db ".tables"
+```
+
+Notes:
+- The script is conservative and idempotent — migrations created in `alembic/versions/` use checks to avoid errors when tables already exist.
+- If you prefer manual steps: activate your venv, `pip install -r requirements.txt`, then run `alembic upgrade head`.
 ```bash
 git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
 cd Ethical-OSINT-Tracker
