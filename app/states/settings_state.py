@@ -160,9 +160,10 @@ class SettingsState(rx.State):
         service_info = API_SERVICES.get(service_key, {})
         self.form_service_name = service_key
         self.form_base_url = service_info.get("default_url", "")
+        # If the template provides notes about free keys, pre-fill the notes field
+        self.form_notes = service_info.get("free_key_notes", "")
         self.form_is_enabled = True
         self.form_rate_limit = 100
-        self.form_notes = ""
         self.form_api_key = ""
         self.show_add_form = True
         self.save_success = False
