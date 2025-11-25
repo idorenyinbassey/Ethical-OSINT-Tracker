@@ -30,39 +30,38 @@ def hash_if_sensitive(kind: str, query: str) -> str:
 
 
 def _get_fernet() -> Optional["Fernet"]:
-    """Return a Fernet instance or None if cryptography unavailable."""
+    """Return a Fernet instance if `API_KEYS_FERNET_KEY` env var is set.
+
+    This function enforces the use of an explicit environment variable
+    for encryption keys. It will return None if either `cryptography` is
+    unavailable or `API_KEYS_FERNET_KEY` is not set.
+    """
     if Fernet is None:
         return None
     key = os.environ.get("API_KEYS_FERNET_KEY")
-    if key:
-        return Fernet(key.encode())
-    # Try local key file for dev convenience
-    key_file = Path(".api_keys_key")
-    if key_file.exists():
-        k = key_file.read_text().strip()
-        return Fernet(k.encode())
-    # Generate and persist a local key for development
-    k = Fernet.generate_key()
-    try:
-        key_file.write_text(k.decode())
-    except Exception:
-        pass
-    return Fernet(k)
+    if not key:
+        return None
+    return Fernet(key.encode())
 
 
 def encrypt_api_key(plaintext: str) -> str:
-    """Encrypt API key using Fernet. Returns ciphertext or plaintext on fallback."""
+    """Encrypt API key using Fernet. Raises RuntimeError if no env key set."""
     f = _get_fernet()
     if f is None:
-        return plaintext
+        raise RuntimeError("API_KEYS_FERNET_KEY is not set or cryptography is unavailable")
     return f.encrypt(plaintext.encode()).decode()
 
 
 def decrypt_api_key(ciphertext: str) -> str:
-    """Decrypt API key using Fernet. If decryption fails, return original value."""
+    """Decrypt API key using Fernet. Raises RuntimeError if no env key set.
+
+    If decryption fails (invalid token) the original ciphertext is
+    returned to avoid data loss, but a RuntimeError is raised if the
+    environment is not configured for encryption.
+    """
     f = _get_fernet()
     if f is None:
-        return ciphertext
+        raise RuntimeError("API_KEYS_FERNET_KEY is not set or cryptography is unavailable")
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except Exception:
