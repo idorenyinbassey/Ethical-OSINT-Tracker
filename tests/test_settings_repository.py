@@ -1,6 +1,11 @@
 import os
 import pytest
 
+from cryptography.fernet import Fernet
+
+# Ensure the encryption key is present for repository operations
+os.environ.setdefault("API_KEYS_FERNET_KEY", Fernet.generate_key().decode())
+
 from app.repositories.api_config_repository import (
     create_or_update_config,
     get_by_service,
