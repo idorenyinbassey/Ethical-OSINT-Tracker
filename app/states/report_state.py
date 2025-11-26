@@ -120,7 +120,7 @@ class ReportState(rx.State):
                 title=self.form_title,
                 summary=self.form_summary,
                 indicators=self.form_indicators_raw,
-                author_user_id=AuthState.current_user_id,
+                author_user_id=self.get_state(AuthState).current_user_id,
                 related_case_id=case_id,
             )
             self.show_create_form = False

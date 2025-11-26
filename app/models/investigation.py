@@ -9,3 +9,4 @@ class Investigation(SQLModel, table=True):
     created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.utcnow())
     result_json: str
     user_id: int | None = Field(default=None, foreign_key="user.id")
+    case_id: int | None = Field(default=None, foreign_key="case.id", index=True)

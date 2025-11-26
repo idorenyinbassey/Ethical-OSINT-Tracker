@@ -20,6 +20,9 @@ source .venv/bin/activate
 echo "📚 Installing dependencies..."
 pip install -q -r requirements.txt
 
+# API encryption removed: storing API keys in plaintext for simpler setup.
+# If you need encryption later, reintroduce API_KEYS_FERNET_KEY handling.
+
 # Set default DB_URL if not provided (can be overridden externally)
 if [ -z "$DB_URL" ]; then
     export DB_URL="sqlite:///./dev.db"

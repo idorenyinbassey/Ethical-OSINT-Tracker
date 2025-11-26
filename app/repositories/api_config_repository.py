@@ -2,6 +2,7 @@ from typing import List
 from sqlmodel import select
 from app.models.api_config import APIConfig
 from app.utils.crypto import encrypt_api_key, decrypt_api_key
+import json
 from app.repositories.base import session_scope
 
 
@@ -17,6 +18,11 @@ def get_all_configs() -> List[APIConfig]:
                 config.api_key = decrypt_api_key(config.api_key)
             except Exception:
                 pass
+            # attempt to parse credentials JSON into an attribute for callers
+            try:
+                config._credentials = json.loads(config.credentials) if config.credentials else {}
+            except Exception:
+                config._credentials = {}
             session.expunge(config)
         return configs
 
@@ -31,18 +37,23 @@ def get_by_service(service_name: str) -> APIConfig | None:
                 config.api_key = decrypt_api_key(config.api_key)
             except Exception:
                 pass
+            try:
+                config._credentials = json.loads(config.credentials) if config.credentials else {}
+            except Exception:
+                config._credentials = {}
             session.expunge(config)
         return config
 
 
 def create_or_update_config(service_name: str, api_key: str, base_url: str, 
                             is_enabled: bool = True, rate_limit: int = 100, 
-                            notes: str = "") -> APIConfig:
+                            notes: str = "", credentials: dict | None = None) -> APIConfig:
     """Create or update API configuration"""
     with session_scope() as session:
         stmt = select(APIConfig).where(APIConfig.service_name == service_name)
         existing = session.exec(stmt).first()
         
+        creds_json = json.dumps(credentials) if credentials else ""
         if existing:
             # Encrypt API key before storing
             try:
@@ -53,6 +64,7 @@ def create_or_update_config(service_name: str, api_key: str, base_url: str,
             existing.is_enabled = is_enabled
             existing.rate_limit = rate_limit
             existing.notes = notes
+            existing.credentials = creds_json
             session.add(existing)
             session.flush()
             session.refresh(existing)
@@ -65,6 +77,7 @@ def create_or_update_config(service_name: str, api_key: str, base_url: str,
                 is_enabled=is_enabled,
                 rate_limit=rate_limit,
                 notes=notes,
+                credentials=creds_json,
             )
             session.add(config)
             session.flush()

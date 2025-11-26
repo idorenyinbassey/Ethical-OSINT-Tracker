@@ -9,6 +9,8 @@ import json
 from app.states.auth_state import AuthState
 from app.states.notification_state import NotificationState
 from app.repositories.investigation_repository import create_investigation
+from app.repositories.case_repository import create_case
+from app.states.dashboard_state import DashboardState
 from app.utils.rate_limiter import check_rate_limit, get_rate_limit_key
 from app.utils.crypto import hash_if_sensitive
 
@@ -71,6 +73,12 @@ class IPResult(TypedDict):
     asn: str
     threat_score: int
     is_proxy: bool
+    # Shodan data
+    open_ports: list[int]
+    detected_services: list[dict]
+    # VirusTotal data
+    malware_detections: list[dict]
+    community_score: int
 
 
 class EmailResult(TypedDict):
@@ -162,6 +170,7 @@ class NetworkEdge(TypedDict):
 
 class InvestigationState(rx.State):
     active_tab: str = "domain"
+    selected_case_id: str = ""
     network_nodes: list[NetworkNode] = []
     network_edges: list[NetworkEdge] = []
     domain_query: str = ""
@@ -188,6 +197,7 @@ class InvestigationState(rx.State):
     export_result: Optional[str] = None
     is_exporting: bool = False
     is_generating: bool = False
+    metadata_expanded: bool = False
 
     def set_domain_query(self, value: str):
         self.domain_query = value
@@ -203,6 +213,35 @@ class InvestigationState(rx.State):
 
     def set_phone_query(self, value: str):
         self.phone_query = value
+
+    @rx.var
+    def case_id(self) -> int | None:
+        """Extract integer case ID from selected case string."""
+        if self.selected_case_id and ":" in self.selected_case_id:
+            try:
+                return int(self.selected_case_id.split(":")[0])
+            except (ValueError, IndexError):
+                return None
+        return None
+
+    def set_selected_case_id(self, value: str):
+        self.selected_case_id = value
+
+    @rx.var
+    def metadata_items(self) -> list[tuple[str, str]]:
+        """Convert metadata dict to sorted list of (key, value) tuples for display."""
+        if not self.image_result or not self.image_result.get("exif"):
+            return []
+        
+        # Sort metadata by key name
+        items = sorted(self.image_result["exif"].items())
+        
+        # Convert values to strings and handle empty values
+        return [(k, str(v) if v else "(empty)") for k, v in items]
+
+    def toggle_metadata_expanded(self):
+        """Toggle the expanded state of metadata display."""
+        self.metadata_expanded = not self.metadata_expanded
 
     @rx.event
     async def export_investigations(self, format: str = "json"):
@@ -312,7 +351,7 @@ class InvestigationState(rx.State):
         
         # Rate limit check
         # Use direct reactive var (avoid awaiting get_state which returns coroutine)
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "domain")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "domain")
         allowed, remaining = check_rate_limit(rate_key, max_requests=5, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before searching again.")
@@ -321,10 +360,16 @@ class InvestigationState(rx.State):
         self.is_loading_domain = True
         self.domain_result = None
         yield
-        # Try live RDAP; fallback to deterministic mock
-        from app.services.rdap_client import fetch_domain
-        rdap = await fetch_domain(self.domain_query.lower())
-        if rdap:
+        # Try live RDAP only; no fallback to mock data
+        try:
+            from app.services.rdap_client import fetch_domain
+
+            rdap = await fetch_domain(self.domain_query.lower())
+            if not rdap:
+                self.domain_result = None
+                yield rx.toast.error("RDAP lookup returned no data; ensure the service is configured")
+                self.is_loading_domain = False
+                return
             ns = rdap.get("ns") or []
             self.domain_result = {
                 "domain": self.domain_query,
@@ -335,50 +380,11 @@ class InvestigationState(rx.State):
                 "status": rdap.get("status") or "active",
                 "dns_records": len(ns) if ns else 0,
             }
-        else:
-            await asyncio.sleep(0.3)
-            if self.domain_query.lower() in KNOWN_DOMAINS:
-                data = KNOWN_DOMAINS[self.domain_query.lower()]
-                registrar = data["registrar"]
-                status = data["status"]
-                ns_count = data["ns_count"]
-                seed = 12345
-            else:
-                seed = self._get_seed(self.domain_query)
-                rng = random.Random(seed)
-                registrars = [
-                    "GoDaddy.com, LLC",
-                    "NameCheap, Inc.",
-                    "MarkMonitor Inc.",
-                    "SafeNames Ltd.",
-                    "Tucows Domains Inc.",
-                ]
-                statuses = [
-                    "Active",
-                    "ClientTransferProhibited",
-                    "RedemptionPeriod",
-                    "PendingDelete",
-                ]
-                registrar = rng.choice(registrars)
-                status = rng.choice(statuses)
-                ns_count = rng.randint(2, 5)
-            rng = random.Random(seed)
-            creation_year = rng.randint(2015, 2023)
-            creation_date = (
-                f"{creation_year}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}"
-            )
-            expiration_date = f"{creation_year + rng.randint(1, 5)}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}"
-            self.domain_result = {
-                "domain": self.domain_query,
-                "registrar": registrar,
-                "creation_date": creation_date,
-                "expiration_date": expiration_date,
-                "name_servers": [
-                    f"ns{i}.{self.domain_query}" for i in range(1, ns_count + 1)
-                ],
-                "status": status,
-                "dns_records": rng.randint(5, 25),
-            }
+        except Exception as e:
+            self.domain_result = None
+            yield rx.toast.error(f"RDAP lookup failed: {e}")
+            self.is_loading_domain = False
+            return
         self._add_to_graph(
             {
                 "id": self.domain_query,
@@ -388,11 +394,13 @@ class InvestigationState(rx.State):
             }
         )
         try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="domain",
                 query=hash_if_sensitive("domain", self.domain_query),
                 result_json=json.dumps(self.domain_result),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="Domain Investigation Complete",
@@ -401,11 +409,22 @@ class InvestigationState(rx.State):
             )
         except Exception:
             pass
+        try:
+            # Refresh dashboard to reflect saved investigation
+            self.get_state(DashboardState).refresh_dashboard()
+        except Exception:
+            pass
         self.is_loading_domain = False
 
     @rx.event
     async def search_ip(self):
         if not self.ip_query:
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
             return
         ip_regex = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$"
         if not re.match(ip_regex, self.ip_query):
@@ -414,7 +433,7 @@ class InvestigationState(rx.State):
             return
         
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "ip")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "ip")
         allowed, remaining = check_rate_limit(rate_key, max_requests=10, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before searching again.")
@@ -422,12 +441,42 @@ class InvestigationState(rx.State):
         
         self.is_loading_ip = True
         self.ip_result = None
+        try:
+            auth_state = await self.get_state(AuthState)
+            case = create_case(title=f"IP: {self.ip_query}", description=f"Investigation for {self.ip_query}", owner_user_id=auth_state.current_user_id)
+            try:
+                self.get_state(DashboardState).add_in_progress_activity(case.id, case.title)
+            except Exception:
+                pass
+        except Exception as e:
+            case = None
+            try:
+                await self.get_state(NotificationState).add_notification(
+                    title="Case Creation Failed",
+                    message=f"Could not create case for {self.ip_query}: {e}",
+                    notification_type="error",
+                )
+            except Exception:
+                pass
         yield
-        await asyncio.sleep(0.2)
-        # Try live IP info
-        from app.services.ip_client import fetch_ip
-        info = await fetch_ip(self.ip_query)
-        if info:
+        # Try live IP info, Shodan, and VirusTotal
+        try:
+            from app.services.ip_client import fetch_ip
+            from app.services.shodan_client import fetch_shodan
+            from app.services.virustotal_client import fetch_virustotal
+
+            # Fetch all data sources in parallel
+            info = await fetch_ip(self.ip_query)
+            if not info:
+                self.ip_result = None
+                yield rx.toast.error("IP lookup returned no data; ensure the service is configured")
+                self.is_loading_ip = False
+                return
+            
+            # Fetch Shodan and VirusTotal data (these always return data via mock fallback)
+            shodan_data = await fetch_shodan(self.ip_query)
+            vt_data = await fetch_virustotal(self.ip_query)
+            
             seed = self._get_seed(self.ip_query)
             rng = random.Random(seed)
             self.ip_result = {
@@ -438,33 +487,18 @@ class InvestigationState(rx.State):
                 "asn": info.get("asn") or "",
                 "threat_score": rng.randint(0, 100),
                 "is_proxy": rng.choice([True, False]) if rng.randint(0,100) > 70 else False,
+                # Shodan data
+                "open_ports": shodan_data.get("open_ports", []) if shodan_data else [],
+                "detected_services": shodan_data.get("detected_services", []) if shodan_data else [],
+                # VirusTotal data
+                "malware_detections": vt_data.get("malware_detections", []) if vt_data else [],
+                "community_score": vt_data.get("community_score", 0) if vt_data else 0,
             }
-        else:
-            if self.ip_query in KNOWN_IPS:
-                k_city, k_country, k_isp, k_asn = KNOWN_IPS[self.ip_query]
-                seed = self._get_seed(self.ip_query)
-                rng = random.Random(seed)
-                loc = (k_city, k_country, k_asn, k_isp)
-            else:
-                seed = self._get_seed(self.ip_query)
-                rng = random.Random(seed)
-                locations = [
-                    ("Amsterdam", "Netherlands", "AS14061", "DigitalOcean, LLC"),
-                    ("Ashburn", "United States", "AS14618", "Amazon.com, Inc."),
-                    ("Lagos", "Nigeria", "AS29465", "MTN Nigeria"),
-                    ("London", "United Kingdom", "AS5089", "Virgin Media"),
-                    ("Singapore", "Singapore", "AS13335", "Cloudflare, Inc."),
-                ]
-                loc = rng.choice(locations)
-            self.ip_result = {
-                "ip": self.ip_query,
-                "city": loc[0],
-                "country": loc[1],
-                "isp": loc[3],
-                "asn": loc[2],
-                "threat_score": rng.randint(0, 100),
-                "is_proxy": rng.choice([True, False]) if rng.randint(0, 100) > 70 else False,
-            }
+        except Exception as e:
+            self.ip_result = None
+            yield rx.toast.error(f"IP lookup failed: {e}")
+            self.is_loading_ip = False
+            return
         self._add_to_graph(
             {
                 "id": self.ip_query,
@@ -474,11 +508,13 @@ class InvestigationState(rx.State):
             }
         )
         try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="ip",
                 query=hash_if_sensitive("ip", self.ip_query),
                 result_json=json.dumps(self.ip_result),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="IP Investigation Complete",
@@ -487,11 +523,21 @@ class InvestigationState(rx.State):
             )
         except Exception:
             pass
+        try:
+            self.get_state(DashboardState).refresh_dashboard()
+        except Exception:
+            pass
         self.is_loading_ip = False
 
     @rx.event
     async def search_email(self):
         if not self.email_query:
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
             return
         email_regex = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
         if not re.match(email_regex, self.email_query):
@@ -500,7 +546,7 @@ class InvestigationState(rx.State):
             return
         
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "email")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "email")
         allowed, remaining = check_rate_limit(rate_key, max_requests=5, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before searching again.")
@@ -508,28 +554,45 @@ class InvestigationState(rx.State):
         
         self.is_loading_email = True
         self.email_result = None
+        try:
+            auth_state = await self.get_state(AuthState)
+            case = create_case(title=f"Email: {self.email_query}", description=f"Investigation for {self.email_query}", owner_user_id=auth_state.current_user_id)
+            try:
+                self.get_state(DashboardState).add_in_progress_activity(case.id, case.title)
+            except Exception:
+                pass
+        except Exception as e:
+            case = None
+            try:
+                await self.get_state(NotificationState).add_notification(
+                    title="Case Creation Failed",
+                    message=f"Could not create case for {self.email_query}: {e}",
+                    notification_type="error",
+                )
+            except Exception:
+                pass
         yield
         await asyncio.sleep(0.3)
-        # Try live HIBP + Hunter.io
-        from app.services.hibp_client import check_breaches
-        from app.services.hunter_client import verify_email
-        
-        breaches_data = await check_breaches(self.email_query)
-        hunter_data = await verify_email(self.email_query)
-        
-        if breaches_data is not None or hunter_data is not None:
-            # Use live data
+        # Try live HIBP + Hunter.io only
+        try:
+            from app.services.hibp_client import check_breaches
+            from app.services.hunter_client import verify_email
+
+            breaches_data = await check_breaches(self.email_query)
+            hunter_data = await verify_email(self.email_query)
+            if (breaches_data is None) and (hunter_data is None):
+                self.email_result = None
+                yield rx.toast.error("Email services returned no data; ensure services are configured")
+                self.is_loading_email = False
+                return
             breach_count = len(breaches_data) if breaches_data is not None else 0
             last_breach = None
             if breaches_data and len(breaches_data) > 0:
-                # Most recent breach
                 sorted_breaches = sorted(breaches_data, key=lambda b: b.get("date", ""), reverse=True)
                 last_breach = f"{sorted_breaches[0].get('date', '')} ({sorted_breaches[0].get('name', 'Unknown')})"
-            
             disposable = hunter_data.get("disposable", False) if hunter_data else False
             score = hunter_data.get("score", 50) if hunter_data else 50
             domain_rep = "High" if score >= 75 else ("Medium" if score >= 50 else "Low")
-            
             self.email_result = {
                 "email": self.email_query,
                 "valid_format": True,
@@ -538,32 +601,11 @@ class InvestigationState(rx.State):
                 "domain_reputation": domain_rep,
                 "last_breach": last_breach,
             }
-        else:
-            # Fallback to deterministic mock
-            seed = self._get_seed(self.email_query)
-            rng = random.Random(seed)
-            breaches_list = [
-                "Collection #1",
-                "Verifications.io",
-                "ExploitIn",
-                "Anti Public Combo",
-                "Canva",
-            ]
-            is_clean = self.email_query.lower().startswith(("sec", "admin", "support"))
-            has_breach = False if is_clean else rng.random() > 0.3
-            breach_count = rng.randint(1, 15) if has_breach else 0
-            self.email_result = {
-                "email": self.email_query,
-                "valid_format": True,
-                "disposable": rng.random() > 0.9 if not is_clean else False,
-                "breaches": breach_count,
-                "domain_reputation": "High"
-                if is_clean
-                else rng.choice(["High", "Medium", "Low"]),
-                "last_breach": f"{rng.randint(2018, 2023)}-{rng.randint(1, 12):02d} ({rng.choice(breaches_list)})"
-                if has_breach
-                else None,
-            }
+        except Exception as e:
+            self.email_result = None
+            yield rx.toast.error(f"Email lookup failed: {e}")
+            self.is_loading_email = False
+            return
         self._add_to_graph(
             {
                 "id": self.email_query,
@@ -572,7 +614,8 @@ class InvestigationState(rx.State):
                 "icon": "mail",
             }
         )
-        if has_breach:
+        if breach_count > 0:
+            seed = self._get_seed(self.email_query)
             self._add_to_graph(
                 {
                     "id": f"Breach_{seed}",
@@ -584,11 +627,13 @@ class InvestigationState(rx.State):
                 edge_label="found_in",
             )
         try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="email",
                 query=hash_if_sensitive("email", self.email_query),
                 result_json=json.dumps(self.email_result),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="Email Investigation Complete",
@@ -597,15 +642,25 @@ class InvestigationState(rx.State):
             )
         except Exception:
             pass
+        try:
+            self.get_state(DashboardState).refresh_dashboard()
+        except Exception:
+            pass
         self.is_loading_email = False
 
     @rx.event
     async def search_social(self):
         if not self.social_query:
             return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
         
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "social")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "social")
         allowed, remaining = check_rate_limit(rate_key, max_requests=5, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before searching again.")
@@ -613,66 +668,57 @@ class InvestigationState(rx.State):
         
         self.is_loading_social = True
         self.social_results = []
-        yield
-        await asyncio.sleep(1.5)
-        seed = self._get_seed(self.social_query)
-        rng = random.Random(seed)
-        username = self.social_query
-        platforms = [
-            "Twitter",
-            "GitHub",
-            "Instagram",
-            "Reddit",
-            "LinkedIn",
-            "Pinterest",
-            "TikTok",
-            "Telegram",
-        ]
-        results = []
-        found_platforms = []
-        for platform in platforms:
-            exists = rng.random() > 0.4
-            if exists:
-                url = f"{platform.lower()}.com/{username}"
-                if platform == "Reddit":
-                    url = f"reddit.com/user/{username}"
-                if platform == "LinkedIn":
-                    url = f"linkedin.com/in/{username}"
-                results.append(
-                    {
-                        "platform": platform,
-                        "username": username,
-                        "exists": True,
-                        "url": url,
-                    }
-                )
-                found_platforms.append(platform)
-            else:
-                results.append(
-                    {
-                        "platform": platform,
-                        "username": username,
-                        "exists": False,
-                        "url": "",
-                    }
-                )
-        self.social_results = results
-        user_node_id = f"user_{username}"
-        self._add_to_graph(
-            {"id": user_node_id, "type": "username", "label": username, "icon": "user"}
-        )
-        for p in found_platforms:
-            self._add_to_graph(
-                {"id": f"{p}_{username}", "type": "social", "label": p, "icon": "link"},
-                connected_to_id=user_node_id,
-                edge_label="account",
-            )
         try:
+            auth_state = await self.get_state(AuthState)
+            case = create_case(title=f"Social: {self.social_query}", description=f"Investigation for {self.social_query}", owner_user_id=auth_state.current_user_id)
+            try:
+                self.get_state(DashboardState).add_in_progress_activity(case.id, case.title)
+            except Exception:
+                pass
+        except Exception as e:
+            case = None
+            try:
+                await self.get_state(NotificationState).add_notification(
+                    title="Case Creation Failed",
+                    message=f"Could not create case for {self.social_query}: {e}",
+                    notification_type="error",
+                )
+            except Exception:
+                pass
+        yield
+        # Social lookups should use live services only; attempt to call a social client
+        try:
+            from app.services.social_client import fetch_social
+
+            social_data = await fetch_social(self.social_query)
+            if not social_data:
+                self.social_results = []
+                yield rx.toast.error("Social lookup returned no data; ensure service is configured")
+                self.is_loading_social = False
+                return
+            self.social_results = social_data
+            user_node_id = f"user_{self.social_query}"
+            self._add_to_graph({"id": user_node_id, "type": "username", "label": self.social_query, "icon": "user"})
+            for p in [r for r in social_data if r.get("exists")]:
+                self._add_to_graph({"id": f"{p['platform']}_{self.social_query}", "type": "social", "label": p["platform"], "icon": "link"}, connected_to_id=user_node_id, edge_label="account")
+        except ImportError:
+            self.social_results = []
+            yield rx.toast.error("No social service client available; configure a service to enable social lookups")
+            self.is_loading_social = False
+            return
+        except Exception as e:
+            self.social_results = []
+            yield rx.toast.error(f"Social lookup failed: {e}")
+            self.is_loading_social = False
+            return
+        try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="social",
                 query=hash_if_sensitive("social", self.social_query),
                 result_json=json.dumps(self.social_results),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="Social Media Investigation Complete",
@@ -681,15 +727,25 @@ class InvestigationState(rx.State):
             )
         except Exception:
             pass
+        try:
+            self.get_state(DashboardState).refresh_dashboard()
+        except Exception:
+            pass
         self.is_loading_social = False
 
     @rx.event
     async def search_phone(self):
         if not self.phone_query:
             return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
         
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "phone")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "phone")
         allowed, remaining = check_rate_limit(rate_key, max_requests=5, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before searching again.")
@@ -697,43 +753,52 @@ class InvestigationState(rx.State):
         
         self.is_loading_phone = True
         self.phone_result = None
+        try:
+            auth_state = await self.get_state(AuthState)
+            case = create_case(title=f"Phone: {self.phone_query}", description=f"Investigation for {self.phone_query}", owner_user_id=auth_state.current_user_id)
+            try:
+                self.get_state(DashboardState).add_in_progress_activity(case.id, case.title)
+            except Exception:
+                pass
+        except Exception as e:
+            case = None
+            try:
+                await self.get_state(NotificationState).add_notification(
+                    title="Case Creation Failed",
+                    message=f"Could not create case for {self.phone_query}: {e}",
+                    notification_type="error",
+                )
+            except Exception:
+                pass
         yield
         await asyncio.sleep(0.3)
-        # Try live NumVerify
-        from app.services.numverify_client import validate_phone
-        
-        numverify_data = await validate_phone(self.phone_query)
-        seed = self._get_seed(self.phone_query)
-        rng = random.Random(seed)
-        risk_factors = []
-        
-        if numverify_data:
-            # Use live data
+        # Try live NumVerify only
+        try:
+            from app.services.numverify_client import validate_phone
+
+            numverify_data = await validate_phone(self.phone_query)
+            seed = self._get_seed(self.phone_query)
+            rng = random.Random(seed)
+            risk_factors = []
+            if not numverify_data:
+                self.phone_result = None
+                yield rx.toast.error("Phone validation returned no data; ensure service is configured")
+                self.is_loading_phone = False
+                return
             valid = numverify_data.get("valid", False)
             carrier = numverify_data.get("carrier", "Unknown")
             location = numverify_data.get("location", "Unknown")
             country_code = numverify_data.get("country_code", "")
             country_name = numverify_data.get("country_name", "")
             line_type = numverify_data.get("line_type", "mobile")
-            
-            # Construct location string
             if location and country_name:
                 full_location = f"{location}, {country_name}"
             elif country_name:
                 full_location = country_name
             else:
                 full_location = "Unknown"
-            
-            # Timezone heuristic based on country
-            tz_map = {
-                "NG": "Africa/Lagos (GMT+1)",
-                "US": "America/New_York (GMT-5)",
-                "GB": "Europe/London (GMT+0)",
-                "DE": "Europe/Berlin (GMT+1)",
-            }
+            tz_map = {"NG": "Africa/Lagos (GMT+1)", "US": "America/New_York (GMT-5)", "GB": "Europe/London (GMT+0)", "DE": "Europe/Berlin (GMT+1)"}
             tz = tz_map.get(country_code, "Unknown")
-            
-            # Fraud score heuristic
             fraud_base = rng.randint(0, 30)
             if "99" in self.phone_query or not valid:
                 fraud_base += 50
@@ -746,66 +811,11 @@ class InvestigationState(rx.State):
                 risk_factors.append("No Recent Abuse Reports")
                 risk_factors.append("Active Service Line")
             fraud_score = min(fraud_base, 99)
-        else:
-            # Fallback to deterministic mock
-            is_nigerian = (
-                self.phone_query.startswith("+234")
-                or self.phone_query.startswith("08")
-                or self.phone_query.startswith("07")
-                or self.phone_query.startswith("09")
-            )
-            if is_nigerian:
-                carrier_map = {
-                    "0803": "MTN",
-                    "0806": "MTN",
-                    "0813": "MTN",
-                    "0816": "MTN",
-                    "0810": "MTN",
-                    "0814": "MTN",
-                    "0903": "MTN",
-                    "0906": "MTN",
-                    "0805": "Glo",
-                    "0807": "Glo",
-                    "0811": "Glo",
-                    "0815": "Glo",
-                    "0905": "Glo",
-                    "0802": "Airtel",
-                    "0808": "Airtel",
-                    "0812": "Airtel",
-                    "0902": "Airtel",
-                    "0907": "Airtel",
-                    "0809": "9mobile",
-                    "0817": "9mobile",
-                    "0818": "9mobile",
-                    "0909": "9mobile",
-                }
-                clean_number = self.phone_query.replace("+234", "0")
-                prefix = clean_number[:4]
-                carrier = carrier_map.get(prefix, "Unknown Nigerian Carrier")
-                full_location = "Lagos, Nigeria"
-                tz = "Africa/Lagos (GMT+1)"
-                country_code = "NG"
-                line_type = "Mobile"
-                valid = True
-            else:
-                carrier = "T-Mobile US"
-                full_location = "New York, USA"
-                tz = "America/New_York (GMT-5)"
-                country_code = "US"
-                line_type = "Mobile"
-                valid = True
-            fraud_base = rng.randint(0, 50)
-            if "99" in self.phone_query or rng.random() > 0.8:
-                fraud_base += 40
-                risk_factors.append("High Volume of Spam Reports")
-                risk_factors.append("Associated with Phishing Campaigns")
-            elif is_nigerian and carrier == "Unknown Nigerian Carrier":
-                fraud_base += 20
-                risk_factors.append("Unregistered Carrier Prefix")
-            else:
-                risk_factors.append("No Recent Abuse Reports")
-                risk_factors.append("Active Service Line")
-            fraud_score = min(fraud_base, 99)
+        except Exception as e:
+            self.phone_result = None
+            yield rx.toast.error(f"Phone validation failed: {e}")
+            self.is_loading_phone = False
+            return
         self.phone_result = {
             "number": self.phone_query,
             "valid": valid if 'valid' in locals() else bool(
@@ -838,17 +848,23 @@ class InvestigationState(rx.State):
             edge_label="located_in",
         )
         try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="phone",
                 query=hash_if_sensitive("phone", self.phone_query),
                 result_json=json.dumps(self.phone_result),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="Phone Investigation Complete",
                 message=f"Analysis of {self.phone_query} finished successfully",
                 notification_type="success",
             )
+        except Exception:
+            pass
+        try:
+            self.get_state(DashboardState).refresh_dashboard()
         except Exception:
             pass
         self.is_loading_phone = False
@@ -867,11 +883,17 @@ class InvestigationState(rx.State):
 
     @rx.event
     async def analyze_image(self):
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
         if not self.uploaded_image_name:
             return
         
+        # Get auth state first for rate limiting
+        auth_state = await self.get_state(AuthState)
+        
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "image")
+        rate_key = get_rate_limit_key(auth_state.current_user_id, "image")
         allowed, remaining = check_rate_limit(rate_key, max_requests=3, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before analyzing again.")
@@ -880,102 +902,50 @@ class InvestigationState(rx.State):
         self.is_loading_image = True
         self.image_result = None
         yield
-        await asyncio.sleep(2.5)
-        seed = self._get_seed(self.uploaded_image_name)
-        rng = random.Random(seed)
-        names = [
-            "Jonathan Doe",
-            "Sarah Connor",
-            "Mike Ross",
-            "Jessica Pearson",
-            "Harvey Specter",
-        ]
-        name = rng.choice(names)
-        self.image_result = {
-            "identified_person": f"{name} (Potential Match)",
-            "confidence": f"{rng.randint(85, 99)}.{rng.randint(0, 9)}%",
-            "emails": [
-                f"{name.split(' ')[0].lower()}@example.com",
-                f"{name.replace(' ', '.').lower()}@protonmail.com",
-            ],
-            "social_profiles": [
-                {
-                    "platform": "Facebook",
-                    "url": f"facebook.com/{name.replace(' ', '')}",
-                },
-                {
-                    "platform": "LinkedIn",
-                    "url": f"linkedin.com/in/{name.replace(' ', '-').lower()}",
-                },
-                {
-                    "platform": "Twitter",
-                    "url": f"twitter.com/{name.split(' ')[0].lower()}_real",
-                },
-            ],
-            "media_mentions": [
-                {
-                    "source": "TechDaily",
-                    "title": "Local Developer wins Hackathon",
-                    "date": "2023-11-12",
-                },
-                {
-                    "source": "City News",
-                    "title": "Community Cleanup Volunteers",
-                    "date": "2024-01-05",
-                },
-            ],
-            "recent_posts": [
-                {
-                    "platform": "Twitter",
-                    "content": "Just landed in Abuja for the cybersecurity conference! #TechLife",
-                    "date": "2 days ago",
-                    "engagement": "15 Reposts, 42 Likes",
-                },
-                {
-                    "platform": "Instagram",
-                    "content": "[Photo] Weekend vibes at the beach.",
-                    "date": "1 week ago",
-                    "engagement": "128 Likes",
-                },
-            ],
-            "exif": {
-                "Device": "iPhone 13 Pro",
-                "Date Taken": "2024-02-28 14:32:11",
-                "Location": "Lat: 6.5244, Long: 3.3792 (Lagos)",
-                "Lens": "26mm f/1.5",
-                "ISO": "80",
-                "Shutter": "1/1200",
-            },
-        }
-        person_id = f"person_{seed}"
-        self._add_to_graph(
-            {"id": person_id, "type": "person", "label": name, "icon": "user-check"}
-        )
-        self._add_to_graph(
-            {
-                "id": f"img_{seed}",
-                "type": "image",
-                "label": "Uploaded Image",
-                "icon": "image",
-            },
-            connected_to_id=person_id,
-            edge_label="matched_to",
-        )
+        # Use live image analysis services only
         try:
-            create_investigation(
-                kind="image",
-                query=hash_if_sensitive("image", self.uploaded_image_name),
-                result_json=json.dumps(self.image_result),
-                user_id=AuthState.current_user_id,
-            )
-            await self.get_state(NotificationState).add_notification(
-                title="Image Investigation Complete",
-                message=f"Analysis of {self.uploaded_image_name} finished successfully",
-                notification_type="success",
-            )
-        except Exception:
-            pass
-        self.is_loading_image = False
+            from app.services.image_client import analyze_image
+
+            image_data = await analyze_image(self.uploaded_image_name)
+            if not image_data:
+                self.image_result = None
+                yield rx.toast.error("Image analysis returned no data; ensure service is configured")
+                self.is_loading_image = False
+                return
+            self.image_result = image_data
+            person_id = f"person_{self._get_seed(self.uploaded_image_name)}"
+            self._add_to_graph({"id": person_id, "type": "person", "label": image_data.get("identified_person", "Unknown"), "icon": "user-check"})
+            self._add_to_graph({"id": f"img_{self._get_seed(self.uploaded_image_name)}", "type": "image", "label": "Uploaded Image", "icon": "image"}, connected_to_id=person_id, edge_label="matched_to")
+            try:
+                auth_state = await self.get_state(AuthState)
+                create_investigation(
+                    kind="image",
+                    query=hash_if_sensitive("image", self.uploaded_image_name),
+                    result_json=json.dumps(self.image_result),
+                    user_id=auth_state.current_user_id,
+                    case_id=self.case_id,
+                )
+                await self.get_state(NotificationState).add_notification(
+                    title="Image Investigation Complete",
+                    message=f"Analysis of {self.uploaded_image_name} finished successfully",
+                    notification_type="success",
+                )
+            except Exception:
+                pass
+            try:
+                self.get_state(DashboardState).refresh_dashboard()
+            except Exception:
+                pass
+        except ImportError:
+            self.image_result = None
+            yield rx.toast.error("No image analysis client available; configure a service to enable image analysis")
+            self.is_loading_image = False
+            return
+        except Exception as e:
+            self.image_result = None
+            yield rx.toast.error(f"Image analysis failed: {e}")
+            self.is_loading_image = False
+            return
 
     @rx.event
     def clear_graph(self):
@@ -1009,9 +979,15 @@ class InvestigationState(rx.State):
     async def search_imei(self):
         if not self.imei_query:
             return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
+        if not self.selected_case_id:
+            yield rx.toast.error("Please select a case first before running investigations")
+            return
         
         # Rate limit check
-        rate_key = get_rate_limit_key(AuthState.current_user_id, "imei")
+        rate_key = get_rate_limit_key(self.get_state(AuthState).current_user_id, "imei")
         allowed, remaining = check_rate_limit(rate_key, max_requests=5, window_seconds=60)
         if not allowed:
             yield rx.toast.error("Rate limit exceeded. Please wait before checking again.")
@@ -1019,8 +995,25 @@ class InvestigationState(rx.State):
         
         self.is_loading_imei = True
         self.imei_result = None
+        try:
+            auth_state = await self.get_state(AuthState)
+            case = create_case(title=f"IMEI: {self.imei_query}", description=f"IMEI lookup for {self.imei_query}", owner_user_id=auth_state.current_user_id)
+            try:
+                self.get_state(DashboardState).add_in_progress_activity(case.id, case.title)
+            except Exception:
+                pass
+        except Exception as e:
+            case = None
+            try:
+                await self.get_state(NotificationState).add_notification(
+                    title="Case Creation Failed",
+                    message=f"Could not create case for {self.imei_query}: {e}",
+                    notification_type="error",
+                )
+            except Exception:
+                pass
         yield
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.2)
         clean_imei = self.imei_query.strip().replace("-", "").replace(" ", "")
         is_valid_format = len(clean_imei) == 15 and clean_imei.isdigit()
         if not is_valid_format:
@@ -1042,76 +1035,103 @@ class InvestigationState(rx.State):
             }
             self.is_loading_imei = False
             return
-        tac = clean_imei[:8]
-        if tac in TAC_DB:
-            brand, model, specs = TAC_DB[tac]
-            is_known_tac = True
+        # Try live IMEI service first; if not available, fall back to local TAC/mock
+        try:
+            from app.services.imei_client import fetch_imei
+
+            live = await fetch_imei(clean_imei)
+        except Exception:
+            live = None
+
+        if live:
+            # Use fields from live provider where available; keep keys matching IMEIResult
+            self.imei_result = {
+                "imei": live.get("imei", clean_imei),
+                "valid": live.get("valid", True),
+                "brand": live.get("brand", live.get("manufacturer", "Unknown")),
+                "model": live.get("model", live.get("device_model", "Unknown")),
+                "specs": live.get("specs", live.get("configuration", "")),
+                "blacklist_status": live.get("blacklist_status", "Unknown"),
+                "theft_record": live.get("theft_record", False),
+                "warranty_status": live.get("warranty_status", live.get("warranty", "Unknown")),
+                "purchase_date": live.get("purchase_date", "Unknown"),
+                "carrier_lock": live.get("carrier_lock", live.get("carrier", "Unknown")),
+                "country_sold": live.get("country_sold", live.get("country", "Unknown")),
+                "risk_score": live.get("risk_score", 0),
+                "db_source": live.get("db_source", "IMEI Service"),
+                "risk_factors": live.get("risk_factors", []),
+            }
         else:
+            tac = clean_imei[:8]
+            if tac in TAC_DB:
+                brand, model, specs = TAC_DB[tac]
+                is_known_tac = True
+            else:
+                seed = self._get_seed(clean_imei)
+                rng = random.Random(seed)
+                brands = [
+                    ("Apple", "iPhone 15 Pro Max", "256GB, Natural Titanium"),
+                    ("Samsung", "Galaxy S24 Ultra", "512GB, Titanium Black"),
+                    ("Google", "Pixel 8 Pro", "128GB, Obsidian"),
+                    ("Xiaomi", "13 Ultra", "512GB, Black"),
+                    ("OnePlus", "12", "256GB, Emerald Green"),
+                ]
+                brand, model, specs = rng.choice(brands)
+                is_known_tac = False
             seed = self._get_seed(clean_imei)
             rng = random.Random(seed)
-            brands = [
-                ("Apple", "iPhone 15 Pro Max", "256GB, Natural Titanium"),
-                ("Samsung", "Galaxy S24 Ultra", "512GB, Titanium Black"),
-                ("Google", "Pixel 8 Pro", "128GB, Obsidian"),
-                ("Xiaomi", "13 Ultra", "512GB, Black"),
-                ("OnePlus", "12", "256GB, Emerald Green"),
+            countries = [
+                "United States",
+                "United Kingdom",
+                "Nigeria",
+                "Germany",
+                "Canada",
+                "UAE",
             ]
-            brand, model, specs = rng.choice(brands)
-            is_known_tac = False
-        seed = self._get_seed(clean_imei)
-        rng = random.Random(seed)
-        countries = [
-            "United States",
-            "United Kingdom",
-            "Nigeria",
-            "Germany",
-            "Canada",
-            "UAE",
-        ]
-        country = rng.choice(countries)
-        carriers = [
-            "Locked (AT&T)",
-            "Locked (Verizon)",
-            "Unlocked",
-            "Locked (T-Mobile)",
-            "Locked (Vodafone)",
-        ]
-        carrier = rng.choice(carriers)
-        last_digit = int(clean_imei[-1])
-        is_stolen = last_digit % 9 == 0
-        db_source = (
-            "GSMA Database (Online)"
-            if rng.random() > 0.5
-            else "Police Record (Offline Cache)"
-        )
-        risk_factors = []
-        if is_stolen:
-            risk_factors.append("Flagged as Stolen in GSMA Registry")
-            risk_factors.append("Multiple Activation Attempts Failed")
-            risk_factors.append("Reported Lost by Original Owner")
-        else:
-            risk_factors.append("No Theft Reports Found")
-            risk_factors.append("Valid Manufacturer Serial")
-            if rng.random() > 0.7:
-                risk_factors.append("Device Registered to Corporate Enterprise")
-        self.imei_result = {
-            "imei": clean_imei,
-            "valid": True,
-            "brand": brand,
-            "model": model,
-            "specs": specs,
-            "blacklist_status": "Reported Stolen" if is_stolen else "Clean",
-            "theft_record": is_stolen,
-            "warranty_status": f"Active (Exp. 2025-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d})"
-            if not is_stolen
-            else "Voided",
-            "purchase_date": f"2023-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}",
-            "carrier_lock": carrier,
-            "country_sold": country,
-            "risk_score": rng.randint(80, 99) if is_stolen else rng.randint(0, 15),
-            "db_source": db_source,
-            "risk_factors": risk_factors,
-        }
+            country = rng.choice(countries)
+            carriers = [
+                "Locked (AT&T)",
+                "Locked (Verizon)",
+                "Unlocked",
+                "Locked (T-Mobile)",
+                "Locked (Vodafone)",
+            ]
+            carrier = rng.choice(carriers)
+            last_digit = int(clean_imei[-1])
+            is_stolen = last_digit % 9 == 0
+            db_source = (
+                "GSMA Database (Online)"
+                if rng.random() > 0.5
+                else "Police Record (Offline Cache)"
+            )
+            risk_factors = []
+            if is_stolen:
+                risk_factors.append("Flagged as Stolen in GSMA Registry")
+                risk_factors.append("Multiple Activation Attempts Failed")
+                risk_factors.append("Reported Lost by Original Owner")
+            else:
+                risk_factors.append("No Theft Reports Found")
+                risk_factors.append("Valid Manufacturer Serial")
+                if rng.random() > 0.7:
+                    risk_factors.append("Device Registered to Corporate Enterprise")
+            self.imei_result = {
+                "imei": clean_imei,
+                "valid": True,
+                "brand": brand,
+                "model": model,
+                "specs": specs,
+                "blacklist_status": "Reported Stolen" if is_stolen else "Clean",
+                "theft_record": is_stolen,
+                "warranty_status": f"Active (Exp. 2025-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d})"
+                if not is_stolen
+                else "Voided",
+                "purchase_date": f"2023-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}",
+                "carrier_lock": carrier,
+                "country_sold": country,
+                "risk_score": rng.randint(80, 99) if is_stolen else rng.randint(0, 15),
+                "db_source": db_source,
+                "risk_factors": risk_factors,
+            }
         self._add_to_graph(
             {
                 "id": clean_imei,
@@ -1132,17 +1152,23 @@ class InvestigationState(rx.State):
                 edge_label="flagged_in",
             )
         try:
+            auth_state = await self.get_state(AuthState)
             create_investigation(
                 kind="imei",
                 query=hash_if_sensitive("imei", self.imei_query),
                 result_json=json.dumps(self.imei_result),
-                user_id=AuthState.current_user_id,
+                user_id=auth_state.current_user_id,
+                case_id=self.case_id,
             )
             await self.get_state(NotificationState).add_notification(
                 title="IMEI Investigation Complete",
                 message=f"Analysis of {self.imei_query} finished successfully",
                 notification_type="success",
             )
+        except Exception:
+            pass
+        try:
+            self.get_state(DashboardState).refresh_dashboard()
         except Exception:
             pass
         self.is_loading_imei = False

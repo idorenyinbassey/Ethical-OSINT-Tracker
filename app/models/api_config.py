@@ -14,3 +14,5 @@ class APIConfig(SQLModel, table=True):
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
     updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
     notes: str = Field(default="")
+    # Optional JSON-serialized credentials for providers that need multiple keys
+    credentials: str = Field(default="")

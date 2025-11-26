@@ -177,6 +177,29 @@ class DashboardState(rx.State):
             self.activities = []
 
     @rx.event
+    def add_in_progress_activity(self, case_id: int, title: str):
+        """Add a lightweight in-progress activity for a newly created case.
+
+        This updates `active_investigations` immediately and inserts an "In Progress"
+        activity at the top of the feed. When the investigation finishes, callers
+        should call `refresh_dashboard()` to reload authoritative data from DB.
+        """
+        try:
+            self.active_investigations = (self.active_investigations or 0) + 1
+            now_str = "Just now"
+            item = {
+                "id": case_id,
+                "title": f"Case: {title}",
+                "type": "case",
+                "timestamp": now_str,
+                "status": "In Progress",
+            }
+            # Insert at front of feed
+            self.activities.insert(0, item)
+        except Exception:
+            pass
+
+    @rx.event
     def refresh_dashboard(self):
         """Refresh all dashboard data"""
         self.load_metrics()
