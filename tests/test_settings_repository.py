@@ -1,10 +1,9 @@
 import os
 import pytest
+import base64
 
-from cryptography.fernet import Fernet
-
-# Ensure the encryption key is present for repository operations
-os.environ.setdefault("API_KEYS_FERNET_KEY", Fernet.generate_key().decode())
+# Ensure a key-like value is present for repository operations (no cryptography dep)
+os.environ.setdefault("API_KEYS_FERNET_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode())
 
 from app.repositories.api_config_repository import (
     create_or_update_config,

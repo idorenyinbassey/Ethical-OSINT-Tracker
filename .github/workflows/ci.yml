@@ -26,7 +26,5 @@ jobs:
         run: |
           alembic upgrade head
       - name: Run tests
-        env:
-          API_KEYS_FERNET_KEY: ${{ secrets.API_KEYS_FERNET_KEY }}
         run: |
           PYTHONPATH=. pytest -q

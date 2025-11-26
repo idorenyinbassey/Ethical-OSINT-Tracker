@@ -2,15 +2,26 @@ from typing import List, Dict
 from sqlmodel import select, func
 from datetime import datetime, timedelta
 from app.models.investigation import Investigation
+# Ensure user model is imported so SQLAlchemy knows about the referenced `user` table
+from app.models.user import User  # noqa: F401
 from app.repositories.base import session_scope
 
 
-def create_investigation(kind: str, query: str, result_json: str, user_id: int | None) -> Investigation:
+def create_investigation(kind: str, query: str, result_json: str, user_id: int | None, case_id: int | None = None) -> Investigation:
     with session_scope() as session:
-        inv = Investigation(kind=kind, query=query, result_json=result_json, user_id=user_id)
+        inv = Investigation(kind=kind, query=query, result_json=result_json, user_id=user_id, case_id=case_id)
         session.add(inv)
         session.flush()
-        return inv
+        # Return a plain detached instance to avoid DetachedInstanceError
+        return Investigation(
+            id=inv.id,
+            kind=inv.kind,
+            query=inv.query,
+            created_at=inv.created_at,
+            result_json=inv.result_json,
+            user_id=inv.user_id,
+            case_id=inv.case_id,
+        )
 
 
 def list_recent(limit: int = 25) -> List[Investigation]:

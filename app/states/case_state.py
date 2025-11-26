@@ -24,6 +24,11 @@ class CaseState(rx.State):
     is_exporting: bool = False
     is_generating: bool = False
 
+    @rx.var
+    def case_options(self) -> list[str]:
+        """Generate list of case options for select dropdown."""
+        return [f"{c['id']}: {c['title']}" for c in self.cases]
+
     def set_form_title(self, value: str):
         self.form_title = value
 
@@ -126,10 +131,11 @@ class CaseState(rx.State):
         self.form_error = ""
         yield
         try:
+            auth_state = await self.get_state(AuthState)
             create_case(
                 title=self.form_title,
                 description=self.form_description,
-                owner_user_id=AuthState.current_user_id,
+                owner_user_id=auth_state.current_user_id,
                 priority=self.form_priority,
             )
             self.form_title = ""
@@ -139,8 +145,11 @@ class CaseState(rx.State):
             yield rx.toast.success("Case created")
             yield
         except Exception:
-            self.form_error = "Failed to create case"
-            yield rx.toast.error("Error creating case")
+            import traceback, sys
+            etype, e, tb = sys.exc_info()
+            msg = str(e) if e else "Unknown error"
+            self.form_error = f"Failed to create case: {msg}"
+            yield rx.toast.error(f"Error creating case: {msg}")
         finally:
             self.is_loading = False
 

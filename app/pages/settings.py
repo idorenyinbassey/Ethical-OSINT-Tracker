@@ -104,6 +104,144 @@ def configured_api_card(config) -> rx.Component:
     )
 
 
+def google_vision_setup_instructions() -> rx.Component:
+    """Setup instructions specifically for Google Cloud Vision AI"""
+    return rx.el.div(
+        rx.el.div(
+            rx.icon("info", class_name="w-5 h-5 text-blue-500 flex-shrink-0"),
+            rx.el.h4(
+                "Google Cloud Vision AI Setup",
+                class_name="text-sm font-semibold text-gray-900",
+            ),
+            class_name="flex items-center gap-2 mb-3",
+        ),
+        rx.el.ol(
+            rx.el.li(
+                rx.el.span("Go to ", class_name="text-xs text-gray-600"),
+                rx.el.a(
+                    "Google Cloud Console",
+                    href="https://console.cloud.google.com",
+                    target="_blank",
+                    class_name="text-xs text-blue-500 hover:text-blue-600 underline",
+                ),
+                class_name="mb-2",
+            ),
+            rx.el.li(
+                "Create a new project or select an existing one",
+                class_name="text-xs text-gray-600 mb-2",
+            ),
+            rx.el.li(
+                rx.el.span("Navigate to ", class_name="text-xs text-gray-600"),
+                rx.el.strong("APIs & Services", class_name="text-xs text-gray-800"),
+                rx.el.span(" → ", class_name="text-xs text-gray-600"),
+                rx.el.strong("Library", class_name="text-xs text-gray-800"),
+                class_name="mb-2",
+            ),
+            rx.el.li(
+                rx.el.span("Search for ", class_name="text-xs text-gray-600"),
+                rx.el.strong("\"Cloud Vision API\"", class_name="text-xs text-gray-800"),
+                rx.el.span(" and enable it", class_name="text-xs text-gray-600"),
+                class_name="mb-2",
+            ),
+            rx.el.li(
+                rx.el.span("Go to ", class_name="text-xs text-gray-600"),
+                rx.el.strong("APIs & Services", class_name="text-xs text-gray-800"),
+                rx.el.span(" → ", class_name="text-xs text-gray-600"),
+                rx.el.strong("Credentials", class_name="text-xs text-gray-800"),
+                class_name="mb-2",
+            ),
+            rx.el.li(
+                rx.el.span("Click ", class_name="text-xs text-gray-600"),
+                rx.el.strong("\"Create Credentials\"", class_name="text-xs text-gray-800"),
+                rx.el.span(" → ", class_name="text-xs text-gray-600"),
+                rx.el.strong("API Key", class_name="text-xs text-gray-800"),
+                class_name="mb-2",
+            ),
+            rx.el.li(
+                "Copy the generated API key and paste it below",
+                class_name="text-xs text-gray-600 mb-2",
+            ),
+            rx.el.li(
+                rx.el.span("(Optional) Restrict the key to ", class_name="text-xs text-gray-600"),
+                rx.el.strong("Cloud Vision API", class_name="text-xs text-gray-800"),
+                rx.el.span(" only for security", class_name="text-xs text-gray-600"),
+                class_name="mb-0",
+            ),
+            class_name="list-decimal list-inside space-y-1",
+        ),
+        # API Key Format Requirements
+        rx.el.div(
+            rx.icon("circle-alert", class_name="w-4 h-4 text-orange-600 flex-shrink-0"),
+            rx.el.div(
+                rx.el.p(
+                    "API Key Format Requirements:",
+                    class_name="text-xs font-semibold text-orange-800 mb-1",
+                ),
+                rx.el.ul(
+                    rx.el.li(
+                        "Must start with 'AIza'",
+                        class_name="text-xs text-orange-700",
+                    ),
+                    rx.el.li(
+                        "Exactly 39 characters long",
+                        class_name="text-xs text-orange-700",
+                    ),
+                    rx.el.li(
+                        rx.el.span("Example: ", class_name="text-xs text-orange-600"),
+                        rx.el.code(
+                            "AIzaSyDaGmWKa4JsXZ-HjGbvB0123456789ABCD",
+                            class_name="text-xs bg-orange-100 px-1 py-0.5 rounded font-mono",
+                        ),
+                        class_name="text-xs text-orange-700",
+                    ),
+                    class_name="list-disc list-inside ml-2 space-y-0.5",
+                ),
+                class_name="flex-1",
+            ),
+            class_name="flex items-start gap-2 mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200",
+        ),
+        # Common Issues Section
+        rx.el.div(
+            rx.icon("triangle-alert", class_name="w-4 h-4 text-red-600 flex-shrink-0"),
+            rx.el.div(
+                rx.el.p(
+                    "Common Issues & Solutions:",
+                    class_name="text-xs font-semibold text-red-800 mb-1",
+                ),
+                rx.el.ul(
+                    rx.el.li(
+                        rx.el.strong("400 Bad Request: ", class_name="text-xs"),
+                        rx.el.span("Invalid API key format", class_name="text-xs text-red-700"),
+                        class_name="mb-1",
+                    ),
+                    rx.el.li(
+                        rx.el.strong("401 Unauthorized: ", class_name="text-xs"),
+                        rx.el.span("API key is invalid or revoked", class_name="text-xs text-red-700"),
+                        class_name="mb-1",
+                    ),
+                    rx.el.li(
+                        rx.el.strong("403 Forbidden: ", class_name="text-xs"),
+                        rx.el.span("API not enabled or quota exceeded", class_name="text-xs text-red-700"),
+                        class_name="mb-0",
+                    ),
+                    class_name="list-disc list-inside ml-2 space-y-0.5",
+                ),
+                class_name="flex-1",
+            ),
+            class_name="flex items-start gap-2 mt-2 p-3 bg-red-50 rounded-lg border border-red-200",
+        ),
+        rx.el.div(
+            rx.icon("circle-check", class_name="w-4 h-4 text-green-500 flex-shrink-0"),
+            rx.el.p(
+                "Free tier: 1,000 requests/month",
+                class_name="text-xs text-green-700 font-medium",
+            ),
+            class_name="flex items-center gap-2 mt-2 p-2 bg-green-50 rounded-lg",
+        ),
+        class_name="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100",
+    )
+
+
 def api_config_form() -> rx.Component:
     """Form for adding/editing API configuration"""
     service_info = API_SERVICES.get(SettingsState.selected_service, {})
@@ -123,6 +261,11 @@ def api_config_form() -> rx.Component:
                         class_name="p-2 text-gray-400 hover:text-gray-600 rounded-lg",
                     ),
                     class_name="flex items-center justify-between mb-6",
+                ),
+                # Show Google Vision setup instructions if configuring ImageRecognition
+                rx.cond(
+                    SettingsState.selected_service == "ImageRecognition",
+                    google_vision_setup_instructions(),
                 ),
                 rx.el.div(
                     rx.el.label(
@@ -147,6 +290,22 @@ def api_config_form() -> rx.Component:
                         on_change=SettingsState.set_form_api_key,
                         value=SettingsState.form_api_key,
                         class_name="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-orange-100 focus:border-orange-500 outline-none",
+                    ),
+                    # Real-time validation message
+                    rx.cond(
+                        SettingsState.api_key_validation_message != "",
+                        rx.el.div(
+                            SettingsState.api_key_validation_message,
+                            class_name=rx.cond(
+                                SettingsState.api_key_validation_message.contains("✅"),
+                                "text-sm text-green-600 mt-2 font-medium",
+                                rx.cond(
+                                    SettingsState.api_key_validation_message.contains("⚠️"),
+                                    "text-sm text-orange-600 mt-2",
+                                    "text-sm text-gray-500 mt-2"
+                                )
+                            ),
+                        ),
                     ),
                     class_name="mb-4",
                 ),
@@ -202,6 +361,54 @@ def api_config_form() -> rx.Component:
                         class_name="flex items-center text-sm text-gray-700 cursor-pointer",
                     ),
                     class_name="mb-6",
+                ),
+                # Test API Connection Button (only for ImageRecognition)
+                rx.cond(
+                    SettingsState.selected_service == "ImageRecognition",
+                    rx.el.div(
+                        rx.el.div(
+                            rx.icon("zap", size=16, class_name="text-blue-600"),
+                            rx.el.span(
+                                "Test Your API Key",
+                                class_name="text-sm font-semibold text-gray-700",
+                            ),
+                            class_name="flex items-center gap-2 mb-2",
+                        ),
+                        rx.el.button(
+                            rx.cond(
+                                SettingsState.is_testing_api,
+                                rx.el.div(
+                                    rx.spinner(size="3"),
+                                    rx.el.span("Testing...", class_name="ml-2"),
+                                    class_name="flex items-center",
+                                ),
+                                rx.el.div(
+                                    rx.icon("circle-play", size=16),
+                                    rx.el.span("Test API Connection", class_name="ml-2"),
+                                    class_name="flex items-center",
+                                ),
+                            ),
+                            on_click=SettingsState.test_api_connection,
+                            disabled=SettingsState.is_testing_api,
+                            class_name="w-full px-4 py-2.5 bg-blue-500 text-white text-sm font-medium rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                        ),
+                        rx.cond(
+                            SettingsState.api_test_result != "",
+                            rx.el.div(
+                                SettingsState.api_test_result,
+                                class_name=rx.cond(
+                                    SettingsState.api_test_result.contains("✅"),
+                                    "mt-3 p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700 font-medium",
+                                    rx.cond(
+                                        SettingsState.api_test_result.contains("⚠️"),
+                                        "mt-3 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-700",
+                                        "mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700"
+                                    )
+                                ),
+                            ),
+                        ),
+                        class_name="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100",
+                    ),
                 ),
                 rx.cond(
                     SettingsState.save_error,

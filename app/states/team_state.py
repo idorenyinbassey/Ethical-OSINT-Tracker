@@ -155,7 +155,7 @@ class TeamState(rx.State):
             create_team(
                 name=self.form_team_name,
                 description=self.form_team_description,
-                owner_user_id=AuthState.current_user_id
+                owner_user_id=self.get_state(AuthState).current_user_id
             )
             self.show_create_team_form = False
             self.load_teams()

@@ -1,6 +1,26 @@
 
+# Ethical OSINT Tracker - Python Dependencies
+# Optimized for ARM64/ARMv7 (Termux compatibility)
+
+# Core framework
 reflex==0.8.20
+
+# Database
 PyMySQL==1.1.1
+
+# Authentication & Security
 argon2-cffi==23.1.0
-cryptography>=40.0
+
+# Testing
 pytest>=7.0
+
+# HTTP Client (ARM-compatible)
+httpx>=0.23
+
+# Image Processing (Termux: may require system package 'pillow' or 'libjpeg-turbo')
+# On Termux, install first: pkg install libjpeg-turbo zlib freetype
+Pillow>=10.0.0
+
+# Note: For Termux installation, use 'uv' package manager for faster ARM builds:
+#   pip install uv
+#   uv pip install -r requirements.txt
