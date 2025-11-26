@@ -3,6 +3,7 @@ from app.components.layout import sidebar, header
 from app.components.investigation_tools import tools_tabs
 from app.states.auth_state import AuthState
 from app.states.investigation_state import InvestigationState
+from app.states.case_state import CaseState
 
 
 def export_actions() -> rx.Component:
@@ -60,6 +61,47 @@ def export_actions() -> rx.Component:
     )
 
 
+def case_selector() -> rx.Component:
+    """Case selection component for investigations"""
+    return rx.el.div(
+        rx.el.div(
+            rx.icon("folder", class_name="w-5 h-5 text-orange-500"),
+            rx.el.h3("Select Investigation Case", class_name="text-sm font-semibold text-gray-800"),
+            class_name="flex items-center gap-2 mb-3"
+        ),
+        rx.el.div(
+            rx.select(
+                CaseState.case_options,
+                value=InvestigationState.selected_case_id,
+                on_change=InvestigationState.set_selected_case_id,
+                placeholder="Choose a case...",
+                class_name="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            ),
+            rx.el.p(
+                rx.cond(
+                    InvestigationState.selected_case_id,
+                    "Case selected. You can now run investigations.",
+                    "⚠️ You must select a case before running any investigations."
+                ),
+                class_name=rx.cond(
+                    InvestigationState.selected_case_id,
+                    "text-xs text-green-600 mt-2",
+                    "text-xs text-orange-600 mt-2 font-medium"
+                )
+            ),
+            rx.el.a(
+                rx.icon("plus", class_name="w-4 h-4"),
+                "Create New Case",
+                href="/cases",
+                class_name="inline-flex items-center gap-1 mt-2 text-xs text-orange-600 hover:text-orange-700 font-medium"
+            ),
+            class_name="space-y-1"
+        ),
+        class_name="p-4 bg-white border border-orange-200 rounded-xl mb-6",
+        on_mount=CaseState.load_cases
+    )
+
+
 def investigation_page() -> rx.Component:
     gated_content = rx.cond(
         AuthState.is_authenticated,
@@ -72,6 +114,7 @@ def investigation_page() -> rx.Component:
                 "Access powerful OSINT utilities for thorough and ethical data gathering.",
                 class_name="text-gray-500 mb-4",
             ),
+            case_selector(),
             export_actions(),
             tools_tabs(),
             class_name="max-w-5xl mx-auto",
