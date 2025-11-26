@@ -1,0 +1,32 @@
+# System packages required for Ubuntu/Debian
+# For Termux (Android), use equivalent commands listed below
+
+# Ubuntu/Debian (apt-get):
+python3
+python3-pip
+python3-dev
+build-essential
+libffi-dev
+libjpeg-dev
+zlib1g-dev
+libfreetype6-dev
+git
+
+# Termux equivalents (pkg install):
+# python
+# python-pip
+# rust         # For uv package manager
+# binutils
+# clang
+# libffi
+# libjpeg-turbo
+# zlib
+# freetype
+# git
+# which
+
+# Notes:
+# - Termux uses 'pkg' instead of 'apt-get'
+# - Some package names differ (libjpeg-dev → libjpeg-turbo)
+# - Rust is needed for 'uv' package manager on ARM
+# - Install all at once: pkg install python python-pip rust binutils clang libffi libjpeg-turbo zlib freetype git which

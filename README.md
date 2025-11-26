@@ -329,4 +329,12 @@ The Settings page accepts a set of known service keys which pre-fill sensible de
 - `IMEIService` — Example: imei.info (IMEI/device lookup)
 - `SocialSearch` — Example: GitHub/Reddit public APIs or aggregators
 
-You may save custom service names; the UI will warn if a name isn't one of the supported keys above but will still allow saving. For production, encrypt API keys at rest (see `app/utils/crypto.py`) and never commit keys to source control.
+You may save custom service names; the UI will warn if a name isn't one of the supported keys above but will still allow saving.
+
+API key storage and CI
+---------------------
+
+- Encryption removed: to simplify local development, this repository no longer encrypts API keys at rest. `app/utils/crypto.py` now stores API keys as plaintext. Do NOT commit `.env` or any API keys to source control.
+- For production, wire a secure key management solution (HashiCorp Vault, AWS KMS, Google KMS, Azure Key Vault) and implement a backend for `app.utils.key_manager.key_manager` to fetch keys at runtime.
+- CI / GitHub Actions no longer requires `API_KEYS_FERNET_KEY`. If you reintroduce encryption, add the secret in repository settings.
+

@@ -32,7 +32,18 @@ def create_case(title: str, description: str, owner_user_id: int | None, priorit
         session.add(case)
         session.flush()
         session.refresh(case)
-        return case
+        # Return a plain detached instance with attributes populated to avoid
+        # DetachedInstanceError when accessed outside the session context.
+        return Case(
+            id=case.id,
+            title=case.title,
+            description=case.description,
+            status=case.status,
+            priority=case.priority,
+            owner_user_id=case.owner_user_id,
+            created_at=case.created_at,
+            updated_at=case.updated_at,
+        )
 
 
 def update_case(case_id: int, **fields) -> Optional[Case]:

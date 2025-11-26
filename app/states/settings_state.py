@@ -76,11 +76,11 @@ SUPPORTED_API_SERVICE_KEYS = [
 API_SERVICES.update(
     {
         "ImageRecognition": {
-            "name": "DeepAI Image Recognition (example)",
-            "default_url": "https://api.deepai.org/api",
-            "description": "Image analysis and reverse image search (example provider)",
-            "docs_url": "https://deepai.org",
-            "free_key_notes": "DeepAI offers a free-tier API key for testing; replace with your provider key.",
+            "name": "Google Cloud Vision AI",
+            "default_url": "https://vision.googleapis.com/v1",
+            "description": "Image analysis, face detection, OCR, and label detection via Google Cloud",
+            "docs_url": "https://cloud.google.com/vision/docs",
+            "free_key_notes": "Get your API key from Google Cloud Console. Free tier: 1000 requests/month.",
         },
         "IMEIService": {
             "name": "IMEI.info (example)",
@@ -90,11 +90,12 @@ API_SERVICES.update(
             "free_key_notes": "Some IMEI services provide limited free lookups or demo keys; check provider docs.",
         },
         "SocialSearch": {
-            "name": "SocialSearch (GitHub/Reddit example)",
+            "name": "Multi-Platform Social OSINT",
             "default_url": "https://api.github.com",
-            "description": "Social profile and public post lookups (example providers)",
-            "docs_url": "https://docs.github.com",
-            "free_key_notes": "Use platform public APIs (GitHub, Reddit) or aggregator services; follow each ToS.",
+            "description": "Multi-platform social media OSINT (GitHub, Twitter, Facebook, Telegram, TikTok). Configure per-platform API keys in Notes field using JSON format.",
+            "docs_url": "https://docs.github.com/en/rest",
+            "free_key_notes": "Store per-platform keys in Notes field as JSON: {\"github\": \"ghp_xxx\", \"twitter\": \"bearer_xxx\", \"facebook\": \"xxx\", \"telegram\": \"bot_xxx\", \"tiktok\": \"xxx\"}. Falls back to HTTP checks when keys not provided. GitHub: 5000 req/hr (authenticated). Twitter: varies by endpoint. Follow each platform's ToS.",
+            "required_fields": ["notes_json"],
         },
     }
 )
@@ -112,18 +113,27 @@ class SettingsState(rx.State):
     form_is_enabled: bool = True
     form_rate_limit: int = 100
     form_notes: str = ""
+    # Provider-specific credential fields (e.g., client_id, client_secret)
+    form_credentials: dict = {}
     
     # UI state
     is_loading: bool = False
     save_success: bool = False
     save_error: str = ""
     show_add_form: bool = False
+    is_testing_api: bool = False
+    api_test_result: str = ""
 
     def set_form_api_key(self, value: str):
         self.form_api_key = value
 
     def set_form_base_url(self, value: str):
         self.form_base_url = value
+
+    def set_form_credential(self, key: str, value: str):
+        creds = dict(self.form_credentials or {})
+        creds[key] = value
+        self.form_credentials = creds
 
     def set_form_rate_limit(self, value: int):
         self.form_rate_limit = value
@@ -133,6 +143,28 @@ class SettingsState(rx.State):
 
     def set_form_is_enabled(self, value: bool):
         self.form_is_enabled = value
+    
+    @rx.var
+    def api_key_validation_message(self) -> str:
+        """Real-time validation message for API key input."""
+        if not self.form_api_key:
+            return ""
+        
+        # Only validate Google Cloud Vision API keys
+        if self.selected_service == "ImageRecognition":
+            from app.services.image_client import validate_google_vision_key
+            is_valid, error_msg = validate_google_vision_key(self.form_api_key)
+            
+            if is_valid:
+                return "✅ Valid Google Cloud API key format"
+            else:
+                return f"⚠️ {error_msg}"
+        
+        # For other services, just show key length
+        if len(self.form_api_key) > 0:
+            return f"ℹ️ Key length: {len(self.form_api_key)} characters"
+        
+        return ""
     
     @rx.event
     def load_configs(self):
@@ -165,6 +197,10 @@ class SettingsState(rx.State):
         self.form_is_enabled = True
         self.form_rate_limit = 100
         self.form_api_key = ""
+        # Prepare credentials template if provider defines required fields
+        required = service_info.get("required_fields", [])
+        creds = {k: "" for k in required}
+        self.form_credentials = creds
         self.show_add_form = True
         self.save_success = False
         self.save_error = ""
@@ -181,6 +217,8 @@ class SettingsState(rx.State):
             self.form_is_enabled = config["is_enabled"]
             self.form_rate_limit = config["rate_limit"]
             self.form_notes = config["notes"]
+            # load parsed credentials if present
+            self.form_credentials = getattr(config, "_credentials", {})
             self.show_add_form = True
             self.save_success = False
             self.save_error = ""
@@ -206,6 +244,7 @@ class SettingsState(rx.State):
                 is_enabled=self.form_is_enabled,
                 rate_limit=self.form_rate_limit,
                 notes=self.form_notes,
+                credentials=self.form_credentials,
             )
             self.save_success = True
             self.show_add_form = False
@@ -236,11 +275,99 @@ class SettingsState(rx.State):
             yield rx.toast.error("Failed to delete configuration")
     
     @rx.event
+    async def test_api_connection(self):
+        """Test Google Vision API connection with current key."""
+        self.is_testing_api = True
+        self.api_test_result = ""
+        yield
+        
+        # Only test ImageRecognition service
+        if self.selected_service != "ImageRecognition":
+            self.api_test_result = "⚠️ API testing only available for Google Cloud Vision AI"
+            self.is_testing_api = False
+            return
+        
+        # Get the API key from form or existing config
+        api_key = self.form_api_key.strip() if self.form_api_key else None
+        
+        if not api_key:
+            # Try to get from existing config
+            from app.repositories.api_config_repository import get_by_service
+            cfg = get_by_service("ImageRecognition")
+            if cfg and cfg.api_key:
+                api_key = cfg.api_key
+            else:
+                self.api_test_result = "❌ No API key provided"
+                self.is_testing_api = False
+                return
+        
+        # Validate format first
+        from app.services.image_client import validate_google_vision_key
+        is_valid, error_msg = validate_google_vision_key(api_key)
+        if not is_valid:
+            self.api_test_result = f"❌ Invalid Key Format: {error_msg}"
+            self.is_testing_api = False
+            return
+        
+        # Test with minimal request
+        try:
+            import httpx
+            import base64
+            
+            async with httpx.AsyncClient(timeout=10) as client:
+                # Use a tiny 1x1 pixel test image
+                # 1x1 red pixel PNG
+                test_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+                
+                request_body = {
+                    "requests": [{
+                        "image": {"content": test_image},
+                        "features": [{"type": "LABEL_DETECTION", "maxResults": 1}]
+                    }]
+                }
+                
+                endpoint = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+                headers = {"Content-Type": "application/json"}
+                
+                response = await client.post(endpoint, headers=headers, json=request_body)
+                response.raise_for_status()
+                
+                self.api_test_result = "✅ Connection Successful! API key is valid and working."
+                yield rx.toast.success("API connection test passed!")
+                
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 401:
+                self.api_test_result = "❌ Invalid API Key (401): Key is not recognized by Google Cloud"
+            elif status == 403:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get("error", {}).get("message", "")
+                    if "billing" in error_message.lower():
+                        self.api_test_result = "⚠️ Billing Not Enabled (403): API key is valid but billing must be enabled in Google Cloud Console"
+                    else:
+                        self.api_test_result = f"❌ Access Denied (403): {error_message[:100]}"
+                except:
+                    self.api_test_result = "❌ Access Denied (403): API not enabled or quota exceeded"
+            elif status == 429:
+                self.api_test_result = "⚠️ Rate Limit Exceeded (429): Too many requests. Try again later."
+            else:
+                self.api_test_result = f"❌ HTTP Error {status}"
+                
+        except httpx.RequestError as e:
+            self.api_test_result = f"❌ Network Error: {str(e)[:100]}"
+        except Exception as e:
+            self.api_test_result = f"❌ Error: {str(e)[:100]}"
+        
+        self.is_testing_api = False
+    
+    @rx.event
     def cancel_form(self):
         """Cancel form editing"""
         self.show_add_form = False
         self.save_success = False
         self.save_error = ""
+        self.api_test_result = ""
         self.form_service_name = ""
         self.form_api_key = ""
         self.form_base_url = ""

@@ -196,6 +196,7 @@ def ip_tool() -> rx.Component:
             rx.cond(
                 InvestigationState.ip_result,
                 rx.el.div(
+                    # Threat Score and Basic Info
                     rx.el.div(
                         rx.el.div(
                             rx.el.span(
@@ -239,7 +240,122 @@ def ip_tool() -> rx.Component:
                             ),
                             class_name="flex-1 bg-gray-50 rounded-xl p-5 border border-gray-100",
                         ),
-                        class_name="flex flex-col md:flex-row gap-6",
+                        class_name="flex flex-col md:flex-row gap-6 mb-6",
+                    ),
+                    # Shodan Section - Open Ports & Services
+                    rx.cond(
+                        InvestigationState.ip_result["open_ports"].length() > 0,
+                        rx.el.div(
+                            rx.el.div(
+                                rx.icon("server", class_name="w-5 h-5 text-blue-500"),
+                                rx.el.h3(
+                                    "Shodan Intelligence",
+                                    class_name="text-lg font-bold text-gray-900",
+                                ),
+                                class_name="flex items-center gap-2 mb-4",
+                            ),
+                            rx.el.div(
+                                rx.el.span(
+                                    "Open Ports: ",
+                                    class_name="font-semibold text-gray-700",
+                                ),
+                                rx.el.span(
+                                    ", ".join(
+                                        [
+                                            str(port)
+                                            for port in InvestigationState.ip_result[
+                                                "open_ports"
+                                            ]
+                                        ]
+                                    ),
+                                    class_name="text-gray-600",
+                                ),
+                                class_name="mb-3",
+                            ),
+                            rx.el.div(
+                                rx.foreach(
+                                    InvestigationState.ip_result["detected_services"],
+                                    lambda service: rx.el.div(
+                                        rx.el.div(
+                                            rx.el.span(
+                                                service["port"],
+                                                class_name="font-mono font-bold text-blue-600 text-sm",
+                                            ),
+                                            class_name="w-16",
+                                        ),
+                                        rx.el.div(
+                                            rx.el.span(
+                                                service["service"],
+                                                class_name="font-semibold text-gray-900 text-sm",
+                                            ),
+                                            rx.el.span(
+                                                service.get("banner", ""),
+                                                class_name="text-xs text-gray-500 block mt-1",
+                                            ),
+                                            class_name="flex-1",
+                                        ),
+                                        class_name="flex gap-3 py-2 border-b border-gray-100 last:border-0",
+                                    ),
+                                ),
+                                class_name="bg-blue-50 rounded-lg p-3 border border-blue-100",
+                            ),
+                            class_name="bg-white rounded-xl p-5 border border-gray-100 mb-6",
+                        ),
+                    ),
+                    # VirusTotal Section - Malware Detections
+                    rx.cond(
+                        InvestigationState.ip_result["malware_detections"].length() > 0,
+                        rx.el.div(
+                            rx.el.div(
+                                rx.icon("shield-alert", class_name="w-5 h-5 text-red-500"),
+                                rx.el.h3(
+                                    "VirusTotal Threat Intelligence",
+                                    class_name="text-lg font-bold text-gray-900",
+                                ),
+                                class_name="flex items-center gap-2 mb-4",
+                            ),
+                            rx.el.div(
+                                rx.el.div(
+                                    rx.el.span(
+                                        "Community Score: ",
+                                        class_name="font-semibold text-gray-700",
+                                    ),
+                                    rx.el.span(
+                                        InvestigationState.ip_result["community_score"],
+                                        class_name=rx.cond(
+                                            InvestigationState.ip_result["community_score"] < 0,
+                                            "font-bold text-red-600",
+                                            "font-bold text-green-600",
+                                        ),
+                                    ),
+                                    class_name="mb-3",
+                                ),
+                                rx.el.h4(
+                                    "Detection Results:",
+                                    class_name="font-semibold text-gray-700 mb-2 text-sm",
+                                ),
+                                rx.foreach(
+                                    InvestigationState.ip_result["malware_detections"],
+                                    lambda detection: rx.el.div(
+                                        rx.el.div(
+                                            rx.icon("alert-triangle", class_name="w-4 h-4 text-red-500"),
+                                            rx.el.span(
+                                                detection["vendor"],
+                                                class_name="font-semibold text-gray-900 text-sm",
+                                            ),
+                                            class_name="flex items-center gap-2",
+                                        ),
+                                        rx.el.span(
+                                            detection["category"],
+                                            class_name="text-xs px-2 py-1 bg-red-100 text-red-700 rounded",
+                                        ),
+                                        class_name="flex justify-between items-center py-2 border-b border-gray-100 last:border-0",
+                                    ),
+                                ),
+                                class_name="bg-red-50 rounded-lg p-3 border border-red-100",
+                            ),
+                            class_name="bg-white rounded-xl p-5 border border-gray-100",
+                        ),
                     ),
                     class_name="animate-in fade-in slide-in-from-bottom-4 duration-500",
                 ),
@@ -672,9 +788,9 @@ def image_tool() -> rx.Component:
                                             class_name="text-xs text-gray-400 block",
                                         ),
                                         rx.el.span(
-                                            InvestigationState.image_result["exif"][
-                                                "Device"
-                                            ],
+                                            InvestigationState.image_result["exif"].get(
+                                                "Device", "Unknown Device"
+                                            ),
                                             class_name="text-sm font-medium text-gray-800",
                                         ),
                                         class_name="p-3 bg-gray-50 rounded-lg",
@@ -685,9 +801,9 @@ def image_tool() -> rx.Component:
                                             class_name="text-xs text-gray-400 block",
                                         ),
                                         rx.el.span(
-                                            InvestigationState.image_result["exif"][
-                                                "Date Taken"
-                                            ],
+                                            InvestigationState.image_result["exif"].get(
+                                                "Date Taken", "Unknown Date"
+                                            ),
                                             class_name="text-sm font-medium text-gray-800",
                                         ),
                                         class_name="p-3 bg-gray-50 rounded-lg",
@@ -698,14 +814,82 @@ def image_tool() -> rx.Component:
                                             class_name="text-xs text-gray-400 block",
                                         ),
                                         rx.el.span(
-                                            InvestigationState.image_result["exif"][
-                                                "Location"
-                                            ],
+                                            InvestigationState.image_result["exif"].get(
+                                                "Location", "Unknown Location"
+                                            ),
                                             class_name="text-sm font-medium text-gray-800",
                                         ),
                                         class_name="p-3 bg-gray-50 rounded-lg col-span-2",
                                     ),
                                     class_name="grid grid-cols-2 gap-3 mb-6",
+                                ),
+                                # Full Metadata Display Section
+                                rx.el.div(
+                                    rx.el.button(
+                                        rx.el.div(
+                                            rx.icon("database", size=16, class_name="text-blue-500"),
+                                            rx.el.span(
+                                                "Complete Metadata",
+                                                class_name="font-semibold text-gray-700 ml-2",
+                                            ),
+                                            rx.el.span(
+                                                rx.cond(
+                                                    InvestigationState.metadata_items,
+                                                    InvestigationState.metadata_items.length().to(str) + " fields",
+                                                    "0 fields"
+                                                ),
+                                                class_name="text-xs text-gray-500 ml-1",
+                                            ),
+                                            rx.icon(
+                                                "chevron-down",
+                                                size=16,
+                                                class_name="text-gray-400 ml-auto",
+                                            ),
+                                            class_name="flex items-center w-full",
+                                        ),
+                                        on_click=InvestigationState.toggle_metadata_expanded,
+                                        class_name="w-full p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200 mb-3",
+                                    ),
+                                    rx.cond(
+                                        InvestigationState.metadata_expanded,
+                                        rx.el.div(
+                                            rx.el.div(
+                                                rx.el.div(
+                                                    rx.icon("info", size=14, class_name="text-blue-500"),
+                                                    rx.el.span(
+                                                        "All EXIF and image metadata extracted from the file",
+                                                        class_name="text-xs text-gray-600 ml-2",
+                                                    ),
+                                                    class_name="flex items-center mb-3 p-2 bg-blue-50 rounded border border-blue-100",
+                                                ),
+                                                rx.el.div(
+                                                    rx.foreach(
+                                                        InvestigationState.metadata_items,
+                                                        lambda item: rx.el.div(
+                                                            rx.el.div(
+                                                                rx.el.span(
+                                                                    item[0],
+                                                                    class_name="text-xs font-mono font-semibold text-gray-700",
+                                                                ),
+                                                                class_name="w-1/3 pr-3 break-words",
+                                                            ),
+                                                            rx.el.div(
+                                                                rx.el.span(
+                                                                    item[1],
+                                                                    class_name="text-xs font-mono text-gray-900",
+                                                                ),
+                                                                class_name="w-2/3 pl-3 border-l-2 border-gray-200 break-all",
+                                                            ),
+                                                            class_name="flex py-2 px-3 hover:bg-gray-50 rounded transition-colors",
+                                                        ),
+                                                    ),
+                                                    class_name="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-96 overflow-y-auto",
+                                                ),
+                                            ),
+                                            class_name="animate-in fade-in slide-in-from-top-2 duration-300",
+                                        ),
+                                    ),
+                                    class_name="mb-6",
                                 ),
                             ),
                             rx.el.div(
