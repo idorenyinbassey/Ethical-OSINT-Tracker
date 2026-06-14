@@ -70,7 +70,16 @@ def update_case(case_id: int, **fields) -> Optional[Case]:
         session.add(case)
         session.flush()
         session.refresh(case)
-        return case
+        return Case(
+            id=case.id,
+            title=case.title,
+            description=case.description,
+            status=case.status,
+            priority=case.priority,
+            owner_user_id=case.owner_user_id,
+            created_at=case.created_at,
+            updated_at=getattr(case, "updated_at", None),
+        )
 
 
 def delete_case(case_id: int) -> bool:
