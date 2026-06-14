@@ -13,7 +13,7 @@ This guide explains how to run Ethical OSINT Tracker inside [Termux](https://ter
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python git clang libffi openssl libjpeg-turbo zlib tmux
+pkg install -y python git clang libffi openssl libjpeg-turbo zlib freetype libxml2 libxslt tmux
 ```
 
 Optional (MySQL instead of SQLite):
@@ -89,7 +89,8 @@ Uploaded images are saved to `app/uploads/` inside the project directory.
 | Issue | Fix |
 |-------|-----|
 | `argon2-cffi` compile errors | `pkg install clang libffi` then `pip install argon2-cffi --no-binary=:all:` |
-| Pillow build fails | `pkg install libjpeg-turbo zlib freetype` then `pip install Pillow` |
+| Pillow build fails | `pkg install libjpeg-turbo zlib freetype && pip install Pillow` |
+| `lxml` / `python-docx` build fails | `pkg install libxml2 libxslt` then retry `pip install -r requirements.txt` |
 | Port 3000 in use | `fuser -k 3000/tcp` |
 | App killed by Android | Run `termux-wake-lock` before starting |
 | SSL errors from httpx | `pkg install ca-certificates` |
