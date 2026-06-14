@@ -23,7 +23,19 @@ def list_cases() -> List[Case]:
 def get_case(case_id: int) -> Optional[Case]:
     with session_scope() as session:
         stmt = select(Case).where(Case.id == case_id)
-        return session.exec(stmt).first()
+        c = session.exec(stmt).first()
+        if c is None:
+            return None
+        return Case(
+            id=c.id,
+            title=c.title,
+            description=c.description,
+            status=c.status,
+            priority=c.priority,
+            owner_user_id=c.owner_user_id,
+            created_at=c.created_at,
+            updated_at=getattr(c, "updated_at", None),
+        )
 
 
 def create_case(title: str, description: str, owner_user_id: int | None, priority: str = "medium") -> Case:
