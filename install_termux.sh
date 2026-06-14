@@ -34,6 +34,8 @@ pkg install -y \
     libjpeg-turbo \
     zlib \
     freetype \
+    libxml2 \
+    libxslt \
     git \
     tmux
 

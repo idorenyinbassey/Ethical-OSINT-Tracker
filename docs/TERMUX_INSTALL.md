@@ -19,7 +19,7 @@ Complete guide for installing and running Ethical OSINT Tracker on Android using
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python git clang libffi openssl libjpeg-turbo zlib freetype tmux
+pkg install -y python git clang libffi openssl libjpeg-turbo zlib freetype libxml2 libxslt tmux
 ```
 
 > No Node.js or Rust required — Flask has no frontend build step.
@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 If Pillow fails to build:
 ```bash
-pkg install libjpeg-turbo zlib freetype
+pkg install libjpeg-turbo zlib freetype libxml2 libxslt
 pip install Pillow --no-cache-dir
 ```
 
@@ -155,6 +155,7 @@ python run.py
 | Problem | Solution |
 |---------|----------|
 | Pillow build fails | `pkg install libjpeg-turbo zlib freetype && pip install Pillow` |
+| `lxml` / `python-docx` build fails | `pkg install libxml2 libxslt` then retry `pip install -r requirements.txt` |
 | `argon2-cffi` compile error | `pkg install clang libffi && pip install argon2-cffi --no-binary=:all:` |
 | Port 3000 in use | `fuser -k 3000/tcp` |
 | App killed by Android | `termux-wake-lock` before starting |
