@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Domain WHOIS – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Domain WHOIS / RDAP</h1>
+<p class="text-sm text-yellow-500 mb-6">Only investigate domains you are authorized to query.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Domain</label>
+        <input type="text" name="query" required placeholder="e.g. example.com"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Lookup Domain
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-4">Registration Details</h2>
+        <dl class="space-y-3 text-sm">
+          <div class="flex gap-4">
+            <dt class="text-gray-400 w-28 shrink-0">Registrar</dt>
+            <dd class="text-white">{{ result.registrar }}</dd>
+          </div>
+          <div class="flex gap-4">
+            <dt class="text-gray-400 w-28 shrink-0">Status</dt>
+            <dd class="text-white">{{ result.status }}</dd>
+          </div>
+          <div class="flex gap-4">
+            <dt class="text-gray-400 w-28 shrink-0">Created</dt>
+            <dd class="text-white">{{ result.created or '—' }}</dd>
+          </div>
+          <div class="flex gap-4">
+            <dt class="text-gray-400 w-28 shrink-0">Expires</dt>
+            <dd class="text-white">{{ result.expires or '—' }}</dd>
+          </div>
+          {% if result.ns %}
+            <div class="flex gap-4">
+              <dt class="text-gray-400 w-28 shrink-0">Nameservers</dt>
+              <dd class="text-white">
+                <ul class="space-y-1">
+                  {% for ns in result.ns %}
+                    <li>{{ ns }}</li>
+                  {% endfor %}
+                </ul>
+              </dd>
+            </div>
+          {% endif %}
+        </dl>
+      </div>
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a domain and run lookup to see results.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

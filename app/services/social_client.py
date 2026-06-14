@@ -1,180 +1,283 @@
-"""Lightweight social search client with API integration.
+"""Social username search — Sherlock/Maigret approach.
 
-This client checks public profile URLs across a configurable list of
-platforms. When API keys are configured in SocialSearch settings, it uses
-authenticated API calls for richer data. Falls back to HTTP HEAD checks
-when API keys are not provided.
-
-Note: Respect site ToS when enabling large-scale checks. This client is
-intended for light, manual use within the app and should be configured
-with proper rate limits in production.
+For each site we define:
+  - url: profile URL pattern with {username}
+  - error_type: "status_code" | "message" | "response_url"
+  - error_code: HTTP status that means NOT FOUND (for error_type=status_code)
+  - error_msg: substring in body that means NOT FOUND (for error_type=message)
+  - error_url: redirect URL that means NOT FOUND (for error_type=response_url)
 """
-import asyncio
-import json
-from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from app.utils.proxy_config import get_http_client
 
-import httpx
+_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
+_HEADERS = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.5"}
 
-from app.repositories.api_config_repository import get_by_service
-from app.utils.rate_limiter import RateLimiter
-
-# Default platforms and their public profile URL patterns. Patterns
-# should include a single `{username}` placeholder.
-PLATFORM_URLS = {
-    "Twitter": "https://twitter.com/{username}",
-    "GitHub": "https://github.com/{username}",
-    "Instagram": "https://www.instagram.com/{username}/",
-    "Reddit": "https://www.reddit.com/user/{username}",
-    "LinkedIn": "https://www.linkedin.com/in/{username}",
-    "Pinterest": "https://www.pinterest.com/{username}/",
-    "TikTok": "https://www.tiktok.com/@{username}",
-    "Telegram": "https://t.me/{username}",
-    "Facebook": "https://www.facebook.com/{username}",
-    "YouTube": "https://www.youtube.com/c/{username}",
+SITES: dict[str, dict] = {
+    "GitHub": {
+        "url": "https://github.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Twitter/X": {
+        "url": "https://twitter.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Instagram": {
+        "url": "https://www.instagram.com/{username}/",
+        "error_type": "message",
+        "error_msg": "Sorry, this page isn't available",
+    },
+    "Reddit": {
+        "url": "https://www.reddit.com/user/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "LinkedIn": {
+        "url": "https://www.linkedin.com/in/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "TikTok": {
+        "url": "https://www.tiktok.com/@{username}",
+        "error_type": "message",
+        "error_msg": "Couldn't find this account",
+    },
+    "Pinterest": {
+        "url": "https://www.pinterest.com/{username}/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Telegram": {
+        "url": "https://t.me/{username}",
+        "error_type": "message",
+        "error_msg": "If you have Telegram",
+    },
+    "YouTube": {
+        "url": "https://www.youtube.com/@{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Twitch": {
+        "url": "https://www.twitch.tv/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Steam": {
+        "url": "https://steamcommunity.com/id/{username}",
+        "error_type": "message",
+        "error_msg": "The specified profile could not be found.",
+    },
+    "Snapchat": {
+        "url": "https://www.snapchat.com/add/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Tumblr": {
+        "url": "https://{username}.tumblr.com/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Medium": {
+        "url": "https://medium.com/@{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "HackerNews": {
+        "url": "https://news.ycombinator.com/user?id={username}",
+        "error_type": "message",
+        "error_msg": "No such user.",
+    },
+    "GitLab": {
+        "url": "https://gitlab.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Bitbucket": {
+        "url": "https://bitbucket.org/{username}/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Keybase": {
+        "url": "https://keybase.io/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "DeviantArt": {
+        "url": "https://www.deviantart.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Flickr": {
+        "url": "https://www.flickr.com/people/{username}/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "VK": {
+        "url": "https://vk.com/{username}",
+        "error_type": "message",
+        "error_msg": "This page no longer exists",
+    },
+    "Pastebin": {
+        "url": "https://pastebin.com/u/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "SoundCloud": {
+        "url": "https://soundcloud.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Behance": {
+        "url": "https://www.behance.net/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Dribbble": {
+        "url": "https://dribbble.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Fiverr": {
+        "url": "https://www.fiverr.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "ProductHunt": {
+        "url": "https://www.producthunt.com/@{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Mastodon": {
+        "url": "https://mastodon.social/@{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "StackOverflow": {
+        "url": "https://stackoverflow.com/users/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Gravatar": {
+        "url": "https://en.gravatar.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "DockerHub": {
+        "url": "https://hub.docker.com/u/{username}/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "NPM": {
+        "url": "https://www.npmjs.com/~{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "PyPI": {
+        "url": "https://pypi.org/user/{username}/",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Spotify": {
+        "url": "https://open.spotify.com/user/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "Foursquare": {
+        "url": "https://foursquare.com/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
+    "AngelList": {
+        "url": "https://angel.co/u/{username}",
+        "error_type": "status_code",
+        "error_code": 404,
+    },
 }
 
 
-async def _probe(client: httpx.AsyncClient, url: str, timeout: float) -> int:
+def _check_site(name: str, defn: dict, username: str) -> dict:
+    url_template = defn["url"]
+    if "{username}" in url_template:
+        url = url_template.replace("{username}", username)
+    else:
+        url = url_template.format(username=username)
+
+    result = {"site": name, "url": url, "found": False, "status": "error", "status_code": None}
+
     try:
-        # Use HEAD where possible to reduce payload; fall back to GET
-        r = await client.head(url, timeout=timeout, follow_redirects=True)
-        return r.status_code
-    except (httpx.HTTPError, httpx.ReadTimeout):
-        try:
-            r = await client.get(url, timeout=timeout, follow_redirects=True)
-            return r.status_code
-        except Exception:
-            return 0
+        with get_http_client(timeout=10) as client:
+            r = client.get(url, headers=_HEADERS, follow_redirects=True)
+        result["status_code"] = r.status_code
 
+        error_type = defn.get("error_type", "status_code")
 
-def _parse_api_keys(config_notes: Optional[str]) -> dict:
-    """Parse JSON API keys from SocialSearch config notes field."""
-    if not config_notes:
-        return {}
-    try:
-        keys = json.loads(config_notes)
-        if isinstance(keys, dict):
-            return keys
-    except (json.JSONDecodeError, TypeError):
-        pass
-    return {}
-
-
-async def _check_github_api(username: str, api_key: str, timeout: float) -> dict:
-    """Check GitHub user via authenticated API call."""
-    rate_limiter = RateLimiter(key=f"social:github:{username}", max_calls=5000, period=3600)
-    if not rate_limiter.allow():
-        return {"platform": "GitHub", "username": username, "exists": False, "url": "", "error": "Rate limit exceeded"}
-    
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            headers = {"Authorization": f"token {api_key}", "Accept": "application/vnd.github.v3+json"}
-            r = await client.get(f"https://api.github.com/users/{username}", headers=headers)
+        if error_type == "status_code":
+            error_code = defn.get("error_code", 404)
             if r.status_code == 200:
-                data = r.json()
-                return {
-                    "platform": "GitHub",
-                    "username": username,
-                    "exists": True,
-                    "url": data.get("html_url", f"https://github.com/{username}"),
-                    "profile_data": {
-                        "name": data.get("name"),
-                        "bio": data.get("bio"),
-                        "location": data.get("location"),
-                        "public_repos": data.get("public_repos"),
-                        "followers": data.get("followers"),
-                    }
-                }
-    except Exception:
-        pass
-    return {"platform": "GitHub", "username": username, "exists": False, "url": ""}
+                result["found"] = True
+                result["status"] = "found"
+            elif r.status_code == error_code:
+                result["status"] = "not_found"
+            else:
+                result["status"] = f"http_{r.status_code}"
+
+        elif error_type == "message":
+            error_msg = defn.get("error_msg", "")
+            if r.status_code == 200 and error_msg not in r.text:
+                result["found"] = True
+                result["status"] = "found"
+            else:
+                result["status"] = "not_found"
+
+        elif error_type == "response_url":
+            error_url = defn.get("error_url", "")
+            if r.status_code == 200 and str(r.url) != error_url:
+                result["found"] = True
+                result["status"] = "found"
+            else:
+                result["status"] = "not_found"
+
+    except Exception as exc:
+        result["status"] = "error"
+        result["error"] = str(exc)[:120]
+
+    return result
 
 
-async def _check_twitter_api(username: str, bearer_token: str, timeout: float) -> dict:
-    """Check Twitter user via authenticated API v2 call."""
-    rate_limiter = RateLimiter(key=f"social:twitter:{username}", max_calls=300, period=900)  # 300/15min
-    if not rate_limiter.allow():
-        return {"platform": "Twitter", "username": username, "exists": False, "url": "", "error": "Rate limit exceeded"}
-    
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            headers = {"Authorization": f"Bearer {bearer_token}"}
-            r = await client.get(
-                f"https://api.twitter.com/2/users/by/username/{username}",
-                headers=headers,
-                params={"user.fields": "description,location,public_metrics"}
-            )
-            if r.status_code == 200:
-                data = r.json().get("data", {})
-                return {
-                    "platform": "Twitter",
-                    "username": username,
-                    "exists": True,
-                    "url": f"https://twitter.com/{username}",
-                    "profile_data": {
-                        "name": data.get("name"),
-                        "description": data.get("description"),
-                        "location": data.get("location"),
-                        "followers": data.get("public_metrics", {}).get("followers_count"),
-                    }
-                }
-    except Exception:
-        pass
-    return {"platform": "Twitter", "username": username, "exists": False, "url": ""}
-
-
-async def fetch_social(username: str, platforms: List[str] | None = None, timeout: float = 5.0) -> List[dict]:
-    """Check for public profiles across a set of platforms.
-
-    Uses authenticated API calls when API keys are configured in SocialSearch settings.
-    Falls back to HTTP HEAD checks when API keys not provided.
-
-    Args:
-        username: The username to look for.
-        platforms: Optional list of platform keys from PLATFORM_URLS to check.
-        timeout: Per-request timeout in seconds.
-
-    Returns:
-        A list of dicts: {platform, username, exists(bool), url, profile_data(optional)}
-    """
-    if platforms is None:
-        platforms = list(PLATFORM_URLS.keys())
-
-    # Get API keys from config
-    config = get_by_service("SocialSearch")
-    api_keys = _parse_api_keys(config.notes if config else None)
-
-    headers = {
-        "User-Agent": "Ethical-OSINT-Tracker/1.0 (+https://github.com/idorenyinbassey)"
-    }
+def search_username(username: str) -> dict:
+    """Search for a username across all configured sites concurrently."""
     results = []
-    
-    for p in platforms:
-        # Try authenticated API calls first
-        if p == "GitHub" and api_keys.get("github"):
-            result = await _check_github_api(username, api_keys["github"], timeout)
-            results.append(result)
-            await asyncio.sleep(0.5)
-            continue
-        
-        if p == "Twitter" and api_keys.get("twitter"):
-            result = await _check_twitter_api(username, api_keys["twitter"], timeout)
-            results.append(result)
-            await asyncio.sleep(0.5)
-            continue
-        
-        # Fallback to HTTP HEAD check
-        pattern = PLATFORM_URLS.get(p)
-        if not pattern:
-            continue
-        
-        url = pattern.format(username=username)
-        async with httpx.AsyncClient(headers=headers) as client:
-            status = await _probe(client, url, timeout)
-            exists = status == 200
-            results.append({"platform": p, "username": username, "exists": exists, "url": url if exists else ""})
-        
-        # Gentle pacing to avoid hammering services
-        await asyncio.sleep(0.2)
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        futures = {pool.submit(_check_site, name, defn, username): name for name, defn in SITES.items()}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception:
+                pass
 
-    return results
+    results.sort(key=lambda r: r["site"])
+    found = [r for r in results if r["found"]]
+    return {
+        "username": username,
+        "found_count": len(found),
+        "total_checked": len(results),
+        "results": results,
+    }
+
+
+# Keep backward-compat alias used by existing route
+def fetch_social(username: str, **_kwargs) -> list[dict]:
+    data = search_username(username)
+    out = []
+    for r in data["results"]:
+        out.append({
+            "platform": r["site"],
+            "username": username,
+            "exists": r["found"],
+            "url": r["url"] if r["found"] else "",
+            "status": r["status"],
+            "status_code": r.get("status_code"),
+        })
+    return out
