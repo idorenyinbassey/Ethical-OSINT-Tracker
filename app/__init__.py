@@ -35,6 +35,22 @@ def create_app():
     app.register_blueprint(cases_bp)
     app.register_blueprint(settings_bp)
 
+    @app.context_processor
+    def inject_active_case():
+        from flask_login import current_user
+        from flask import session
+        active_case = None
+        case_investigations = []
+        if current_user.is_authenticated:
+            cid = session.get('active_case_id')
+            if cid:
+                from app.repositories.case_repository import get_case
+                from app.repositories.investigation_repository import list_by_case
+                active_case = get_case(cid)
+                if active_case:
+                    case_investigations = list_by_case(cid)
+        return dict(active_case=active_case, case_investigations=case_investigations)
+
     return app
 
 
