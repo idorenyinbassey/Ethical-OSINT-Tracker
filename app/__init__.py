@@ -1,10 +1,12 @@
 import os
 from flask import Flask
 from flask_login import LoginManager
+from flask_wtf.csrf import CSRFProtect
 from app.config import Config
 from app.db import init_db
 
 login_manager = LoginManager()
+csrf = CSRFProtect()
 
 
 def create_app():
@@ -16,6 +18,8 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
+
+    csrf.init_app(app)
 
     init_db()
 

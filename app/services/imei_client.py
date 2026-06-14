@@ -22,7 +22,9 @@ def fetch_imei(imei: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
     if not cfg or not cfg.is_enabled:
         return None
 
-    base = cfg.base_url.rstrip("/")
+    base = (cfg.base_url or "").rstrip("/")
+    if not base:
+        return None
     creds = getattr(cfg, "_credentials", {}) or {}
     api_key = cfg.api_key or creds.get("api_key") or creds.get("client_key") or creds.get("client_secret")
 

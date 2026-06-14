@@ -3,6 +3,10 @@
 # Core framework
 flask>=3.0.0
 flask-login>=0.6.3
+flask-wtf>=1.2.0
+
+# Production WSGI server
+gunicorn>=21.0.0
 
 # Database
 sqlmodel>=0.0.21
@@ -17,8 +21,8 @@ pytest>=7.0
 # HTTP Client (socks extra for Tor/proxy support)
 httpx[socks]>=0.23
 
-# Image Processing
-Pillow>=10.0.0
+# Image Processing (10.4+ patches CVE-2024-28219 and other security issues)
+Pillow>=10.4.0
 
 # Audio metadata
 mutagen>=1.47.0

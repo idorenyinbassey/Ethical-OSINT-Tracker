@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify
@@ -29,6 +30,16 @@ def _ext_ok(filename: str, allowed: set) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
 
 
+def _safe_case_id(raw: str | None) -> int | None:
+    """Parse case_id from form safely; return None on bad input."""
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
 def _cases_for_select():
     return list_cases()
 
@@ -50,9 +61,7 @@ def ip():
     result = None
     if request.method == "POST":
         ip_addr = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not ip_addr:
             flash("IP address is required.", "error")
             return render_template("investigation/ip.html", cases=cases, result=None)
@@ -78,9 +87,7 @@ def domain():
     result = None
     if request.method == "POST":
         domain_name = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not domain_name:
             flash("Domain is required.", "error")
             return render_template("investigation/domain.html", cases=cases, result=None)
@@ -105,9 +112,7 @@ def subdomain():
     result = None
     if request.method == "POST":
         domain_name = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not domain_name:
             flash("Domain is required.", "error")
             return render_template("investigation/subdomain.html", cases=cases, result=None)
@@ -131,9 +136,7 @@ def email():
     result = None
     if request.method == "POST":
         email_addr = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not email_addr:
             flash("Email address is required.", "error")
             return render_template("investigation/email.html", cases=cases, result=None)
@@ -158,9 +161,7 @@ def email_header():
     result = None
     if request.method == "POST":
         raw = request.form.get("headers", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not raw:
             flash("Paste email headers to analyse.", "error")
             return render_template("investigation/email_header.html", cases=cases, result=None)
@@ -184,9 +185,7 @@ def social():
     result = None
     if request.method == "POST":
         username = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not username:
             flash("Username is required.", "error")
             return render_template("investigation/social.html", cases=cases, result=None)
@@ -209,9 +208,7 @@ def phone():
     result = None
     if request.method == "POST":
         phone_num = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not phone_num:
             flash("Phone number is required.", "error")
             return render_template("investigation/phone.html", cases=cases, result=None)
@@ -236,9 +233,7 @@ def mac():
     result = None
     if request.method == "POST":
         mac_addr = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not mac_addr:
             flash("MAC address is required.", "error")
             return render_template("investigation/mac.html", cases=cases, result=None)
@@ -261,9 +256,7 @@ def file_forensics():
     cases = _cases_for_select()
     result = None
     if request.method == "POST":
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
 
         uploaded = request.files.get("file")
         if not uploaded or uploaded.filename == "":
@@ -274,21 +267,29 @@ def file_forensics():
             flash("Unsupported file type.", "error")
             return render_template("investigation/file_forensics.html", cases=cases, result=None)
 
-        filename = secure_filename(uploaded.filename)
-        if not filename:
+        original_name = secure_filename(uploaded.filename)
+        if not original_name:
             flash("Invalid filename — rename the file and try again.", "error")
             return render_template("investigation/file_forensics.html", cases=cases, result=None)
+        ext = os.path.splitext(original_name)[1].lower()
+        filename = f"{uuid.uuid4().hex}{ext}"
         upload_dir = current_app.config["UPLOAD_FOLDER"]
         os.makedirs(upload_dir, exist_ok=True)
         filepath = Path(upload_dir) / filename
         uploaded.save(str(filepath))
 
         from app.services.file_forensics_client import analyse_file
-        result = analyse_file(filepath)
+        try:
+            result = analyse_file(filepath)
+        finally:
+            try:
+                filepath.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-        create_investigation(kind="file_forensics", query=filename, result_json=json.dumps(result),
+        create_investigation(kind="file_forensics", query=original_name, result_json=json.dumps(result),
                              user_id=current_user.id, case_id=case_id)
-        flash(f"File forensics complete for {filename}.", "success")
+        flash(f"File forensics complete for {original_name}.", "success")
 
     return render_template("investigation/file_forensics.html",
                            cases=cases, result=result,
@@ -339,9 +340,7 @@ def crypto():
     result = None
     if request.method == "POST":
         address = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not address:
             flash("Wallet address is required.", "error")
             return render_template("investigation/crypto.html", cases=cases, result=None)
@@ -365,9 +364,7 @@ def imei():
     result = None
     if request.method == "POST":
         imei_num = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not imei_num:
             flash("IMEI number is required.", "error")
             return render_template("investigation/imei.html", cases=cases, result=None)
@@ -392,9 +389,7 @@ def darkweb():
     result = None
     if request.method == "POST":
         query = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not query:
             flash("Search term is required.", "error")
             return render_template("investigation/darkweb.html", cases=cases, result=None)
@@ -476,9 +471,7 @@ def plugin_run(plugin_name):
     result = None
     if request.method == "POST":
         query = request.form.get("query", "").strip()
-        case_id = request.form.get("case_id") or None
-        if case_id:
-            case_id = int(case_id)
+        case_id = _safe_case_id(request.form.get("case_id"))
         if not query:
             flash("Query is required.", "error")
         else:

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Ethical OSINT Tracker{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
   <style>
@@ -188,5 +189,21 @@
     </main>
   </div>
 
+<script>
+// Auto-inject CSRF token into every form so Flask-WTF validation passes
+(function() {
+  var token = document.querySelector('meta[name="csrf-token"]');
+  if (!token) return;
+  document.querySelectorAll('form').forEach(function(form) {
+    if (!form.querySelector('[name="csrf_token"]')) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'csrf_token';
+      inp.value = token.getAttribute('content');
+      form.appendChild(inp);
+    }
+  });
+})();
+</script>
 </body>
 </html>

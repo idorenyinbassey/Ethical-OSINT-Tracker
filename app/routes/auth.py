@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from argon2 import PasswordHasher
@@ -29,7 +30,11 @@ def login():
             return render_template("auth/login.html")
 
         login_user(user)
-        next_page = request.args.get("next")
+        next_page = request.args.get("next", "")
+        # Only allow relative redirects to prevent open-redirect attacks
+        parsed = urlparse(next_page)
+        if parsed.scheme or parsed.netloc:
+            next_page = ""
         return redirect(next_page or url_for("dashboard.index"))
 
     return render_template("auth/login.html")

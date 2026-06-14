@@ -23,12 +23,22 @@ fi
 
 echo "Using database: $DB_URL"
 
-# Initialize DB and create demo admin
-python reset_admin.py
+# Only initialise the database on first run (when dev.db does not exist yet)
+# Pass --reset flag explicitly to recreate the admin account
+if [ "${1}" = "--reset-admin" ]; then
+    echo "Resetting admin account..."
+    python reset_admin.py
+elif [ ! -f "dev.db" ] && [ -z "$DB_URL" -o "$DB_URL" = "sqlite:///./dev.db" ]; then
+    echo "First run — initialising database and creating admin account..."
+    python reset_admin.py
+    echo "Admin account created. Change the password on first login."
+else
+    # Just initialise tables without resetting credentials
+    python -c "from app import create_app; app = create_app()"
+fi
 
 echo ""
 echo "Starting Flask application on http://0.0.0.0:3000"
-echo "Demo credentials: admin / changeme"
 echo ""
 
 if [ "${FLASK_ENV:-development}" = "production" ]; then

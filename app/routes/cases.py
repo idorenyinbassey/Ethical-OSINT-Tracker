@@ -1,6 +1,6 @@
 import io
 import datetime
-from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort
 from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
@@ -65,6 +65,8 @@ def edit(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
+    if case.owner_user_id and case.owner_user_id != current_user.id:
+        abort(403)
 
     if request.method == "POST":
         title = request.form.get("title", "").strip()
@@ -93,6 +95,9 @@ def edit(case_id):
 @cases_bp.route("/<int:case_id>/delete", methods=["POST"])
 @login_required
 def delete(case_id):
+    case = get_case(case_id)
+    if case and case.owner_user_id and case.owner_user_id != current_user.id:
+        abort(403)
     delete_case(case_id)
     flash("Case deleted.", "success")
     return redirect(url_for("cases.index"))
