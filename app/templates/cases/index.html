@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-white">Cases</h1>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Cases</h1>
   <a href="{{ url_for('cases.new') }}"
      class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
     + New Case
@@ -11,22 +11,72 @@
 </div>
 
 {% if cases %}
-  <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+
+  {# ── Mobile card list (hidden on md+) ── #}
+  <div class="space-y-3 md:hidden">
+    {% for case in cases %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+      {# Entire card top is a tap target to open the case #}
+      <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+         class="block px-4 pt-4 pb-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <p class="font-semibold text-gray-900 dark:text-white text-base leading-tight">{{ case.title }}</p>
+          <span class="text-indigo-500 dark:text-indigo-400 text-sm flex-shrink-0">Open →</span>
+        </div>
+        {% if case.description %}
+          <p class="text-xs text-gray-500 mb-2 line-clamp-2">{{ case.description }}</p>
+        {% endif %}
+        <div class="flex flex-wrap gap-2 items-center text-xs text-gray-500 dark:text-gray-400">
+          <span class="px-2 py-0.5 rounded font-medium
+            {% if case.status == 'open' %}bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300
+            {% elif case.status == 'in_progress' %}bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300
+            {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
+            {{ case.status.replace('_', ' ').title() }}
+          </span>
+          <span class="px-2 py-0.5 rounded font-medium
+            {% if case.priority == 'critical' %}bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300
+            {% elif case.priority == 'high' %}bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300
+            {% elif case.priority == 'medium' %}bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300
+            {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
+            {{ case.priority.title() }}
+          </span>
+          <span>{{ case.created_at.strftime('%Y-%m-%d') }}</span>
+        </div>
+      </a>
+      {# Action row at bottom of card #}
+      <div class="border-t border-gray-100 dark:border-gray-800 px-4 py-2 flex gap-3 bg-gray-50 dark:bg-gray-800/30">
+        <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+           class="text-indigo-600 dark:text-indigo-400 text-xs font-medium">View &amp; Export</a>
+        <a href="{{ url_for('cases.edit', case_id=case.id) }}"
+           class="text-gray-600 dark:text-gray-400 text-xs font-medium">Edit</a>
+        <form method="post" action="{{ url_for('cases.delete', case_id=case.id) }}" class="inline"
+              onsubmit="return confirm('Delete this case?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="text-red-500 dark:text-red-400 text-xs font-medium">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── Desktop table (hidden below md) ── #}
+  <div class="hidden md:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-gray-800">
-          <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Title</th>
-          <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Status</th>
-          <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Priority</th>
-          <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Created</th>
+        <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Title</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Status</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Priority</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Created</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-800">
+      <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
         {% for case in cases %}
-          <tr class="hover:bg-gray-800/50">
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
             <td class="px-4 py-3">
-              <a href="{{ url_for('cases.detail', case_id=case.id) }}" class="text-white hover:text-indigo-300">
+              <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+                 class="font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300">
                 {{ case.title }}
               </a>
               {% if case.description %}
@@ -35,27 +85,31 @@
             </td>
             <td class="px-4 py-3">
               <span class="px-2 py-0.5 rounded text-xs font-medium
-                {% if case.status == 'open' %}bg-green-900/50 text-green-300
-                {% elif case.status == 'in_progress' %}bg-blue-900/50 text-blue-300
-                {% else %}bg-gray-700 text-gray-400{% endif %}">
+                {% if case.status == 'open' %}bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300
+                {% elif case.status == 'in_progress' %}bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300
+                {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
                 {{ case.status.replace('_', ' ').title() }}
               </span>
             </td>
             <td class="px-4 py-3">
               <span class="px-2 py-0.5 rounded text-xs font-medium
-                {% if case.priority == 'critical' %}bg-red-900/50 text-red-300
-                {% elif case.priority == 'high' %}bg-orange-900/50 text-orange-300
-                {% elif case.priority == 'medium' %}bg-yellow-900/50 text-yellow-300
-                {% else %}bg-gray-700 text-gray-400{% endif %}">
+                {% if case.priority == 'critical' %}bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300
+                {% elif case.priority == 'high' %}bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300
+                {% elif case.priority == 'medium' %}bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300
+                {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
                 {{ case.priority.title() }}
               </span>
             </td>
-            <td class="px-4 py-3 text-gray-500">{{ case.created_at.strftime('%Y-%m-%d') }}</td>
-            <td class="px-4 py-3 text-right">
-              <a href="{{ url_for('cases.edit', case_id=case.id) }}" class="text-gray-400 hover:text-white text-xs mr-3">Edit</a>
+            <td class="px-4 py-3 text-gray-500 dark:text-gray-500">{{ case.created_at.strftime('%Y-%m-%d') }}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+                 class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 text-xs font-medium mr-3">View &amp; Export</a>
+              <a href="{{ url_for('cases.edit', case_id=case.id) }}"
+                 class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-xs mr-3">Edit</a>
               <form method="post" action="{{ url_for('cases.delete', case_id=case.id) }}" class="inline"
                     onsubmit="return confirm('Delete this case?')">
-                <button type="submit" class="text-red-500 hover:text-red-300 text-xs">Delete</button>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="text-red-500 hover:text-red-400 text-xs">Delete</button>
               </form>
             </td>
           </tr>
@@ -63,9 +117,10 @@
       </tbody>
     </table>
   </div>
+
 {% else %}
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
-    <p class="text-gray-500 mb-4">No cases yet.</p>
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-12 text-center">
+    <p class="text-gray-500 mb-4">No cases yet. Create one to start investigating.</p>
     <a href="{{ url_for('cases.new') }}"
        class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
       Create your first case
