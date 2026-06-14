@@ -76,3 +76,25 @@ def list_by_case(case_id: int) -> List[Investigation]:
             id=inv.id, kind=inv.kind, query=inv.query,
             result_json=inv.result_json, user_id=inv.user_id, created_at=inv.created_at
         ) for inv in results]
+
+
+def find_related_cases(case_id: int) -> List[Dict]:
+    """Return other cases that share investigation queries with this case."""
+    with session_scope() as session:
+        this_invs = session.exec(
+            select(Investigation).where(Investigation.case_id == case_id)
+        ).all()
+        queries = {inv.query.strip().lower() for inv in this_invs if inv.query and inv.query.strip()}
+        if not queries:
+            return []
+        all_invs = session.exec(select(Investigation)).all()
+        related: Dict[int, list] = {}
+        for inv in all_invs:
+            if inv.case_id is None or inv.case_id == case_id:
+                continue
+            if inv.query and inv.query.strip().lower() in queries:
+                cid = inv.case_id
+                if cid not in related:
+                    related[cid] = []
+                related[cid].append({"query": inv.query, "kind": inv.kind})
+        return [{"case_id": cid, "shared": items} for cid, items in related.items()]

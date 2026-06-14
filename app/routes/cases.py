@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
-from app.repositories.investigation_repository import list_by_case
+from app.repositories.investigation_repository import list_by_case, find_related_cases
 from app.services import report_exporter
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
@@ -55,8 +55,15 @@ def detail(case_id):
     session['active_case_id'] = case_id
     investigations = list_by_case(case_id)
     comments = list_comments(case_id)
+    correlations = find_related_cases(case_id)
+    related_cases = []
+    for corr in correlations:
+        related_case = get_case(corr["case_id"])
+        if related_case:
+            related_cases.append({"case": related_case, "shared": corr["shared"]})
     return render_template("cases/detail.html", case=case,
-                           investigations=investigations, comments=comments)
+                           investigations=investigations, comments=comments,
+                           related_cases=related_cases)
 
 
 @cases_bp.route("/<int:case_id>/edit", methods=["GET", "POST"])

@@ -178,6 +178,33 @@
       </div>
     </div>
 
+    {% if related_cases %}
+    <div class="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-5">
+      <h2 class="text-base font-semibold text-amber-700 dark:text-amber-300 mb-3">Related Cases ({{ related_cases|length }})</h2>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Cases sharing investigation targets with this one.</p>
+      <div class="space-y-3">
+        {% for rel in related_cases %}
+        <div class="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+          <a href="{{ url_for('cases.detail', case_id=rel.case.id) }}"
+             class="font-medium text-sm text-indigo-600 dark:text-indigo-400 hover:underline block mb-1">
+            {{ rel.case.title }}
+          </a>
+          <div class="flex flex-wrap gap-1 mt-1">
+            {% for s in rel.shared[:5] %}
+            <span class="text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded font-mono">
+              {{ s.query[:30] }}
+            </span>
+            {% endfor %}
+            {% if rel.shared|length > 5 %}
+            <span class="text-xs text-gray-400">+{{ rel.shared|length - 5 }} more</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Export Report</h2>
       <div class="space-y-2">
