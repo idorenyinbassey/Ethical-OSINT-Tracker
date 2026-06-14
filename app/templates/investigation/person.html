@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Person / Full Name Search – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Person / Full Name Search</h1>
+<p class="text-sm text-yellow-500 mb-6">
+  Generates investigation links and username guesses for a person's name.
+  All searches are read-only links — nothing is sent to third parties by this tool.
+</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  {# ── Left column: form ── #}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Link to Case</label>
+        <select name="case_id" required
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+          <option value="" disabled selected>Select case...</option>
+          {% for case in cases %}
+            <option value="{{ case.id }}">{{ case.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Full Name</label>
+        <input type="text" name="name" required
+          placeholder="e.g. Jane Doe"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Generate Links
+      </button>
+    </form>
+  </div>
+
+  {# ── Right column: results ── #}
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+
+      {# Investigation Links card #}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <h2 class="text-base font-semibold text-white">
+            Investigation Links
+            <span class="text-gray-500 text-xs font-normal ml-2">for "{{ result.name }}"</span>
+          </h2>
+        </div>
+        <ul class="divide-y divide-gray-800">
+          {% for link in result.dork_links %}
+            <li class="px-4 py-3 hover:bg-gray-800/50 transition-colors">
+              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
+                 class="flex items-start justify-between gap-4 group">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-indigo-400 group-hover:text-indigo-300 transition-colors">
+                    {{ link.label }}
+                  </p>
+                  <p class="text-xs text-gray-500 mt-0.5">{{ link.description }}</p>
+                </div>
+                <span class="shrink-0 text-gray-600 group-hover:text-indigo-400 transition-colors text-xs mt-0.5">
+                  ↗
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      {# Username Guesses card #}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-1">Likely Usernames</h2>
+        <p class="text-xs text-gray-500 mb-3">
+          Run each in <span class="text-indigo-400">Social Search</span> (300 sites) to check for profiles.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          {% for username in result.username_guesses %}
+            <span class="bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-sm font-mono text-gray-200">
+              {{ username }}
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Note #}
+      <p class="text-xs text-gray-500 italic px-1">{{ result.note }}</p>
+
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a full name and select a case to generate investigation links and username guesses.<br>
+        <span class="text-xs text-gray-600 mt-2 block">No data is sent anywhere — links are generated locally.</span>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
