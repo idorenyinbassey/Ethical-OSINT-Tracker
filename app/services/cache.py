@@ -27,7 +27,8 @@ def cached(ttl: int = 3600):
                     if exp > now:
                         return value
                 value = await fn(*args, **kwargs)
-                _CACHE[key] = (now + ttl, value)
+                if value is not None:
+                    _CACHE[key] = (now + ttl, value)
                 return value
 
             return async_wrapper
@@ -41,7 +42,8 @@ def cached(ttl: int = 3600):
                     if exp > now:
                         return value
                 value = fn(*args, **kwargs)
-                _CACHE[key] = (now + ttl, value)
+                if value is not None:
+                    _CACHE[key] = (now + ttl, value)
                 return value
 
             return sync_wrapper
