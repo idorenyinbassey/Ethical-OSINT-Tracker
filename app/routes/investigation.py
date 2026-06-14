@@ -111,7 +111,8 @@ def domain():
 
         result = rdap_client.fetch_domain(domain_name)
         if result is None:
-            result = {"registrar": "Unknown", "status": "unknown", "ns": [], "created": "", "expires": ""}
+            flash(f"WHOIS lookup failed for '{domain_name}'. The domain may not exist or RDAP is temporarily unavailable.", "error")
+            return render_template("investigation/domain.html", cases=cases, result=None)
 
         create_investigation(kind="domain", query=domain_name, result_json=json.dumps(result),
                              user_id=current_user.id, case_id=case_id)
