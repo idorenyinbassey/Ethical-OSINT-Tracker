@@ -1,8 +1,12 @@
 """Multi-format file/document metadata extractor.
 
-Supports: images (EXIF), audio (ID3/Vorbis), video (hachoir), PDF, DOCX, XLSX, generic.
-All analysis is local — no API calls needed.
+Supports: images (EXIF+GPS+geocode), audio (ID3/Vorbis), video (hachoir),
+          PDF, DOCX, XLSX, generic.
+All analysis is local where possible; GPS reverse-geocoding uses Nominatim OSM (free, no key).
 """
+import datetime
+import hashlib
+import mimetypes
 import os
 import stat
 from pathlib import Path
@@ -15,22 +19,63 @@ except ImportError:
     PILLOW_AVAILABLE = False
 
 
-def _file_base(path: Path) -> dict:
-    s = path.stat()
-    return {
-        "file_name": path.name,
-        "file_size_bytes": s.st_size,
-        "file_size_human": _human_size(s.st_size),
-        "extension": path.suffix.lower(),
-    }
-
-
 def _human_size(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024:
             return f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} TB"
+
+
+def _file_hashes(path: Path) -> dict:
+    md5 = hashlib.md5()
+    sha256 = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                md5.update(chunk)
+                sha256.update(chunk)
+        return {"md5": md5.hexdigest(), "sha256": sha256.hexdigest()}
+    except Exception:
+        return {"md5": "", "sha256": ""}
+
+
+def _file_base(path: Path) -> dict:
+    s = path.stat()
+    mime, _ = mimetypes.guess_type(str(path))
+    hashes = _file_hashes(path)
+    # st_birthtime is available on macOS; Linux falls back to st_ctime (inode change)
+    created_ts = getattr(s, "st_birthtime", s.st_ctime)
+    return {
+        "file_name": path.name,
+        "file_size_bytes": s.st_size,
+        "file_size_human": _human_size(s.st_size),
+        "extension": path.suffix.lower(),
+        "mime_type": mime or "application/octet-stream",
+        "md5": hashes["md5"],
+        "sha256": hashes["sha256"],
+        "fs_modified": datetime.datetime.fromtimestamp(s.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        "fs_accessed": datetime.datetime.fromtimestamp(s.st_atime).strftime("%Y-%m-%d %H:%M:%S"),
+        "fs_created": datetime.datetime.fromtimestamp(created_ts).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def _reverse_geocode(lat: float, lon: float) -> str | None:
+    """Look up a human-readable address from GPS coords via Nominatim (free, no key)."""
+    try:
+        import httpx
+        r = httpx.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers={"User-Agent": "OSINT-Tracker/1.0 (ethical research)"},
+            timeout=8,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("display_name") or None
+    except Exception:
+        pass
+    return None
 
 
 def _image(path: Path) -> dict:
@@ -47,6 +92,8 @@ def _image(path: Path) -> dict:
             result["height"] = img.height
 
             exif: dict[str, Any] = {}
+            gps_lat = gps_lon = None
+
             try:
                 raw = img.getexif()
                 if raw:
@@ -58,19 +105,23 @@ def _image(path: Path) -> dict:
                                 if not isinstance(val, dict):
                                     continue
                                 gps = {GPSTAGS.get(k, k): v for k, v in val.items()}
-                                if "GPSLatitude" in gps and "GPSLongitude" in gps:
-                                    lat = val.get(2)
-                                    lon = val.get(4)
-                                    lat_ref = str(val.get(1, "N"))
-                                    lon_ref = str(val.get(3, "E"))
-                                    if lat and lon:
-                                        ld = float(lat[0]) + float(lat[1]) / 60 + float(lat[2]) / 3600
-                                        lo = float(lon[0]) + float(lon[1]) / 60 + float(lon[2]) / 3600
-                                        if lat_ref == "S":
-                                            ld = -ld
-                                        if lon_ref == "W":
-                                            lo = -lo
-                                        exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
+                                lat_raw = val.get(2)
+                                lon_raw = val.get(4)
+                                lat_ref = str(val.get(1, "N"))
+                                lon_ref = str(val.get(3, "E"))
+                                if lat_raw and lon_raw:
+                                    ld = float(lat_raw[0]) + float(lat_raw[1]) / 60 + float(lat_raw[2]) / 3600
+                                    lo = float(lon_raw[0]) + float(lon_raw[1]) / 60 + float(lon_raw[2]) / 3600
+                                    if lat_ref == "S":
+                                        ld = -ld
+                                    if lon_ref == "W":
+                                        lo = -lo
+                                    gps_lat, gps_lon = ld, lo
+                                    exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
+                                    exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
+                                    exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
+                                    if "GPSAltitude" in gps:
+                                        exif["GPS_Altitude"] = str(gps["GPSAltitude"])
                             except Exception:
                                 pass
                         elif val is None:
@@ -83,6 +134,24 @@ def _image(path: Path) -> dict:
                             exif[str(tag)] = str(val)
             except Exception:
                 pass
+
+            # Elevate device fingerprint to top-level fields
+            if "Make" in exif:
+                result["device_make"] = exif["Make"]
+            if "Model" in exif:
+                result["device_model"] = exif["Model"]
+            if "Software" in exif:
+                result["software"] = exif["Software"]
+            if "DateTimeOriginal" in exif:
+                result["date_taken"] = exif["DateTimeOriginal"]
+
+            # Reverse geocode GPS if present
+            if gps_lat is not None and gps_lon is not None:
+                location = _reverse_geocode(gps_lat, gps_lon)
+                if location:
+                    exif["GPS_Location"] = location
+                    result["location"] = location
+
             result["metadata"] = exif
     except Exception as exc:
         result["error"] = str(exc)
