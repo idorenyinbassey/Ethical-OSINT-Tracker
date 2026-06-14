@@ -1,501 +1,196 @@
 # User Guide
 
-Complete guide to using Ethical OSINT Tracker for investigations.
-
-## Table of Contents
-- [Getting Started](#getting-started)
-- [Dashboard](#dashboard)
-- [Investigation Tools](#investigation-tools)
-- [Case Management](#case-management)
-- [Intelligence Reports](#intelligence-reports)
-- [Team Collaboration](#team-collaboration)
-- [Settings & Configuration](#settings--configuration)
-- [Best Practices](#best-practices)
+Complete guide to using Ethical OSINT Tracker.
 
 ## Getting Started
 
 ### First Login
 
-1. Navigate to http://localhost:3000
-2. Click **Login** or use `/login` route
-3. Enter default credentials:
+1. Start the app: `python run.py`
+2. Open [http://localhost:3000](http://localhost:3000)
+3. Log in with the demo credentials:
    - Username: `admin`
    - Password: `changeme`
-4. **Important**: Change password after first login
+4. **Change this password immediately** — go to Settings after your first login.
 
-### Dashboard Overview
+### Navigation
 
-The dashboard provides:
-- **Quick Statistics**: Active investigations, threat alerts, cases closed
-- **Recent Activity**: Investigation history timeline
-- **Threat Trends**: Visual analytics over time
-- **Quick Actions**: One-click access to common tasks
+The sidebar on the left gives access to everything:
+
+| Section | Pages |
+|---------|-------|
+| **Dashboard** | Overview, recent history, stats |
+| **Investigate** | IP Lookup, Domain WHOIS, Email Analysis, Social Search, Phone Lookup, Image Forensics, IMEI Lookup |
+| **Manage** | Cases, API Settings |
+
+---
 
 ## Investigation Tools
 
-### Domain Intelligence
+Each tool page has a form on the left and results on the right. Results are automatically saved to the database and can optionally be linked to a Case.
 
-**Purpose**: Analyze domain ownership, history, and DNS records.
+### IP Lookup (`/investigate/ip`)
 
-**Steps**:
-1. Navigate to **Investigate** → **Domain** tab
-2. Enter domain (e.g., `example.com`)
-3. Click **Lookup Domain**
-4. Review results:
-   - Registrar information
-   - Creation/expiration dates
-   - Name servers
-   - DNS record count
-   - WHOIS status
+Combines three data sources for a complete IP profile:
 
-**Use Cases**:
-- Verify domain legitimacy
-- Identify phishing domains
-- Track domain ownership changes
-- Investigate suspicious websites
+- **IPInfo.io** — city, country, ASN, organisation, coordinates
+- **VirusTotal** — malicious/suspicious/harmless engine counts, threat categories, community score
+- **Shodan** — open ports, detected services, CVE vulnerabilities
 
-### IP Geolocation
+Enter an IP address (e.g. `8.8.8.8`) and click **Run Lookup**.
 
-**Purpose**: Locate and profile IP addresses.
+> Shodan and VirusTotal fall back to deterministic mock data when no API key is configured — you will always see results.
 
-**Steps**:
-1. Go to **Investigate** → **IP Address** tab
-2. Enter IP address (e.g., `8.8.8.8`)
-3. Click **Lookup IP**
-4. Analyze:
-   - Geographic location (city, country)
-   - ISP and ASN information
-   - Threat score (0-100)
-   - Proxy/VPN detection
+### Domain WHOIS (`/investigate/domain`)
 
-**Use Cases**:
-- Identify attack sources
-- Verify server locations
-- Detect proxy usage
-- Map network infrastructure
+Uses the public [RDAP](https://rdap.org/) protocol — no API key required.
 
-### Email Analysis
+Returns: registrar, status, nameservers, registration date, expiry date.
 
-**Purpose**: Validate emails and check breach history.
+### Email Analysis (`/investigate/email`)
 
-**Steps**:
-1. Select **Investigate** → **Email** tab
-2. Enter email address
-3. Click **Check Email**
-4. Review:
-   - Format validity
-   - Disposable email detection
-   - Breach count
-   - Domain reputation
-   - Last known breach date
+- **Have I Been Pwned** — lists data breaches the address appeared in, with breach date and exposed data classes
+- **Hunter.io** — deliverability, disposable flag, webmail flag, score
 
-**Use Cases**:
-- Verify email authenticity
-- Check account compromise
-- Identify disposable emails
-- Assess sender reputation
+Configure API keys for both services in **Settings** for live data.
 
-### Social Media OSINT
+### Social Media Search (`/investigate/social`)
 
-**Purpose**: Find social media profiles by username.
+Checks for public profiles across 10 platforms simultaneously (Twitter, GitHub, Instagram, Reddit, LinkedIn, Pinterest, TikTok, Telegram, Facebook, YouTube).
 
-**Steps**:
-1. Navigate to **Investigate** → **Social Media** tab
-2. Enter username
-3. Click **Search Profiles**
-4. View discovered profiles:
-   - Platform name
-   - Account existence
-   - Direct profile URLs
+Returns a table of found/not-found results with direct profile URLs.
 
-**Supported Platforms**:
-- Twitter/X
-- Instagram
-- Facebook
-- LinkedIn
-- GitHub
-- TikTok
-- Reddit
-
-**Use Cases**:
-- Verify identity across platforms
-- Track online presence
-- Investigate fake accounts
-- Link related accounts
-
-### Phone Intelligence
-
-**Purpose**: Validate and profile phone numbers.
-
-**Steps**:
-1. Go to **Investigate** → **Phone** tab
-2. Enter phone number (international format: +1234567890)
-3. Click **Lookup Phone**
-4. Results include:
-   - Validation status
-   - Number type (mobile/landline)
-   - Carrier information
-   - Location and timezone
-   - Fraud score and risk level
-
-**Risk Levels**:
-- 🟢 Low (0-30): Legitimate number
-- 🟡 Medium (31-69): Moderate risk
-- 🔴 High (70-100): High fraud risk
-
-**Use Cases**:
-- Verify caller identity
-- Detect spoofed numbers
-- Assess fraud risk
-- Geographic profiling
-
-### Image Forensics
-
-**Purpose**: Extract metadata and identify persons in images.
-
-**Steps**:
-1. Select **Investigate** → **Image Analysis** tab
-2. Upload image or provide URL
-3. Click **Analyze Image**
-4. Review findings:
-   - Identified persons (mock recognition)
-   - Associated email addresses
-   - Social media profiles
-   - Media mentions
-   - EXIF metadata (camera, location, timestamp)
-
-**Use Cases**:
-- Reverse image search
-- Identify photo subjects
-- Extract geolocation data
-- Verify image authenticity
-
-### IMEI/Device Tracking
-
-**Purpose**: Identify mobile devices and check blacklist status.
-
-**Steps**:
-1. Navigate to **Investigate** → **IMEI** tab
-2. Enter 15-digit IMEI number
-3. Click **Lookup IMEI**
-4. Analyze:
-   - Device validity
-   - Brand and model
-   - Specifications
-   - Blacklist status
-   - Theft records
-   - Warranty status
-   - Carrier lock
-   - Risk assessment
-
-**Use Cases**:
-- Verify device legitimacy
-- Check stolen device databases
-- Identify counterfeit devices
-- Track device origin
-
-### Network Graph
-
-**Purpose**: Visualize relationships between investigated entities.
-
-**Access**: Available after performing investigations
-
-**Features**:
-- **Entity Cards**: Grouped by type (domain, IP, email, person, device)
-- **Connection View**: Shows relationships and labels
-- **Color Coding**:
-  - 🔵 Blue: Domains
-  - 🟢 Green: IP addresses
-  - 🟣 Purple: Emails
-  - 🟠 Orange: Persons
-  - 🟣 Indigo: Phone numbers
-  - 🔴 Red: Breaches
-
-**Use Cases**:
-- Map attack infrastructure
-- Identify linked accounts
-- Visualize investigation scope
-- Generate relationship diagrams
-
-## Case Management
-
-### Creating Cases
-
-1. Navigate to **Cases** page
-2. Click **+ New Case**
-3. Fill in details:
-   - **Title**: Case identifier
-   - **Description**: Overview and objectives
-   - **Priority**: Low / Medium / High
-4. Click **Create Case**
-
-### Managing Cases
-
-**Actions**:
-- **Delete**: Remove case permanently
-- **Export**: Download case data (JSON/CSV)
-- **Status**: Toggle between Open/Closed
-
-**Priority Indicators**:
-- 🔴 High: Urgent investigations
-- 🟡 Medium: Standard priority
-- 🟢 Low: Routine checks
-
-### Linking Investigations
-
-Cases can be linked to:
-- Intelligence reports
-- Team collaborations
-- Specific investigations (via export)
-
-## Intelligence Reports
-
-### Creating Reports
-
-1. Go to **Reports** page
-2. Click **+ New Report**
-3. Configure:
-   - **Title**: Report name
-   - **Summary**: Executive summary
-   - **Indicators**: Comma-separated IOCs
-   - **Related Case**: Link to existing case (optional)
-4. Click **Create Report**
-
-### Auto-Enrichment
-
-**Feature**: Automatically pull indicators from recent investigations.
-
-1. Click **Enrich from Investigations**
-2. System analyzes last 20 investigations
-3. Extracts domains, IPs, emails
-4. Fetches additional context via APIs:
-   - Domain WHOIS (RDAP)
-   - IP geolocation
-   - Email breaches
-5. Categorizes by threat level:
-   - 🟢 Low
-   - 🟡 Medium
-   - 🔴 High
-
-### Exporting Reports
-
-1. Open desired report
-2. Click **Export (JSON)** or **Export (CSV)**
-3. Copy formatted data
-4. Paste into documentation or SIEM
-
-**JSON Format**:
+Authenticated API calls for GitHub and Twitter can be enabled by adding keys to the **SocialSearch** service in Settings as JSON in the Notes field:
 ```json
-{
-  "title": "Report Title",
-  "summary": "Executive summary",
-  "indicators": ["domain.com", "1.2.3.4"],
-  "created_at": "2025-11-24T..."
-}
+{"github": "ghp_xxx", "twitter": "Bearer AAA..."}
 ```
 
-**CSV Format**: Compatible with Excel and data analysis tools.
+### Phone Lookup (`/investigate/phone`)
 
-## Team Collaboration
+Uses **NumVerify** to validate a phone number and return carrier, line type, country, and location. Returns an error if the NumVerify API key is not configured.
 
-### Creating Teams
+### Image Forensics (`/investigate/image`)
 
-1. Navigate to **Team** page
-2. Click **+ Create Team**
-3. Enter:
-   - **Team Name**: Identifier
-   - **Description**: Purpose and scope
-4. Click **Create**
+Upload an image file (JPG, PNG, GIF, BMP, TIFF, WEBP — up to 16 MB).
 
-### Managing Members
+Two layers of analysis:
 
-**Add Member**:
-1. Select team
-2. Click **+ Add Member**
-3. Choose user from dropdown
-4. Assign role:
-   - **Owner**: Full permissions
-   - **Admin**: Manage team and members
-   - **Member**: View and contribute
-   - **Viewer**: Read-only access
-5. Click **Add to Team**
+1. **EXIF extraction** (always runs, no API needed) — camera model, date taken, GPS coordinates, dimensions, software
+2. **Google Cloud Vision AI** (optional) — face detection, label detection, OCR, web entity detection, safe-search
 
-**Remove Member**:
-- Click trash icon next to member name
+Configure the **ImageRecognition** service in Settings to enable Vision AI.
 
-**Change Role**:
-- Currently requires removing and re-adding (future update)
+### IMEI Lookup (`/investigate/imei`)
 
-### Team Use Cases
+Queries a configurable IMEI service (e.g. imei.info). Returns device details if the **IMEIService** is configured. Shows an error with a link to Settings if not configured.
 
-- **SOC Teams**: Coordinate threat investigations
-- **Research Groups**: Share OSINT findings
-- **Training**: Supervisor-student collaboration
-- **Multi-investigator Cases**: Distribute workload
+---
 
-## Settings & Configuration
+## Case Management (`/cases`)
 
-### API Service Configuration
+Cases let you group related investigations together.
 
-**Available Services**:
+### Creating a Case
 
-| Service | Purpose | Free Tier |
-|---------|---------|-----------|
-| WhoisXML API | Domain WHOIS | 500/mo |
-| Have I Been Pwned | Breach data | Limited |
-| IPInfo.io | IP geolocation | 50k/mo |
-| Shodan | Device search | 100/mo |
-| VirusTotal | Threat intel | 4 req/min |
-| Hunter.io | Email verification | 25/mo |
-| NumVerify | Phone validation | 100/mo |
+1. Click **+ New Case** from the Cases page
+2. Enter a title, optional description, and priority (Low / Medium / High / Critical)
+3. Click **Create Case**
 
-**Configuration Steps**:
-1. Go to **Settings** page
-2. Find desired service
-3. Click **Configure**
-4. Enter:
-   - **API Key**: From service provider
-   - **Base URL**: (pre-filled)
-   - **Rate Limit**: Requests per hour
-   - **Notes**: Internal documentation
-   - **Enabled**: Toggle on
-5. Click **Save**
+### Linking Investigations to a Case
 
-**Getting API Keys**:
-- Click **Docs** link next to each service
-- Register for free tier
-- Copy API key from dashboard
-- Return to Settings and paste
+On any investigation tool page, select a case from the **Link to Case** dropdown before running the lookup. The result will be stored against that case.
 
-### Data Mode
+### Case Statuses
 
-**Mock Mode** (Default):
-- No API keys required
-- Instant responses
-- Deterministic results
-- Perfect for demos and testing
+| Status | Meaning |
+|--------|---------|
+| Open | Active investigation |
+| In Progress | Being worked on |
+| Closed | Resolved |
 
-**Live Mode** (With API Keys):
-- Real-time external data
-- Subject to rate limits
-- Requires API configuration
-- Caching enabled (1 hour TTL)
+### Editing and Deleting Cases
+
+From the Cases list, click **Edit** to change title, description, status, or priority. Click **Delete** to permanently remove a case.
+
+---
+
+## API Settings (`/settings`)
+
+Configure external OSINT service credentials. No restart is needed — keys are read from the database on every request.
+
+### Available Services
+
+| Service | Used by |
+|---------|---------|
+| IPInfo | IP Lookup — geolocation |
+| Shodan | IP Lookup — port scan |
+| VirusTotal | IP Lookup — threat intel |
+| HIBP | Email Analysis — breach check |
+| Hunter.io | Email Analysis — deliverability |
+| NumVerify | Phone Lookup |
+| SocialSearch | Social Search (GitHub/Twitter authenticated) |
+| ImageRecognition | Image Forensics (Google Cloud Vision) |
+| IMEIService | IMEI Lookup |
+
+### How to Configure a Service
+
+1. Go to **Settings** from the sidebar
+2. Find the service card
+3. Enter your **API Key**
+4. Confirm or update the **Base URL** (pre-filled with the correct default)
+5. Toggle **Enabled** on
+6. Click **Save**
+
+### Without API Keys
+
+- **IP Lookup** — VirusTotal and Shodan show mock data; IPInfo returns nothing
+- **Domain WHOIS** — always works (public RDAP, no key needed)
+- **Email Analysis** — HIBP and Hunter.io show a configuration notice
+- **Social Search** — falls back to HTTP HEAD checks (no auth, less reliable)
+- **Phone / IMEI** — show a configuration notice
+
+---
 
 ## Best Practices
 
 ### Ethical Guidelines
 
-✅ **DO**:
-- Obtain proper authorization
-- Document investigation scope
-- Respect privacy laws
-- Use for lawful purposes
-- Cite data sources
-- Secure sensitive findings
+Only use this tool for:
+- Investigations you are explicitly authorised to conduct
+- Legitimate security research with proper scope
+- Academic or educational purposes
 
-❌ **DON'T**:
-- Conduct unauthorized surveillance
-- Harass or stalk individuals
-- Violate platform ToS
-- Collect data without consent
-- Share confidential information
-- Use for illegal activities
+Never use it for stalking, harassment, doxxing, or any unauthorized surveillance.
 
-### Investigation Workflow
+### Recommended Workflow
 
-1. **Define Scope**: What are you investigating?
-2. **Create Case**: Document objectives
-3. **Gather Data**: Use appropriate tools
-4. **Analyze Network**: Review entity relationships
-5. **Generate Report**: Auto-enrich and export
-6. **Share Findings**: Collaborate with team
-7. **Archive**: Close case when complete
+1. **Create a Case** — document the investigation objective
+2. **Run the relevant tools** — link each result to the case
+3. **Review results** — check the Dashboard for a history summary
+4. **Archive** — close the case when complete
 
-### Performance Tips
+### Security
 
-- **Use Mock Mode** for demos and training
-- **Enable Caching** for frequently queried data
-- **Batch Queries** when possible
-- **Set Rate Limits** to avoid API bans
-- **Regular Exports** to backup investigation data
-
-### Security Recommendations
-
-1. **Change default password** immediately
-2. **Use strong passwords** (12+ characters, mixed case, symbols)
-3. **Limit API key scope** where possible
-4. **Rotate credentials** regularly
-5. **Enable 2FA** on external services
-6. **Audit team access** periodically
-7. **Review logs** for suspicious activity
-
-## Keyboard Shortcuts
-
-Coming in future release:
-- `Ctrl+K`: Quick search
-- `Ctrl+N`: New investigation
-- `Ctrl+S`: Save report
-- `Esc`: Close modals
-
-## Troubleshooting
-
-### No Results Returned
-
-**Cause**: API service unavailable or rate limited
-
-**Solution**:
-1. Check Settings → API Configuration
-2. Verify API key is correct
-3. Check rate limit hasn't been exceeded
-4. Review service status page
-5. Wait and retry (automatic fallback to mock data)
-
-### Slow Performance
-
-**Cause**: External API latency
-
-**Solution**:
-- Use cached data when available
-- Reduce concurrent requests
-- Switch to mock mode temporarily
-
-### Network Graph Empty
-
-**Cause**: No investigations performed yet
-
-**Solution**:
-1. Run at least one investigation tool
-2. Wait for results
-3. Navigate back to Network tab
-
-## Advanced Features
-
-### Export Formats
-
-**JSON**: Machine-readable, perfect for automation
-**CSV**: Spreadsheet-compatible, easy reporting
-
-### Filtering & Search
-
-Coming soon:
-- Search investigations by IOC
-- Filter reports by date range
-- Case status filters
-
-### Custom Integrations
-
-See [Development Guide](./DEVELOPMENT.md) for:
-- Adding new OSINT tools
-- Custom API integrations
-- Webhook notifications
-
-## Getting Help
-
-- **Documentation**: Check other docs in `docs/` folder
-- **Issues**: Report bugs on GitHub Issues
-- **Community**: Join GitHub Discussions
-- **Updates**: Watch repository for new releases
+- Change the default `admin / changeme` password immediately
+- Never commit API keys to source control
+- Use HTTPS (see [Deployment Guide](./DEPLOYMENT.md)) for any non-local deployment
+- Rotate API keys if they may have been exposed
 
 ---
 
-**Happy Investigating! Remember: With great OSINT power comes great responsibility.**
+## Troubleshooting
+
+**No results / empty response**  
+Check that the relevant API key is configured and enabled in Settings. Most tools show a yellow notice with a link to Settings if the service is not configured.
+
+**Slow responses**  
+External API calls take 1–10 seconds depending on the service. Results are cached for 1–6 hours per query, so repeated lookups are instant.
+
+**Image upload fails**  
+Check file type (JPG/PNG/GIF/BMP/TIFF/WEBP) and size (max 16 MB).
+
+**Database reset**  
+```bash
+rm dev.db
+python reset_admin.py
+```

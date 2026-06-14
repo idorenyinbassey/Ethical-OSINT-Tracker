@@ -2,8 +2,7 @@
 
 ## Quick Links
 
-- **Direct Billing Link for Your Project**: https://console.developers.google.com/billing/enable?project=654446915094
-- **General Billing Console**: https://console.cloud.google.com/billing
+- **Billing Console**: https://console.cloud.google.com/billing
 - **Google Cloud Console**: https://console.cloud.google.com
 
 ---
@@ -14,13 +13,13 @@
 
 1. Go to: https://console.cloud.google.com
 2. Sign in with your Google account (the one associated with your API key)
-3. Make sure you're viewing the correct project (#654446915094)
+3. Make sure you're viewing the correct project
 
 ### Step 2: Navigate to Billing
 
 **Option A: Direct Link (Fastest)**
-- Click: https://console.developers.google.com/billing/enable?project=654446915094
-- This takes you directly to the billing setup for your project
+- Go to: https://console.cloud.google.com/billing
+- Select your project from the dropdown
 
 **Option B: Manual Navigation**
 1. Click the hamburger menu (☰) in the top-left corner
@@ -79,15 +78,13 @@ If you already have a billing account:
 4. Click **"Enable"** button (if not already enabled)
 5. Wait 1-2 minutes for activation
 
-### Step 7: Test Your API Key
+### Step 7: Configure Your API Key in OSINT Tracker
 
-Back in the OSINT Tracker app:
-
-1. Go to **Settings** → **API Integrations**
-2. Click on **"Google Cloud Vision AI"**
-3. Your API key should already be saved: `AIzaSyDXH61NbSl2dpGOAb1LPf01-ElT_gnTgCc`
-4. Click **"Test API Connection"**
-5. Expected result: ✅ **Connection Successful! API key is valid and working.**
+1. Go to **Settings** in the OSINT Tracker sidebar
+2. Find the **ImageRecognition** service card
+3. Enter your API key (starts with `AIza`, 39 characters) and toggle **Enabled** on
+4. Click **Save**
+5. Test by uploading an image on the **Image Forensics** page
 
 ---
 
@@ -209,11 +206,11 @@ If you don't have access to project #654446915094, create your own:
 
 ### Step 5: Update OSINT Tracker
 
-1. Go to **Settings** → **API Integrations**
-2. Click **"Google Cloud Vision AI"**
-3. Paste your new API key
-4. Click **"Test API Connection"**
-5. Should show: ✅ Connection Successful!
+1. Go to **Settings** in the OSINT Tracker sidebar
+2. Find the **ImageRecognition** service card
+3. Paste your new API key, toggle **Enabled** on
+4. Click **Save**
+5. Test by uploading an image on the **Image Forensics** page
 
 ---
 
@@ -234,11 +231,7 @@ Dashboard → Cloud Vision API → Quotas
 - Prevents accidental overage
 
 ### 3. Disable API When Not Needed
-```
-Settings → API Integrations → Toggle "Enable this API" OFF
-```
-- In OSINT Tracker app
-- Prevents accidental usage
+In OSINT Tracker: Settings → ImageRecognition card → uncheck **Enabled** → Save
 
 ### 4. Use Metadata Extraction Only
 ```
@@ -290,8 +283,8 @@ A: Contact Google Cloud Support. They may provide credits for first-time users.
 - [ ] Add payment method (credit/debit card)
 - [ ] Verify billing is **Active**
 - [ ] Confirm Cloud Vision API is **Enabled**
-- [ ] Test API key in OSINT Tracker: `AIzaSyDXH61NbSl2dpGOAb1LPf01-ElT_gnTgCc`
-- [ ] Expected: ✅ Connection Successful!
+- [ ] Configure API key in OSINT Tracker Settings → ImageRecognition card → Save
+- [ ] Test by uploading an image on the Image Forensics page
 - [ ] (Optional) Set up billing alerts ($5 budget recommended)
 - [ ] (Optional) Set daily quotas to limit usage
 
@@ -323,8 +316,7 @@ Once billing is enabled and tested:
 
 **Need Help?**  
 - Check the app logs in terminal
-- Review error messages in Settings → Test API Connection
-- See `GOOGLE_VISION_API_FIX_PLAN.md` for troubleshooting
+- See [BILLING_ERROR_SOLUTIONS.md](./BILLING_ERROR_SOLUTIONS.md) for troubleshooting
 
 **Estimated Time**: 5-10 minutes  
 **Cost**: Free for first 1,000 requests/month  
