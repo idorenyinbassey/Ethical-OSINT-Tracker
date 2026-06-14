@@ -19,6 +19,9 @@
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span> Social</span>
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-orange-400 inline-block"></span> Email</span>
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-pink-400 inline-block"></span> Crypto</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span> Company</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-400 inline-block"></span> Person</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-red-400 inline-block"></span> Vehicle</span>
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-400 inline-block"></span> Other</span>
 </div>
 
@@ -35,6 +38,9 @@ const COLOR_MAP = {
   subdomain:    { background: "#34d399", border: "#10b981", font: { color: "#111" } },
   email_header: { background: "#f87171", border: "#ef4444", font: { color: "#fff" } },
   mac:          { background: "#94a3b8", border: "#64748b", font: { color: "#fff" } },
+  company:      { background: "#f59e0b", border: "#d97706", font: { color: "#111" } },
+  person:       { background: "#10b981", border: "#059669", font: { color: "#fff" } },
+  vehicle:      { background: "#ef4444", border: "#dc2626", font: { color: "#fff" } },
 };
 
 fetch("{{ url_for('investigation.graph_data') }}")

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Vehicle / VIN Lookup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Vehicle / VIN Lookup</h1>
+<p class="text-sm text-yellow-500 mb-6">
+  Powered by NHTSA vPIC (free, no key required). For US-registered vehicles.
+  VIN decodes make, model, year, engine, and manufacturer details.
+</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  {# ── Left column: form ── #}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Link to Case</label>
+        <select name="case_id" required
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+          <option value="" disabled selected>Select case...</option>
+          {% for case in cases %}
+            <option value="{{ case.id }}">{{ case.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Vehicle VIN (17 characters)</label>
+        <input type="text" name="vin" required
+          maxlength="17" minlength="17"
+          placeholder="e.g. 1HGBH41JXMN109186"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm font-mono tracking-widest uppercase">
+      </div>
+
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Decode VIN
+      </button>
+    </form>
+  </div>
+
+  {# ── Right column: results ── #}
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+
+      {# Hard error (network failure, invalid response, etc.) #}
+      {% if result.error and not result.summary %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-400 text-sm">
+          <span class="font-semibold">Error:</span> {{ result.error }}
+        </div>
+
+      {% else %}
+
+        {# Soft/decode error from NHTSA (partial data still shown) #}
+        {% if result.error %}
+          <div class="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-400 text-sm">
+            <span class="font-semibold">Decode note:</span> {{ result.error }}
+          </div>
+        {% endif %}
+
+        {# Summary card #}
+        {% set s = result.summary %}
+        {% set has_summary = s.year or s.make or s.model or s.body_class or s.vehicle_type
+                             or s.engine_cylinders or s.displacement_l or s.fuel_type
+                             or s.drive_type or s.transmission or s.country or s.manufacturer %}
+        {% if has_summary %}
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 class="text-base font-semibold text-white mb-4">
+              Vehicle Summary
+              <span class="text-gray-500 font-mono text-xs ml-2">{{ result.vin }}</span>
+            </h2>
+            <dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              {% if s.year %}
+                <dt class="text-gray-400">Year</dt>
+                <dd class="text-white">{{ s.year }}</dd>
+              {% endif %}
+              {% if s.make %}
+                <dt class="text-gray-400">Make</dt>
+                <dd class="text-white">{{ s.make }}</dd>
+              {% endif %}
+              {% if s.model %}
+                <dt class="text-gray-400">Model</dt>
+                <dd class="text-white">{{ s.model }}</dd>
+              {% endif %}
+              {% if s.body_class %}
+                <dt class="text-gray-400">Body Class</dt>
+                <dd class="text-white">{{ s.body_class }}</dd>
+              {% endif %}
+              {% if s.vehicle_type %}
+                <dt class="text-gray-400">Vehicle Type</dt>
+                <dd class="text-white">{{ s.vehicle_type }}</dd>
+              {% endif %}
+              {% if s.engine_cylinders %}
+                <dt class="text-gray-400">Engine Cylinders</dt>
+                <dd class="text-white">{{ s.engine_cylinders }}</dd>
+              {% endif %}
+              {% if s.displacement_l %}
+                <dt class="text-gray-400">Displacement (L)</dt>
+                <dd class="text-white">{{ s.displacement_l }}</dd>
+              {% endif %}
+              {% if s.fuel_type %}
+                <dt class="text-gray-400">Fuel Type</dt>
+                <dd class="text-white">{{ s.fuel_type }}</dd>
+              {% endif %}
+              {% if s.drive_type %}
+                <dt class="text-gray-400">Drive Type</dt>
+                <dd class="text-white">{{ s.drive_type }}</dd>
+              {% endif %}
+              {% if s.transmission %}
+                <dt class="text-gray-400">Transmission</dt>
+                <dd class="text-white">{{ s.transmission }}</dd>
+              {% endif %}
+              {% if s.country %}
+                <dt class="text-gray-400">Country</dt>
+                <dd class="text-white">{{ s.country }}</dd>
+              {% endif %}
+              {% if s.manufacturer %}
+                <dt class="text-gray-400">Manufacturer</dt>
+                <dd class="text-white">{{ s.manufacturer }}</dd>
+              {% endif %}
+              {% if s.error_code %}
+                <dt class="text-gray-400">Error Code</dt>
+                <dd class="text-yellow-400">{{ s.error_code }}</dd>
+              {% endif %}
+              {% if s.error_text %}
+                <dt class="text-gray-400">Error Text</dt>
+                <dd class="text-yellow-400">{{ s.error_text }}</dd>
+              {% endif %}
+            </dl>
+          </div>
+        {% endif %}
+
+        {# Full details card #}
+        {% if result.details %}
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 class="text-base font-semibold text-white mb-3">Full Details</h2>
+            <dl class="space-y-1 text-xs">
+              {% for key, value in result.details.items() %}
+                <div class="flex gap-3 border-b border-gray-800/60 py-1">
+                  <dt class="text-gray-500 w-56 shrink-0">{{ key }}</dt>
+                  <dd class="text-gray-300 break-all">{{ value }}</dd>
+                </div>
+              {% endfor %}
+            </dl>
+          </div>
+        {% endif %}
+
+      {% endif %}
+
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a 17-character VIN and select a case to decode vehicle details.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Data sourced from the NHTSA vPIC database — no API key required.</span>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
