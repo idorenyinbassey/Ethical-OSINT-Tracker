@@ -1,54 +1,48 @@
 #!/bin/bash
-# Production Startup Script
+# Flask startup script
 
-set -e  # Exit on error
+set -e
 
-echo "🚀 Starting Ethical OSINT Tracker..."
-echo ""
+echo "Starting Ethical OSINT Tracker (Flask)..."
 
-# Check if virtual environment exists
+# Create virtual environment if needed
 if [ ! -d ".venv" ]; then
-    echo "📦 Creating virtual environment..."
+    echo "Creating virtual environment..."
     python -m venv .venv
 fi
 
-# Activate virtual environment
-echo "🔌 Activating virtual environment..."
 source .venv/bin/activate
 
-# Install dependencies
-echo "📚 Installing dependencies..."
+echo "Installing dependencies..."
 pip install -q -r requirements.txt
 
-# API encryption removed: storing API keys in plaintext for simpler setup.
-# If you need encryption later, reintroduce API_KEYS_FERNET_KEY handling.
-
-# Set default DB_URL if not provided (can be overridden externally)
+# Default DB
 if [ -z "$DB_URL" ]; then
     export DB_URL="sqlite:///./dev.db"
 fi
 
-echo "🗄  Using database URL: $DB_URL"
+echo "Using database: $DB_URL"
 
-# Optional: Run migrations (Alembic)
-if [ -d "alembic/versions" ] && [ "$(ls -A alembic/versions)" ]; then
-        echo "🔄 Running database migrations (alembic upgrade head)..."
-        alembic upgrade head || echo "⚠️ Alembic migration failed; continuing with SQLModel create_all fallback"
+# Only initialise the database on first run (when dev.db does not exist yet)
+# Pass --reset flag explicitly to recreate the admin account
+if [ "${1}" = "--reset-admin" ]; then
+    echo "Resetting admin account..."
+    python reset_admin.py
+elif [ ! -f "dev.db" ] && [ -z "$DB_URL" -o "$DB_URL" = "sqlite:///./dev.db" ]; then
+    echo "First run — initialising database and creating admin account..."
+    python reset_admin.py
+    echo "Admin account created. Change the password on first login."
+else
+    # Just initialise tables without resetting credentials
+    python -c "from app import create_app; app = create_app()"
 fi
 
-# Initialize database
-echo "💾 Initializing database (creates tables if not exists)..."
-python -c "from app.db import init_db; init_db(); print('✅ Database initialized')"
-
-# Start the application
 echo ""
-echo "✨ Starting Reflex application..."
-echo "📍 Demo credentials: admin / changeme"
+echo "Starting Flask application on http://0.0.0.0:3000"
 echo ""
 
-if [ "$HEADLESS" = "1" ] || [ "$HEADLESS" = "true" ]; then
-    echo "🌀 Headless mode enabled (backend-only). Set HEADLESS=0 to restore full UI."
-    reflex run --env prod --backend-only
+if [ "${FLASK_ENV:-development}" = "production" ]; then
+    python -m gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
 else
-    reflex run --env dev
+    python run.py
 fi

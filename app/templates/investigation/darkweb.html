@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dark Web Monitor – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Dark Web Monitor</h1>
+<p class="text-sm text-yellow-500 mb-6">Search AHMIA.fi — a public index of Tor hidden services (.onion). Results are cached from the AHMIA index; no Tor connection required. Only search for subjects relevant to authorised cases.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Search Term</label>
+        <input type="text" name="query" required placeholder="e.g. ransomware forum, leaked database"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+        <p class="text-xs text-gray-500 mt-1">Searches AHMIA's Tor index — results may include disturbing content.</p>
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Search Dark Web
+      </button>
+    </form>
+
+    <div class="mt-5 p-3 bg-yellow-900/20 border border-yellow-800 rounded-lg">
+      <p class="text-xs text-yellow-400 font-semibold mb-1">Legal Notice</p>
+      <p class="text-xs text-yellow-300">Search results reference public AHMIA index data. Accessing .onion URLs requires Tor Browser. Only access sites relevant to authorised investigations.</p>
+    </div>
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.error %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-300 text-sm">
+          {{ result.error }}
+        </div>
+      {% endif %}
+
+      {% if result.results %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold text-white">Results for "{{ result.query }}"</h2>
+            <span class="text-xs text-gray-500">{{ result.total }} found · via {{ result.source }}</span>
+          </div>
+          <div class="space-y-3">
+            {% for r in result.results %}
+              <div class="bg-gray-800 rounded-lg p-4">
+                <p class="text-sm font-medium text-indigo-300 mb-1">{{ r.title }}</p>
+                <p class="text-xs font-mono text-gray-400 mb-2 break-all">{{ r.url }}</p>
+                {% if r.description %}
+                  <p class="text-xs text-gray-300">{{ r.description }}</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% elif not result.error %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+          No results found for "{{ result.query }}" in AHMIA's index.
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a search term to query AHMIA's Tor hidden service index.<br>
+        <span class="text-xs text-gray-600 mt-2 block">No Tor connection required — AHMIA is a clearnet index of .onion services.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

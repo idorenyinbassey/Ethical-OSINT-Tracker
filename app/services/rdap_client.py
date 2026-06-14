@@ -4,16 +4,12 @@ from app.services.cache import cached
 
 
 @cached(ttl=24 * 3600)
-async def fetch_domain(domain: str) -> Optional[Dict]:
-    """Fetch domain registration data from public RDAP (no key required).
-
-    Returns a normalized dict with keys: registrar, status, ns, created, expires
-    On error, returns None (caller should fallback to mock).
-    """
+def fetch_domain(domain: str) -> Optional[Dict]:
+    """Fetch domain registration data from public RDAP (no key required)."""
     url = f"https://rdap.org/domain/{domain}"
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(url)
+        with httpx.Client(timeout=5) as client:
+            r = client.get(url)
             r.raise_for_status()
             data = r.json()
 
@@ -24,7 +20,6 @@ async def fetch_domain(domain: str) -> Optional[Dict]:
                     if "registrar" in roles:
                         v = ent.get("vcardArray", [])
                         if isinstance(v, list) and len(v) > 1:
-                            # vcardArray[1] is list of items [name, params, value]
                             for item in v[1]:
                                 if len(item) >= 3 and item[0] == "fn":
                                     registrar = item[3] if len(item) > 3 else item[2]

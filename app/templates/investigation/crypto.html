@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Crypto Address Lookup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Crypto / Blockchain Lookup</h1>
+<p class="text-sm text-yellow-500 mb-6">Trace Bitcoin and Ethereum wallet addresses — balance, transaction count, recent activity. Uses free public APIs (blockchain.info, blockcypher.com). Only investigate addresses relevant to authorised cases.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Wallet Address</label>
+        <input type="text" name="query" required placeholder="Bitcoin or Ethereum address"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm font-mono">
+        <p class="text-xs text-gray-500 mt-1">BTC: starts with 1, 3, or bc1 · ETH: starts with 0x</p>
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Lookup Address
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.error %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-5 text-red-300 text-sm">
+          {{ result.error }}
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="px-2 py-1 bg-yellow-900/40 text-yellow-300 rounded text-xs font-semibold">{{ result.coin }}</span>
+            <span class="text-xs text-gray-400 font-mono break-all">{{ result.address }}</span>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+            {% if result.balance_btc is defined %}
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Balance (BTC)</p>
+                <p class="text-lg font-bold text-white">{{ result.balance_btc }}</p>
+              </div>
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Total Received</p>
+                <p class="text-lg font-bold text-green-300">{{ result.total_received_btc }}</p>
+              </div>
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Total Sent</p>
+                <p class="text-lg font-bold text-red-300">{{ result.total_sent_btc }}</p>
+              </div>
+            {% elif result.balance_eth is defined %}
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Balance (ETH)</p>
+                <p class="text-lg font-bold text-white">{{ result.balance_eth }}</p>
+              </div>
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Total Received</p>
+                <p class="text-lg font-bold text-green-300">{{ result.total_received_eth }}</p>
+              </div>
+              <div class="bg-gray-800 rounded-lg p-3 text-center">
+                <p class="text-xs text-gray-400">Total Sent</p>
+                <p class="text-lg font-bold text-red-300">{{ result.total_sent_eth }}</p>
+              </div>
+            {% endif %}
+          </div>
+
+          <p class="text-sm text-gray-400">Total Transactions: <span class="text-white font-semibold">{{ result.tx_count }}</span></p>
+        </div>
+
+        {% if result.recent_txs %}
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 class="text-base font-semibold text-white mb-3">Recent Transactions</h2>
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-gray-400">Hash (truncated)</th>
+                  <th class="pb-2 text-right text-gray-400">Amount</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for tx in result.recent_txs %}
+                  <tr class="py-2">
+                    <td class="py-2 font-mono text-indigo-300">{{ tx.hash }}</td>
+                    <td class="py-2 text-right {% if tx.result_btc >= 0 %}text-green-300{% else %}text-red-300{% endif %}">
+                      {% if tx.result_btc >= 0 %}+{% endif %}{{ tx.result_btc }} BTC
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a Bitcoin or Ethereum wallet address to trace its activity.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Free public blockchain APIs — no API key required.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
