@@ -5,12 +5,8 @@ from app.repositories.api_config_repository import get_by_service
 
 
 @cached(ttl=3600)
-async def fetch_ip(ip: str) -> Optional[Dict]:
-    """Fetch IP intelligence and geolocation.
-
-    Prefer IPInfo configuration if enabled; otherwise return None and let caller fallback.
-    Normalized keys: city,country,asn,org,lat,lon
-    """
+def fetch_ip(ip: str) -> Optional[Dict]:
+    """Fetch IP intelligence and geolocation via IPInfo.io."""
     cfg = get_by_service("IPInfo")
     if not cfg or not cfg.is_enabled:
         return None
@@ -21,8 +17,8 @@ async def fetch_ip(ip: str) -> Optional[Dict]:
     if token:
         params["token"] = token
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(url, params=params)
+        with httpx.Client(timeout=5) as client:
+            r = client.get(url, params=params)
             r.raise_for_status()
             data = r.json()
             city = data.get("city")

@@ -45,6 +45,19 @@ def check_rate_limit(
     return False, 0
 
 
+class RateLimiter:
+    """Simple per-key in-memory rate limiter."""
+
+    def __init__(self, key: str, max_calls: int = 100, period: int = 3600):
+        self._key = key
+        self._max_calls = max_calls
+        self._period = period
+
+    def allow(self) -> bool:
+        allowed, _ = check_rate_limit(self._key, self._max_calls, self._period)
+        return allowed
+
+
 def get_rate_limit_key(user_id: int | None, resource: str) -> str:
     """Generate rate limit key for user + resource.
 

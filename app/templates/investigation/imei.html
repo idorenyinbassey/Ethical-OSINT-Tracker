@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}IMEI Lookup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">IMEI Device Lookup</h1>
+<p class="text-sm text-yellow-500 mb-6">Only investigate IMEI numbers with proper legal authorization.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">IMEI Number (15 digits)</label>
+        <input type="text" name="query" required placeholder="e.g. 356938035643809"
+          maxlength="17"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Lookup IMEI
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      {% if result.error %}
+        <div class="bg-gray-900 border border-yellow-800 rounded-xl p-4 text-yellow-400 text-sm">
+          {{ result.error }} — Configure IMEI Service in <a href="{{ url_for('settings.index') }}" class="underline">Settings</a>.
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-4">IMEI Details</h2>
+          <dl class="space-y-2 text-sm">
+            {% for key, value in result.items() %}
+              <div class="flex gap-4 border-b border-gray-800 pb-2">
+                <dt class="text-gray-400 w-40 shrink-0 capitalize">{{ key.replace('_', ' ') }}</dt>
+                <dd class="text-white">{{ value }}</dd>
+              </div>
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter an IMEI number and run lookup to see device details.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

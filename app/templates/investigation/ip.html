@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}IP Lookup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">IP Lookup</h1>
+<p class="text-sm text-yellow-500 mb-6">Only investigate IPs you are authorized to query.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Form -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">IP Address</label>
+        <input type="text" name="query" required placeholder="e.g. 8.8.8.8"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Run Lookup
+      </button>
+    </form>
+  </div>
+
+  <!-- Results -->
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.geo %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Geolocation (IPInfo)</h2>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <dt class="text-gray-400">City</dt><dd class="text-white">{{ result.geo.city or '—' }}</dd>
+            <dt class="text-gray-400">Country</dt><dd class="text-white">{{ result.geo.country or '—' }}</dd>
+            <dt class="text-gray-400">ASN</dt><dd class="text-white">{{ result.geo.asn or '—' }}</dd>
+            <dt class="text-gray-400">Organization</dt><dd class="text-white">{{ result.geo.org or '—' }}</dd>
+            {% if result.geo.lat %}
+              <dt class="text-gray-400">Coordinates</dt>
+              <dd class="text-white">{{ result.geo.lat }}, {{ result.geo.lon }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if result.virustotal %}
+        {% set vt = result.virustotal %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">VirusTotal Threat Intelligence</h2>
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="bg-red-900/30 border border-red-800 rounded-lg p-3 text-center">
+              <p class="text-xs text-red-400">Malicious</p>
+              <p class="text-2xl font-bold text-red-400">{{ vt.malicious_count }}</p>
+            </div>
+            <div class="bg-yellow-900/30 border border-yellow-800 rounded-lg p-3 text-center">
+              <p class="text-xs text-yellow-400">Suspicious</p>
+              <p class="text-2xl font-bold text-yellow-400">{{ vt.suspicious_count }}</p>
+            </div>
+            <div class="bg-green-900/30 border border-green-800 rounded-lg p-3 text-center">
+              <p class="text-xs text-green-400">Harmless</p>
+              <p class="text-2xl font-bold text-green-400">{{ vt.harmless_count }}</p>
+            </div>
+          </div>
+          {% if vt.categories %}
+            <p class="text-xs text-gray-400 mb-1">Categories</p>
+            <div class="flex flex-wrap gap-1">
+              {% for cat in vt.categories %}
+                <span class="px-2 py-0.5 bg-red-900/50 text-red-300 rounded text-xs">{{ cat }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if result.shodan %}
+        {% set sh = result.shodan %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Shodan Port Scan</h2>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-3">
+            <dt class="text-gray-400">Organization</dt><dd class="text-white">{{ sh.organization }}</dd>
+            <dt class="text-gray-400">Last Seen</dt><dd class="text-white">{{ sh.last_seen }}</dd>
+          </dl>
+          {% if sh.open_ports %}
+            <p class="text-xs text-gray-400 mb-2">Open Ports</p>
+            <div class="flex flex-wrap gap-1">
+              {% for port in sh.open_ports %}
+                <span class="px-2 py-0.5 bg-blue-900/50 text-blue-300 rounded text-xs">{{ port }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if sh.vulnerabilities %}
+            <p class="text-xs text-red-400 mt-3 mb-1">Detected Vulnerabilities</p>
+            <div class="flex flex-wrap gap-1">
+              {% for cve in sh.vulnerabilities %}
+                <span class="px-2 py-0.5 bg-red-900/50 text-red-300 rounded text-xs">{{ cve }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter an IP address and run lookup to see results.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

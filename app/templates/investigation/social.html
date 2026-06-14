@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Social Search – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Social Media Search</h1>
+<p class="text-sm text-yellow-500 mb-6">Only search usernames with proper authorization. Respect platform Terms of Service.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Username</label>
+        <input type="text" name="query" required placeholder="e.g. johndoe"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Search Platforms
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-800">
+              <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Platform</th>
+              <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Status</th>
+              <th class="px-4 py-3 text-left text-xs text-gray-400 uppercase">Link</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for r in result %}
+              <tr class="hover:bg-gray-800/50">
+                <td class="px-4 py-3 text-white">{{ r.platform }}</td>
+                <td class="px-4 py-3">
+                  {% if r.exists %}
+                    <span class="px-2 py-0.5 bg-green-900/50 text-green-300 rounded text-xs">Found</span>
+                  {% else %}
+                    <span class="px-2 py-0.5 bg-gray-800 text-gray-500 rounded text-xs">Not found</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  {% if r.url %}
+                    <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer"
+                       class="text-indigo-400 hover:text-indigo-300 text-xs truncate max-w-xs block">
+                      {{ r.url }}
+                    </a>
+                  {% else %}
+                    <span class="text-gray-600 text-xs">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a username and search to see platform results.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

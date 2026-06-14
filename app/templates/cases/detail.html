@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ case.title }} – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="flex items-start justify-between mb-6">
+  <div>
+    <a href="{{ url_for('cases.index') }}" class="text-gray-400 hover:text-white text-sm mb-2 inline-block">← Back to Cases</a>
+    <h1 class="text-2xl font-bold text-white">{{ case.title }}</h1>
+  </div>
+  <a href="{{ url_for('cases.edit', case_id=case.id) }}"
+     class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+    Edit
+  </a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <h2 class="text-base font-semibold text-white mb-3">Details</h2>
+    <dl class="space-y-3 text-sm">
+      <div class="flex gap-4">
+        <dt class="text-gray-400 w-28">Status</dt>
+        <dd>
+          <span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if case.status == 'open' %}bg-green-900/50 text-green-300
+            {% elif case.status == 'in_progress' %}bg-blue-900/50 text-blue-300
+            {% else %}bg-gray-700 text-gray-400{% endif %}">
+            {{ case.status.replace('_', ' ').title() }}
+          </span>
+        </dd>
+      </div>
+      <div class="flex gap-4">
+        <dt class="text-gray-400 w-28">Priority</dt>
+        <dd>
+          <span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if case.priority == 'critical' %}bg-red-900/50 text-red-300
+            {% elif case.priority == 'high' %}bg-orange-900/50 text-orange-300
+            {% elif case.priority == 'medium' %}bg-yellow-900/50 text-yellow-300
+            {% else %}bg-gray-700 text-gray-400{% endif %}">
+            {{ case.priority.title() }}
+          </span>
+        </dd>
+      </div>
+      <div class="flex gap-4">
+        <dt class="text-gray-400 w-28">Created</dt>
+        <dd class="text-white">{{ case.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+      </div>
+      {% if case.description %}
+        <div class="flex gap-4">
+          <dt class="text-gray-400 w-28">Description</dt>
+          <dd class="text-white">{{ case.description }}</dd>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <h2 class="text-base font-semibold text-white mb-3">Actions</h2>
+    <div class="space-y-2">
+      <a href="{{ url_for('investigation.ip') }}?case_id={{ case.id }}"
+         class="block w-full text-center bg-gray-800 hover:bg-gray-700 text-white text-sm py-2 rounded-lg transition-colors">
+        Run IP Lookup
+      </a>
+      <a href="{{ url_for('investigation.domain') }}?case_id={{ case.id }}"
+         class="block w-full text-center bg-gray-800 hover:bg-gray-700 text-white text-sm py-2 rounded-lg transition-colors">
+        Run Domain Lookup
+      </a>
+      <form method="post" action="{{ url_for('cases.delete', case_id=case.id) }}"
+            onsubmit="return confirm('Delete this case and all linked investigations?')">
+        <button type="submit" class="w-full bg-red-900/30 hover:bg-red-900/50 text-red-400 text-sm py-2 rounded-lg transition-colors">
+          Delete Case
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
