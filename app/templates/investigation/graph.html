@@ -59,8 +59,8 @@ fetch("{{ url_for('investigation.graph_data') }}")
 
     const edges = data.edges.map(e => ({
       from: e.from, to: e.to,
-      color: { color: "#6b7280", opacity: 0.8 },
-      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      color: { color: e.color || "#1f2937", opacity: 1.0 },
+      arrows: { to: { enabled: true, scaleFactor: 0.6 } },
     }));
 
     const container = document.getElementById("graph-container");

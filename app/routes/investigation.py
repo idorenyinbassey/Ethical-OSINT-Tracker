@@ -49,16 +49,19 @@ def _investigation_before():
     from flask_login import current_user
     if not current_user.is_authenticated:
         return
-    # Save case selection to session on POST
-    if request.method == 'POST':
-        cid = _safe_case_id(request.form.get('case_id'))
-        if cid:
-            session['active_case_id'] = cid
     # Require at least one case to exist
     cases = _cases_for_select()
     if not cases:
         flash("Please create a case first before running investigations.", "error")
         return redirect(url_for('cases.new'))
+    # On POST, a case must be explicitly selected
+    if request.method == 'POST':
+        cid = _safe_case_id(request.form.get('case_id'))
+        if cid:
+            session['active_case_id'] = cid
+        else:
+            flash("You must select a case before running this tool.", "error")
+            return redirect(request.url)
 
 
 # ── index ────────────────────────────────────────────────────────────────────
@@ -450,7 +453,6 @@ def graph_data():
             "title": f"Case: {case.title}\nStatus: {case.status}\nPriority: {case.priority}",
         })
 
-    seen_entities = {}
     for inv in invs:
         inv_node_id = f"inv-{inv.id}"
         label = f"{inv.query[:20]}\n({inv.kind.replace('_', ' ')})"
@@ -462,6 +464,23 @@ def graph_data():
         })
         if inv.case_id:
             edges.append({"from": f"case-{inv.case_id}", "to": inv_node_id})
+        # Expand subdomain results as child nodes
+        if inv.kind == "subdomain" and inv.result_json:
+            try:
+                sd_data = json.loads(inv.result_json)
+                for i, sub in enumerate(sd_data.get("subdomains", [])[:50]):
+                    hostname = sub.get("hostname", "")
+                    if hostname:
+                        sub_node_id = f"sub-{inv.id}-{i}"
+                        nodes.append({
+                            "id": sub_node_id,
+                            "label": hostname[:28],
+                            "group": "subdomain",
+                            "title": f"Subdomain: {hostname}\nIP: {sub.get('ip', 'unresolved')}",
+                        })
+                        edges.append({"from": inv_node_id, "to": sub_node_id, "color": "#6ee7b7"})
+            except Exception:
+                pass
 
     return jsonify({"nodes": nodes, "edges": edges})
 
