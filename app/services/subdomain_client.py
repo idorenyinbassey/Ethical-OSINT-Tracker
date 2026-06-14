@@ -71,7 +71,7 @@ def _get_dns_info(domain: str) -> dict:
 
 @cached(ttl=3600)
 def scan_domain(domain: str) -> dict:
-    domain = domain.lower().strip().lstrip("www.").split("/")[0]
+    domain = domain.lower().strip().removeprefix("www.").split("/")[0]
     ct_subs = _crt_sh_subdomains(domain)
     all_subs = list(set(_WORDLIST) | set(ct_subs))
 

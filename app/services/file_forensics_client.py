@@ -53,24 +53,24 @@ def _image(path: Path) -> dict:
                     for tag_id, val in raw.items():
                         tag = ExifTags.TAGS.get(tag_id, str(tag_id))
                         if tag == "GPSInfo":
-                            gps = {}
                             try:
                                 from PIL.ExifTags import GPSTAGS
-                                for k, v in val.items():
-                                    gps[GPSTAGS.get(k, k)] = str(v)
-                                    if "GPSLatitude" in gps and "GPSLongitude" in gps:
-                                        lat = raw[tag_id].get(2)
-                                        lon = raw[tag_id].get(4)
-                                        lat_ref = str(raw[tag_id].get(1, "N"))
-                                        lon_ref = str(raw[tag_id].get(3, "E"))
-                                        if lat and lon:
-                                            ld = float(lat[0]) + float(lat[1]) / 60 + float(lat[2]) / 3600
-                                            lo = float(lon[0]) + float(lon[1]) / 60 + float(lon[2]) / 3600
-                                            if lat_ref == "S":
-                                                ld = -ld
-                                            if lon_ref == "W":
-                                                lo = -lo
-                                            exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
+                                if not isinstance(val, dict):
+                                    continue
+                                gps = {GPSTAGS.get(k, k): v for k, v in val.items()}
+                                if "GPSLatitude" in gps and "GPSLongitude" in gps:
+                                    lat = val.get(2)
+                                    lon = val.get(4)
+                                    lat_ref = str(val.get(1, "N"))
+                                    lon_ref = str(val.get(3, "E"))
+                                    if lat and lon:
+                                        ld = float(lat[0]) + float(lat[1]) / 60 + float(lat[2]) / 3600
+                                        lo = float(lon[0]) + float(lon[1]) / 60 + float(lon[2]) / 3600
+                                        if lat_ref == "S":
+                                            ld = -ld
+                                        if lon_ref == "W":
+                                            lo = -lo
+                                        exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
                             except Exception:
                                 pass
                         elif val is None:

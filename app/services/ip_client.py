@@ -1,5 +1,6 @@
-"""IP geolocation — uses ip-api.com (free, no API key) as primary source.
+"""IP geolocation — uses ipapi.co (free, HTTPS, no key) as primary source.
 
+ip-api.com is used as HTTP fallback (free tier only supports HTTP).
 IPInfo.io is used as a secondary enrichment source when configured.
 """
 import httpx
@@ -10,8 +11,10 @@ from app.repositories.api_config_repository import get_by_service
 
 @cached(ttl=3600)
 def fetch_ip(ip: str) -> Optional[Dict]:
-    """Return geolocation/ASN data. ip-api.com is tried first (free, no key required)."""
-    result = _from_ip_api(ip)
+    """Return geolocation/ASN data. Tries HTTPS sources first."""
+    result = _from_ipapi_co(ip)
+    if not result:
+        result = _from_ip_api(ip)
     if result:
         ipinfo = _from_ipinfo(ip)
         if ipinfo:
@@ -22,8 +25,40 @@ def fetch_ip(ip: str) -> Optional[Dict]:
     return _from_ipinfo(ip)
 
 
+def _from_ipapi_co(ip: str) -> Optional[Dict]:
+    """ipapi.co — free, HTTPS, no key required, 1000 req/day."""
+    try:
+        with httpx.Client(timeout=6) as client:
+            r = client.get(
+                f"https://ipapi.co/{ip}/json/",
+                headers={"User-Agent": "OSINT-Tracker/1.0"},
+            )
+            r.raise_for_status()
+            d = r.json()
+        if d.get("error"):
+            return None
+        org = d.get("org") or ""
+        asn = d.get("asn") or (org.split()[0] if org and org.startswith("AS") else "")
+        return {
+            "city": d.get("city", ""),
+            "region": d.get("region", ""),
+            "country": d.get("country_name", ""),
+            "country_code": d.get("country_code", ""),
+            "isp": d.get("org", ""),
+            "org": org,
+            "asn": asn,
+            "asn_name": d.get("org", "").split(" ", 1)[1] if " " in org else "",
+            "lat": d.get("latitude"),
+            "lon": d.get("longitude"),
+            "zip": d.get("postal", ""),
+            "source": "ipapi.co",
+        }
+    except Exception:
+        return None
+
+
 def _from_ip_api(ip: str) -> Optional[Dict]:
-    """ip-api.com — free tier, 45 req/min, no key needed."""
+    """ip-api.com — free tier, 45 req/min, no key needed. HTTP only on free tier."""
     fields = "status,message,country,countryCode,regionName,city,zip,lat,lon,isp,org,as,asname"
     try:
         with httpx.Client(timeout=6) as client:
@@ -58,6 +93,10 @@ def _from_ipinfo(ip: str) -> Optional[Dict]:
     if not cfg or not cfg.is_enabled:
         return None
     base = (cfg.base_url or "https://ipinfo.io").rstrip("/")
+    from urllib.parse import urlparse
+    parsed = urlparse(base)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return None
     params: dict = {}
     if cfg.api_key:
         params["token"] = cfg.api_key

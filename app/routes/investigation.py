@@ -275,6 +275,9 @@ def file_forensics():
             return render_template("investigation/file_forensics.html", cases=cases, result=None)
 
         filename = secure_filename(uploaded.filename)
+        if not filename:
+            flash("Invalid filename — rename the file and try again.", "error")
+            return render_template("investigation/file_forensics.html", cases=cases, result=None)
         upload_dir = current_app.config["UPLOAD_FOLDER"]
         os.makedirs(upload_dir, exist_ok=True)
         filepath = Path(upload_dir) / filename

@@ -67,6 +67,7 @@ def _eth(address: str) -> dict:
                 "total_received_eth": round(data.get("total_received", 0) / 1e18, 8),
                 "total_sent_eth": round(data.get("total_sent", 0) / 1e18, 8),
                 "tx_count": data.get("n_tx", 0),
+                "recent_txs": [],
             }
         return {"address": address, "coin": "Ethereum", "error": f"HTTP {r.status_code}"}
     except Exception as exc:
