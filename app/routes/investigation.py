@@ -485,6 +485,150 @@ def graph_data():
     return jsonify({"nodes": nodes, "edges": edges})
 
 
+# ── Company Registry Search ───────────────────────────────────────────────────
+
+@investigation_bp.route("/company", methods=["GET", "POST"])
+@login_required
+def company():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        name = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not name:
+            flash("Company name is required.", "error")
+            return render_template("investigation/company.html", cases=cases, result=None)
+
+        from app.services import company_client
+        from app.repositories.api_config_repository import get_by_service
+        uk_cfg = get_by_service("companies_house")
+        uk_key = uk_cfg.api_key if uk_cfg and uk_cfg.is_enabled else None
+        result = company_client.search_companies(name, uk_api_key=uk_key)
+
+        create_investigation(kind="company", query=name, result_json=json.dumps(result),
+                             user_id=current_user.id, case_id=case_id)
+        total = sum(len(v.get("found", [])) for v in result.get("results", {}).values())
+        flash(f"Company search for '{name}' complete — {total} results across registries.", "success")
+
+    return render_template("investigation/company.html", cases=cases, result=result)
+
+
+# ── Person / Full Name Search ─────────────────────────────────────────────────
+
+@investigation_bp.route("/person", methods=["GET", "POST"])
+@login_required
+def person():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        name = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not name:
+            flash("Full name is required.", "error")
+            return render_template("investigation/person.html", cases=cases, result=None)
+
+        from app.services.person_client import search_person
+        result = search_person(name)
+
+        create_investigation(kind="person", query=name, result_json=json.dumps(result),
+                             user_id=current_user.id, case_id=case_id)
+        flash(f"Person investigation links generated for '{name}'.", "success")
+
+    return render_template("investigation/person.html", cases=cases, result=result)
+
+
+# ── Vehicle / VIN Lookup ──────────────────────────────────────────────────────
+
+@investigation_bp.route("/vehicle", methods=["GET", "POST"])
+@login_required
+def vehicle():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        vin = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not vin:
+            flash("VIN is required.", "error")
+            return render_template("investigation/vehicle.html", cases=cases, result=None)
+
+        from app.services.vehicle_client import decode_vin
+        result = decode_vin(vin)
+
+        create_investigation(kind="vehicle", query=vin, result_json=json.dumps(result),
+                             user_id=current_user.id, case_id=case_id)
+        if result.get("error"):
+            flash(f"VIN decode error: {result['error']}", "error")
+        else:
+            s = result.get("summary", {})
+            flash(f"VIN decoded: {s.get('year','')} {s.get('make','')} {s.get('model','')}.", "success")
+
+    return render_template("investigation/vehicle.html", cases=cases, result=result)
+
+
+# ── Location Map ──────────────────────────────────────────────────────────────
+
+@investigation_bp.route("/map")
+@login_required
+def location_map():
+    return render_template("investigation/map.html")
+
+
+@investigation_bp.route("/map/data")
+@login_required
+def map_data():
+    """Return JSON markers extracted from geo-tagged investigations."""
+    from app.repositories.investigation_repository import list_recent
+    invs = list_recent(500)
+    markers = []
+
+    for inv in invs:
+        if not inv.result_json:
+            continue
+        try:
+            data = json.loads(inv.result_json)
+        except Exception:
+            continue
+
+        lat = lon = label = info = None
+
+        if inv.kind == "ip":
+            geo = data.get("geo") or {}
+            lat = geo.get("lat")
+            lon = geo.get("lon")
+            if lat and lon:
+                label = f"IP: {inv.query}"
+                info = f"{geo.get('city', '')}, {geo.get('country', '')}<br>ISP: {geo.get('isp', '')}"
+
+        elif inv.kind == "file_forensics":
+            coords = (data.get("metadata") or {}).get("GPS_Coordinates") or \
+                     (data.get("metadata") or {}).get("GPS_Coordinates")
+            if not coords:
+                coords = data.get("metadata", {}).get("GPS_Coordinates")
+            if coords and isinstance(coords, str) and "," in coords:
+                try:
+                    parts = coords.split(",")
+                    lat = float(parts[0].strip())
+                    lon = float(parts[1].strip())
+                    label = f"Image GPS: {inv.query}"
+                    info = (data.get("location") or
+                            (data.get("metadata") or {}).get("GPS_Location") or
+                            coords)
+                except (ValueError, IndexError):
+                    pass
+
+        if lat is not None and lon is not None:
+            markers.append({
+                "lat": lat,
+                "lon": lon,
+                "label": label,
+                "info": info or "",
+                "kind": inv.kind,
+                "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
+            })
+
+    return jsonify({"markers": markers})
+
+
 # ── Plugins ───────────────────────────────────────────────────────────────────
 
 @investigation_bp.route("/plugins")
