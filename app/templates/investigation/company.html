@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Company Registry Search – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Company Registry Search</h1>
+<p class="text-sm text-yellow-500 mb-6">
+  Searches US EDGAR, UK Companies House, CAC Nigeria, and Canadian registries.
+  Only search companies you are authorised to investigate.
+</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  {# ── Left column: search form ── #}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Case</label>
+        <select name="case_id" required
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+          <option value="" disabled selected>Select case...</option>
+          {% for case in cases %}
+            <option value="{{ case.id }}">{{ case.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Company Name</label>
+        <input type="text" name="query" required placeholder="e.g. Acme Corporation"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Search Registries
+      </button>
+    </form>
+  </div>
+
+  {# ── Right column: results ── #}
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+
+      {# ── US EDGAR ── #}
+      {% set us = result.results.us_edgar %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+          <span class="text-sm font-semibold text-white">{{ us.source }}</span>
+          {% if us.total is defined and us.total is not none %}
+            <span class="text-xs text-gray-400">{{ us.total }} total hit{{ 's' if us.total != 1 }}</span>
+          {% endif %}
+        </div>
+        <div class="p-4">
+          {% if us.error %}
+            <p class="text-red-400 text-sm">{{ us.error }}</p>
+          {% elif us.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Entity</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Form</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Filed</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Period</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Link</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in us.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.form or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.filed or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.period or '—' }}</td>
+                    <td class="py-2">
+                      <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
+                         class="text-indigo-400 hover:text-indigo-300 text-xs">EDGAR</a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── UK Companies House ── #}
+      {% set uk = result.results.uk %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+          <span class="text-sm font-semibold text-white">{{ uk.source }}</span>
+          {% if uk.total is defined and uk.total is not none %}
+            <span class="text-xs text-gray-400">{{ uk.total }} total hit{{ 's' if uk.total != 1 }}</span>
+          {% endif %}
+        </div>
+        <div class="p-4">
+          {% if uk.error %}
+            <p class="text-red-400 text-sm">{{ uk.error }}</p>
+          {% elif uk.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Name</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Number</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Type</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Address</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Link</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in uk.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.number or '—' }}</td>
+                    <td class="py-2 pr-3">
+                      {% if item.status == 'active' %}
+                        <span class="px-1.5 py-0.5 bg-green-900/50 text-green-300 rounded text-xs">Active</span>
+                      {% elif item.status %}
+                        <span class="px-1.5 py-0.5 bg-gray-700 text-gray-300 rounded text-xs">{{ item.status | title }}</span>
+                      {% else %}
+                        <span class="text-gray-500 text-xs">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.address or '—' }}</td>
+                    <td class="py-2">
+                      <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
+                         class="text-indigo-400 hover:text-indigo-300 text-xs">View</a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── CAC Nigeria ── #}
+      {% set ng = result.results.nigeria %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ ng.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if ng.error %}
+            <p class="text-red-400 text-sm">{{ ng.error }}</p>
+          {% endif %}
+          {% if ng.note %}
+            <p class="text-gray-400 text-sm mb-2">{{ ng.note }}
+              {% if ng.manual_url %}
+                <a href="{{ ng.manual_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-400 hover:text-indigo-300 underline">Search manually</a>
+              {% endif %}
+            </p>
+          {% endif %}
+          {% if ng.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Name</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">RC Number</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Type</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in ng.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.rc_number or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.status or '—' }}</td>
+                    <td class="py-2 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% elif not ng.error and not ng.note %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── Corporations Canada ── #}
+      {% set ca = result.results.canada %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ ca.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if ca.error %}
+            <p class="text-red-400 text-sm">{{ ca.error }}</p>
+          {% elif ca.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Name</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Number</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Link</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in ca.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.number or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.status or '—' }}</td>
+                    <td class="py-2">
+                      {% if item.url %}
+                        <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"
+                           class="text-indigo-400 hover:text-indigo-300 text-xs">View</a>
+                      {% else %}
+                        <span class="text-gray-600 text-xs">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── Cyprus DRCOR ── #}
+      {% set cy = result.results.cyprus %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ cy.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if cy.error %}
+            <p class="text-red-400 text-sm">{{ cy.error }}</p>
+          {% endif %}
+          {% if cy.note %}
+            <p class="text-gray-400 text-sm">{{ cy.note }}
+              {% if cy.manual_url %}
+                <a href="{{ cy.manual_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-400 hover:text-indigo-300 underline ml-1">Open DRCOR portal</a>
+              {% endif %}
+            </p>
+          {% elif not cy.error %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Select a case and enter a company name to search across five registries simultaneously.
+        <span class="block text-xs text-gray-600 mt-2">
+          US EDGAR and Canada require no API key. UK Companies House requires a key configured in Settings.
+        </span>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
