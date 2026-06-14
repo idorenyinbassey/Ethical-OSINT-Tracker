@@ -28,7 +28,7 @@ This error typically occurs when:
    - Chrome: Ctrl+Shift+N (Windows) or Cmd+Shift+N (Mac)
    - Firefox: Ctrl+Shift+P (Windows) or Cmd+Shift+P (Mac)
    - Safari: Cmd+Shift+N
-2. Go to: https://console.developers.google.com/billing/enable?project=654446915094
+2. Go to: https://console.cloud.google.com/billing
 3. Try enabling billing again
 4. If it works, you can close incognito and use regular browser afterward
 
@@ -103,11 +103,11 @@ This error typically occurs when:
    - (Optional) Click "Restrict Key" → Select "Cloud Vision API"
 
 5. **Update OSINT Tracker**:
-   - Go to Settings → API Integrations
-   - Select "Google Cloud Vision AI"
-   - Paste new API key
-   - Click "Test API Connection"
-   - Should show: ✅ Connection Successful!
+   - Go to Settings in the OSINT Tracker sidebar
+   - Find the **ImageRecognition** service card
+   - Paste new API key, toggle **Enabled** on
+   - Click **Save**
+   - Test by uploading an image on the Image Forensics page
 
 ### Solution 5: Use Alternative Google Account
 
@@ -172,11 +172,9 @@ If billing continues to fail, you have options:
 - ❌ Web entity detection
 
 **How to Use**:
-1. Settings → API Integrations → Google Cloud Vision AI
-2. Toggle "Enable this API" **OFF**
-3. Go to Investigation → Image Recognition
-4. Upload image
-5. Metadata still extracts automatically (no API needed)
+1. Settings → ImageRecognition card → uncheck **Enabled** → Save
+2. Go to Investigation → Image Forensics
+3. Upload image — EXIF metadata extracts automatically (no API needed)
 
 ### Option B: Use Different API Provider
 
@@ -302,7 +300,7 @@ After trying solutions, verify:
 
 1. **OSINT Tracker Support**:
    - Check terminal logs for errors
-   - Review `GOOGLE_VISION_API_FIX_PLAN.md`
+   - See [ENABLE_GOOGLE_CLOUD_BILLING.md](./ENABLE_GOOGLE_CLOUD_BILLING.md) for setup steps
    - Use built-in metadata extractor as fallback
 
 2. **Google Cloud Support**:

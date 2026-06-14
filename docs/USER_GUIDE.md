@@ -1,501 +1,294 @@
 # User Guide
 
-Complete guide to using Ethical OSINT Tracker for investigations.
-
-## Table of Contents
-- [Getting Started](#getting-started)
-- [Dashboard](#dashboard)
-- [Investigation Tools](#investigation-tools)
-- [Case Management](#case-management)
-- [Intelligence Reports](#intelligence-reports)
-- [Team Collaboration](#team-collaboration)
-- [Settings & Configuration](#settings--configuration)
-- [Best Practices](#best-practices)
+Complete guide to using Ethical OSINT Tracker.
 
 ## Getting Started
 
 ### First Login
 
-1. Navigate to http://localhost:3000
-2. Click **Login** or use `/login` route
-3. Enter default credentials:
+1. Start the app: `python run.py`
+2. Open [http://localhost:3000](http://localhost:3000)
+3. Log in with the demo credentials:
    - Username: `admin`
    - Password: `changeme`
-4. **Important**: Change password after first login
+4. **Change this password immediately** — go to Settings after your first login.
 
-### Dashboard Overview
+### Navigation
 
-The dashboard provides:
-- **Quick Statistics**: Active investigations, threat alerts, cases closed
-- **Recent Activity**: Investigation history timeline
-- **Threat Trends**: Visual analytics over time
-- **Quick Actions**: One-click access to common tasks
+The sidebar on the left gives access to everything:
+
+| Section | Pages |
+|---------|-------|
+| **Dashboard** | Overview, recent history, stats |
+| **Investigate** | IP Lookup, Domain WHOIS, Subdomain Scanner, Email Analysis, Email Header Analyser, Social Search, Phone Lookup, MAC Vendor Lookup, File & Document Forensics, Crypto Lookup, IMEI Lookup |
+| **Manage** | Cases, API Settings |
+
+---
 
 ## Investigation Tools
 
-### Domain Intelligence
-
-**Purpose**: Analyze domain ownership, history, and DNS records.
-
-**Steps**:
-1. Navigate to **Investigate** → **Domain** tab
-2. Enter domain (e.g., `example.com`)
-3. Click **Lookup Domain**
-4. Review results:
-   - Registrar information
-   - Creation/expiration dates
-   - Name servers
-   - DNS record count
-   - WHOIS status
-
-**Use Cases**:
-- Verify domain legitimacy
-- Identify phishing domains
-- Track domain ownership changes
-- Investigate suspicious websites
-
-### IP Geolocation
-
-**Purpose**: Locate and profile IP addresses.
-
-**Steps**:
-1. Go to **Investigate** → **IP Address** tab
-2. Enter IP address (e.g., `8.8.8.8`)
-3. Click **Lookup IP**
-4. Analyze:
-   - Geographic location (city, country)
-   - ISP and ASN information
-   - Threat score (0-100)
-   - Proxy/VPN detection
-
-**Use Cases**:
-- Identify attack sources
-- Verify server locations
-- Detect proxy usage
-- Map network infrastructure
-
-### Email Analysis
-
-**Purpose**: Validate emails and check breach history.
-
-**Steps**:
-1. Select **Investigate** → **Email** tab
-2. Enter email address
-3. Click **Check Email**
-4. Review:
-   - Format validity
-   - Disposable email detection
-   - Breach count
-   - Domain reputation
-   - Last known breach date
-
-**Use Cases**:
-- Verify email authenticity
-- Check account compromise
-- Identify disposable emails
-- Assess sender reputation
-
-### Social Media OSINT
-
-**Purpose**: Find social media profiles by username.
-
-**Steps**:
-1. Navigate to **Investigate** → **Social Media** tab
-2. Enter username
-3. Click **Search Profiles**
-4. View discovered profiles:
-   - Platform name
-   - Account existence
-   - Direct profile URLs
-
-**Supported Platforms**:
-- Twitter/X
-- Instagram
-- Facebook
-- LinkedIn
-- GitHub
-- TikTok
-- Reddit
-
-**Use Cases**:
-- Verify identity across platforms
-- Track online presence
-- Investigate fake accounts
-- Link related accounts
-
-### Phone Intelligence
-
-**Purpose**: Validate and profile phone numbers.
-
-**Steps**:
-1. Go to **Investigate** → **Phone** tab
-2. Enter phone number (international format: +1234567890)
-3. Click **Lookup Phone**
-4. Results include:
-   - Validation status
-   - Number type (mobile/landline)
-   - Carrier information
-   - Location and timezone
-   - Fraud score and risk level
-
-**Risk Levels**:
-- 🟢 Low (0-30): Legitimate number
-- 🟡 Medium (31-69): Moderate risk
-- 🔴 High (70-100): High fraud risk
-
-**Use Cases**:
-- Verify caller identity
-- Detect spoofed numbers
-- Assess fraud risk
-- Geographic profiling
-
-### Image Forensics
-
-**Purpose**: Extract metadata and identify persons in images.
-
-**Steps**:
-1. Select **Investigate** → **Image Analysis** tab
-2. Upload image or provide URL
-3. Click **Analyze Image**
-4. Review findings:
-   - Identified persons (mock recognition)
-   - Associated email addresses
-   - Social media profiles
-   - Media mentions
-   - EXIF metadata (camera, location, timestamp)
-
-**Use Cases**:
-- Reverse image search
-- Identify photo subjects
-- Extract geolocation data
-- Verify image authenticity
-
-### IMEI/Device Tracking
-
-**Purpose**: Identify mobile devices and check blacklist status.
-
-**Steps**:
-1. Navigate to **Investigate** → **IMEI** tab
-2. Enter 15-digit IMEI number
-3. Click **Lookup IMEI**
-4. Analyze:
-   - Device validity
-   - Brand and model
-   - Specifications
-   - Blacklist status
-   - Theft records
-   - Warranty status
-   - Carrier lock
-   - Risk assessment
-
-**Use Cases**:
-- Verify device legitimacy
-- Check stolen device databases
-- Identify counterfeit devices
-- Track device origin
-
-### Network Graph
-
-**Purpose**: Visualize relationships between investigated entities.
-
-**Access**: Available after performing investigations
-
-**Features**:
-- **Entity Cards**: Grouped by type (domain, IP, email, person, device)
-- **Connection View**: Shows relationships and labels
-- **Color Coding**:
-  - 🔵 Blue: Domains
-  - 🟢 Green: IP addresses
-  - 🟣 Purple: Emails
-  - 🟠 Orange: Persons
-  - 🟣 Indigo: Phone numbers
-  - 🔴 Red: Breaches
-
-**Use Cases**:
-- Map attack infrastructure
-- Identify linked accounts
-- Visualize investigation scope
-- Generate relationship diagrams
-
-## Case Management
-
-### Creating Cases
-
-1. Navigate to **Cases** page
-2. Click **+ New Case**
-3. Fill in details:
-   - **Title**: Case identifier
-   - **Description**: Overview and objectives
-   - **Priority**: Low / Medium / High
-4. Click **Create Case**
-
-### Managing Cases
-
-**Actions**:
-- **Delete**: Remove case permanently
-- **Export**: Download case data (JSON/CSV)
-- **Status**: Toggle between Open/Closed
-
-**Priority Indicators**:
-- 🔴 High: Urgent investigations
-- 🟡 Medium: Standard priority
-- 🟢 Low: Routine checks
-
-### Linking Investigations
-
-Cases can be linked to:
-- Intelligence reports
-- Team collaborations
-- Specific investigations (via export)
-
-## Intelligence Reports
-
-### Creating Reports
-
-1. Go to **Reports** page
-2. Click **+ New Report**
-3. Configure:
-   - **Title**: Report name
-   - **Summary**: Executive summary
-   - **Indicators**: Comma-separated IOCs
-   - **Related Case**: Link to existing case (optional)
-4. Click **Create Report**
-
-### Auto-Enrichment
-
-**Feature**: Automatically pull indicators from recent investigations.
-
-1. Click **Enrich from Investigations**
-2. System analyzes last 20 investigations
-3. Extracts domains, IPs, emails
-4. Fetches additional context via APIs:
-   - Domain WHOIS (RDAP)
-   - IP geolocation
-   - Email breaches
-5. Categorizes by threat level:
-   - 🟢 Low
-   - 🟡 Medium
-   - 🔴 High
-
-### Exporting Reports
-
-1. Open desired report
-2. Click **Export (JSON)** or **Export (CSV)**
-3. Copy formatted data
-4. Paste into documentation or SIEM
-
-**JSON Format**:
-```json
-{
-  "title": "Report Title",
-  "summary": "Executive summary",
-  "indicators": ["domain.com", "1.2.3.4"],
-  "created_at": "2025-11-24T..."
-}
-```
-
-**CSV Format**: Compatible with Excel and data analysis tools.
-
-## Team Collaboration
-
-### Creating Teams
-
-1. Navigate to **Team** page
-2. Click **+ Create Team**
-3. Enter:
-   - **Team Name**: Identifier
-   - **Description**: Purpose and scope
-4. Click **Create**
-
-### Managing Members
-
-**Add Member**:
-1. Select team
-2. Click **+ Add Member**
-3. Choose user from dropdown
-4. Assign role:
-   - **Owner**: Full permissions
-   - **Admin**: Manage team and members
-   - **Member**: View and contribute
-   - **Viewer**: Read-only access
-5. Click **Add to Team**
-
-**Remove Member**:
-- Click trash icon next to member name
-
-**Change Role**:
-- Currently requires removing and re-adding (future update)
-
-### Team Use Cases
-
-- **SOC Teams**: Coordinate threat investigations
-- **Research Groups**: Share OSINT findings
-- **Training**: Supervisor-student collaboration
-- **Multi-investigator Cases**: Distribute workload
-
-## Settings & Configuration
-
-### API Service Configuration
-
-**Available Services**:
-
-| Service | Purpose | Free Tier |
-|---------|---------|-----------|
-| WhoisXML API | Domain WHOIS | 500/mo |
-| Have I Been Pwned | Breach data | Limited |
-| IPInfo.io | IP geolocation | 50k/mo |
-| Shodan | Device search | 100/mo |
-| VirusTotal | Threat intel | 4 req/min |
-| Hunter.io | Email verification | 25/mo |
-| NumVerify | Phone validation | 100/mo |
-
-**Configuration Steps**:
-1. Go to **Settings** page
-2. Find desired service
-3. Click **Configure**
-4. Enter:
-   - **API Key**: From service provider
-   - **Base URL**: (pre-filled)
-   - **Rate Limit**: Requests per hour
-   - **Notes**: Internal documentation
-   - **Enabled**: Toggle on
-5. Click **Save**
-
-**Getting API Keys**:
-- Click **Docs** link next to each service
-- Register for free tier
-- Copy API key from dashboard
-- Return to Settings and paste
-
-### Data Mode
-
-**Mock Mode** (Default):
-- No API keys required
-- Instant responses
-- Deterministic results
-- Perfect for demos and testing
-
-**Live Mode** (With API Keys):
-- Real-time external data
-- Subject to rate limits
-- Requires API configuration
-- Caching enabled (1 hour TTL)
+Each tool page has a form on the left and results on the right. Results are automatically saved to the database and can optionally be linked to a Case.
+
+### IP Lookup (`/investigate/ip`)
+
+Combines multiple data sources for a complete IP profile:
+
+- **ip-api.com** — city, country, ASN, organisation, coordinates (free, no API key required)
+- **IPInfo.io** — additional geolocation enrichment (optional, configure in Settings)
+- **VirusTotal** — malicious/suspicious/harmless engine counts, threat categories, community score
+- **Shodan** — open ports, detected services, CVE vulnerabilities
+
+Enter an IP address (e.g. `8.8.8.8`) and click **Run Lookup**.
+
+> ip-api.com is the free default geolocation source — no key needed. VirusTotal and Shodan fall back to deterministic mock data when no API key is configured.
+
+### Domain WHOIS (`/investigate/domain`)
+
+Uses the public [RDAP](https://rdap.org/) protocol — no API key required.
+
+Returns: registrar, status, nameservers, registration date, expiry date.
+
+### Subdomain Scanner (`/investigate/subdomain`)
+
+Discovers subdomains of a target domain using two complementary techniques — no API key required:
+
+1. **Certificate Transparency logs** — queries [crt.sh](https://crt.sh/) for all certificates issued for the domain; extracts every subject alternative name (SAN) listed
+2. **DNS wordlist bruteforce** — attempts to resolve 75 common subdomain prefixes (e.g. `www`, `mail`, `api`, `staging`, `vpn`) plus any entries discovered from crt.sh, using socket DNS resolution
+
+Results show each discovered subdomain alongside its resolved IP address (if resolvable).
+
+> Install `dnspython` for richer DNS record enumeration. The tool falls back to Python's built-in `socket` module if dnspython is not present.
+
+### Email Analysis (`/investigate/email`)
+
+- **Have I Been Pwned** — lists data breaches the address appeared in, with breach date and exposed data classes
+- **Hunter.io** — deliverability, disposable flag, webmail flag, score
+
+Configure API keys for both services in **Settings** for live data.
+
+### Email Header Analyser (`/investigate/email-header`)
+
+Parses a block of raw email headers to trace message routing and flag authentication results — no API key required.
+
+**How to get raw headers:**
+- **Gmail** — open the message, click the three-dot menu, choose *Show original*
+- **Outlook (web)** — open the message, click the three-dot menu, choose *View* > *View message source*
+- **Apple Mail** — open the message, go to *View* > *Message* > *Raw Source*
+
+Paste the full header block into the text area and click **Analyse**.
+
+**What the results show:**
+
+| Field | Meaning |
+|---|---|
+| **Received chain** | Each mail server hop the message passed through, in reverse chronological order |
+| **Originating IP** | The first external IP address in the Received chain — typically the sending mail server |
+| **SPF** | Whether the sending server is authorised by the domain's SPF record (Pass / Fail / SoftFail / None) |
+| **DKIM** | Whether the message body and headers were cryptographically signed and the signature is valid |
+| **DMARC** | Whether the message passed the domain's DMARC policy (alignment of SPF/DKIM with the From domain) |
+| **Relay hops** | Count of intermediate servers the message traversed |
+
+> A Fail or missing SPF/DKIM/DMARC result does not by itself confirm a spoofed or malicious email, but it warrants further investigation.
+
+### Social Search (`/investigate/social`)
+
+Sherlock/Maigret-style username enumeration across **36 platforms** simultaneously — no API key required.
+
+Platforms checked include: Twitter/X, GitHub, Instagram, Reddit, LinkedIn, Pinterest, TikTok, Telegram, Facebook, YouTube, Twitch, Discord, Snapchat, Medium, Dev.to, Keybase, GitLab, Bitbucket, Steam, Patreon, Spotify, SoundCloud, Flickr, Vimeo, Behance, Dribbble, Fiverr, HackerNews, ProductHunt, Quora, Substack, Mastodon, Tumblr, WordPress, and Gravatar.
+
+Each platform is checked concurrently using `ThreadPoolExecutor(12)`. The check analyses:
+- HTTP response status code
+- Page content (presence of username-specific markers)
+- Redirect URL detection (profiles that redirect to a generic 404 page)
+
+Results show a table of **Found** / **Not Found** with direct profile URLs for found accounts.
+
+> Previously, Social Search required GitHub and Twitter API keys for reliable results. The new approach uses public HTTP response analysis and requires no API configuration.
+
+### Phone Lookup (`/investigate/phone`)
+
+Uses **NumVerify** to validate a phone number and return carrier, line type, country, and location. Returns an error if the NumVerify API key is not configured in Settings.
+
+### MAC Vendor Lookup (`/investigate/mac`)
+
+Identifies the manufacturer of a network interface from its MAC address OUI (first three octets) — no API key required.
+
+**Accepted formats** (all equivalent):
+- `AA:BB:CC:DD:EE:FF`
+- `AA-BB-CC-DD-EE-FF`
+- `AABBCCDDEEFF`
+- First three octets only: `AA:BB:CC`
+
+The lookup queries [macvendors.com](https://macvendors.com/), which maintains a database of IEEE OUI assignments. Results include the registered vendor/manufacturer name and organisation.
+
+> MAC addresses can be randomised by modern operating systems. A result reflects the OUI registrant, not necessarily the physical device owner.
+
+### File & Document Forensics (`/investigate/file`)
+
+Upload a file to extract embedded metadata — no API key required for metadata extraction. Google Cloud Vision AI is optional for image content analysis.
+
+The old `/investigate/image` URL redirects here automatically.
+
+**Supported file types and extracted metadata:**
+
+| File type | Extensions | What is extracted |
+|---|---|---|
+| Image | JPG, PNG, GIF, BMP, TIFF, WEBP | EXIF fields (camera model, lens, date taken, software), GPS coordinates (latitude/longitude/altitude), image dimensions |
+| Audio | MP3, FLAC, OGG, M4A, WAV | ID3 / Vorbis tags: title, artist, album, year, track number, comment, embedded artwork flag |
+| Video | MP4, MKV, AVI, MOV, WMV | Container metadata: duration, resolution, frame rate, encoder, creation date |
+| PDF | PDF | Title, author, creator application, producer, creation date, modification date, page count |
+| Word document | DOCX | Core properties: title, subject, author, last modified by, revision count, creation and modification dates |
+| Spreadsheet | XLSX | Workbook properties: title, subject, author, last modified by, creation and modification dates |
+
+**Maximum upload size**: 16 MB.
+
+For images, optionally enable **Google Cloud Vision AI** (configure **ImageRecognition** in Settings) to add face detection, label detection, OCR, web entity detection, and safe-search classification.
+
+### Crypto / Blockchain Lookup (`/investigate/crypto`)
+
+Look up the balance and recent transaction history for a cryptocurrency address — no API key required.
+
+**Supported networks:**
+
+| Network | Data source | What is returned |
+|---|---|---|
+| Bitcoin (BTC) | blockchain.info | Address balance (BTC and USD equivalent), total received, total sent, transaction count, last 10 transactions |
+| Ethereum (ETH) | blockcypher.com | Address balance (ETH and USD equivalent), total received, total sent, transaction count, last 10 transactions |
+
+Enter the wallet address and select the network, then click **Look Up**.
+
+> This tool queries public blockchain data only. It cannot identify the real-world owner of an address. Always comply with relevant financial regulations when investigating cryptocurrency activity.
+
+### IMEI Lookup (`/investigate/imei`)
+
+Queries a configurable IMEI service (e.g. imei.info). Returns device details if the **IMEIService** is configured in Settings. Shows an error with a link to Settings if not configured.
+
+---
+
+## Case Management (`/cases`)
+
+Cases let you group related investigations together.
+
+### Creating a Case
+
+1. Click **+ New Case** from the Cases page
+2. Enter a title, optional description, and priority (Low / Medium / High / Critical)
+3. Click **Create Case**
+
+### Linking Investigations to a Case
+
+On any investigation tool page, select a case from the **Link to Case** dropdown before running the lookup. The result will be stored against that case.
+
+### Case Statuses
+
+| Status | Meaning |
+|--------|---------|
+| Open | Active investigation |
+| In Progress | Being worked on |
+| Closed | Resolved |
+
+### Editing and Deleting Cases
+
+From the Cases list, click **Edit** to change title, description, status, or priority. Click **Delete** to permanently remove a case.
+
+---
+
+## API Settings (`/settings`)
+
+Configure external OSINT service credentials. No restart is needed — keys are read from the database on every request.
+
+### Available Services
+
+| Service | Used by |
+|---------|---------|
+| IPInfo | IP Lookup — optional geolocation enrichment (ip-api.com is the free default) |
+| Shodan | IP Lookup — port scan |
+| VirusTotal | IP Lookup — threat intel |
+| HIBP | Email Analysis — breach check |
+| Hunter.io | Email Analysis — deliverability |
+| NumVerify | Phone Lookup |
+| ImageRecognition | File & Document Forensics — Google Cloud Vision AI (optional) |
+| IMEIService | IMEI Lookup |
+| TorProxy | Tor / proxy routing for all HTTP requests |
+
+### How to Configure a Service
+
+1. Go to **Settings** from the sidebar
+2. Find the service card
+3. Enter your **API Key**
+4. Confirm or update the **Base URL** (pre-filled with the correct default)
+5. Toggle **Enabled** on
+6. Click **Save**
+
+### Tor / Proxy Routing
+
+To route all investigation HTTP requests through Tor or an HTTP proxy:
+
+1. Go to **Settings** and find the **TorProxy** service card
+2. Enter the proxy URL in the **API Key** / URL field:
+   - Tor: `socks5://127.0.0.1:9050`
+   - HTTP proxy: `http://proxy.example.com:8080`
+3. Toggle **Enabled** on and click **Save**
+
+When TorProxy is enabled, every outbound HTTP request made by the service layer is routed through the specified proxy. This requires the `httpx[socks]` package (included in `requirements.txt`) for SOCKS5 support.
+
+> Running requests through Tor will significantly increase response times (typically 5–30 seconds per call). Disable TorProxy when speed is more important than anonymity.
+
+### Without API Keys
+
+- **IP Lookup** — ip-api.com provides geolocation with no key; VirusTotal and Shodan show mock data; IPInfo is skipped
+- **Domain WHOIS** — always works (public RDAP, no key needed)
+- **Subdomain Scanner** — always works (crt.sh + socket DNS, no key needed)
+- **Email Analysis** — HIBP and Hunter.io show a configuration notice
+- **Email Header Analyser** — always works (local parsing, no key needed)
+- **Social Search** — always works (HTTP response analysis, no key needed)
+- **MAC Vendor Lookup** — always works (macvendors.com, no key needed)
+- **File & Document Forensics** — metadata extraction always works; Vision AI requires ImageRecognition key
+- **Crypto Lookup** — always works (public blockchain APIs, no key needed)
+- **Phone / IMEI** — show a configuration notice
+
+---
 
 ## Best Practices
 
 ### Ethical Guidelines
 
-✅ **DO**:
-- Obtain proper authorization
-- Document investigation scope
-- Respect privacy laws
-- Use for lawful purposes
-- Cite data sources
-- Secure sensitive findings
+Only use this tool for:
+- Investigations you are explicitly authorised to conduct
+- Legitimate security research with proper scope
+- Academic or educational purposes
 
-❌ **DON'T**:
-- Conduct unauthorized surveillance
-- Harass or stalk individuals
-- Violate platform ToS
-- Collect data without consent
-- Share confidential information
-- Use for illegal activities
+Never use it for stalking, harassment, doxxing, or any unauthorized surveillance.
 
-### Investigation Workflow
+### Recommended Workflow
 
-1. **Define Scope**: What are you investigating?
-2. **Create Case**: Document objectives
-3. **Gather Data**: Use appropriate tools
-4. **Analyze Network**: Review entity relationships
-5. **Generate Report**: Auto-enrich and export
-6. **Share Findings**: Collaborate with team
-7. **Archive**: Close case when complete
+1. **Create a Case** — document the investigation objective
+2. **Run the relevant tools** — link each result to the case
+3. **Review results** — check the Dashboard for a history summary
+4. **Archive** — close the case when complete
 
-### Performance Tips
+### Security
 
-- **Use Mock Mode** for demos and training
-- **Enable Caching** for frequently queried data
-- **Batch Queries** when possible
-- **Set Rate Limits** to avoid API bans
-- **Regular Exports** to backup investigation data
-
-### Security Recommendations
-
-1. **Change default password** immediately
-2. **Use strong passwords** (12+ characters, mixed case, symbols)
-3. **Limit API key scope** where possible
-4. **Rotate credentials** regularly
-5. **Enable 2FA** on external services
-6. **Audit team access** periodically
-7. **Review logs** for suspicious activity
-
-## Keyboard Shortcuts
-
-Coming in future release:
-- `Ctrl+K`: Quick search
-- `Ctrl+N`: New investigation
-- `Ctrl+S`: Save report
-- `Esc`: Close modals
-
-## Troubleshooting
-
-### No Results Returned
-
-**Cause**: API service unavailable or rate limited
-
-**Solution**:
-1. Check Settings → API Configuration
-2. Verify API key is correct
-3. Check rate limit hasn't been exceeded
-4. Review service status page
-5. Wait and retry (automatic fallback to mock data)
-
-### Slow Performance
-
-**Cause**: External API latency
-
-**Solution**:
-- Use cached data when available
-- Reduce concurrent requests
-- Switch to mock mode temporarily
-
-### Network Graph Empty
-
-**Cause**: No investigations performed yet
-
-**Solution**:
-1. Run at least one investigation tool
-2. Wait for results
-3. Navigate back to Network tab
-
-## Advanced Features
-
-### Export Formats
-
-**JSON**: Machine-readable, perfect for automation
-**CSV**: Spreadsheet-compatible, easy reporting
-
-### Filtering & Search
-
-Coming soon:
-- Search investigations by IOC
-- Filter reports by date range
-- Case status filters
-
-### Custom Integrations
-
-See [Development Guide](./DEVELOPMENT.md) for:
-- Adding new OSINT tools
-- Custom API integrations
-- Webhook notifications
-
-## Getting Help
-
-- **Documentation**: Check other docs in `docs/` folder
-- **Issues**: Report bugs on GitHub Issues
-- **Community**: Join GitHub Discussions
-- **Updates**: Watch repository for new releases
+- Change the default `admin / changeme` password immediately
+- Never commit API keys to source control
+- Use HTTPS (see [Deployment Guide](./DEPLOYMENT.md)) for any non-local deployment
+- Rotate API keys if they may have been exposed
 
 ---
 
-**Happy Investigating! Remember: With great OSINT power comes great responsibility.**
+## Troubleshooting
+
+**No results / empty response**
+Check that the relevant API key is configured and enabled in Settings. Most tools show a yellow notice with a link to Settings if the service is not configured.
+
+**Slow responses**
+External API calls take 1–10 seconds depending on the service. Results are cached for 1–6 hours per query, so repeated lookups are instant. Requests routed through Tor will be slower still (5–30 seconds).
+
+**File upload fails**
+Check the file type and size (max 16 MB). Supported types: JPG, PNG, GIF, BMP, TIFF, WEBP, MP3, FLAC, OGG, M4A, WAV, MP4, MKV, AVI, MOV, WMV, PDF, DOCX, XLSX.
+
+**Database reset**
+```bash
+rm dev.db
+python reset_admin.py
+```

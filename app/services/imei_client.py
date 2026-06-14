@@ -1,25 +1,12 @@
-"""IMEI service client.
-
-This client attempts to call a configured IMEI service (configured via
-`APIConfig` with service_name `IMEIService`). If a live service is not
-configured or the call fails, the client returns None so callers can
-fall back to local deterministic mock data.
-
-The expected config values (example) are:
-  - base_url: https://api.imei.info
-  - api_key in `api_key` field or `client_key`/`client_secret` in `credentials`
-
-This implementation performs a simple GET request; adapt to the real
-provider's API shape when wiring a specific vendor.
-"""
-from typing import Optional, Dict, Any, Iterable
+"""IMEI service client — sync version."""
+from typing import Optional, Dict, Any
 import httpx
 from app.repositories.api_config_repository import get_by_service
 
 
-async def _try_request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> Optional[Dict[str, Any]]:
+def _try_request(client: httpx.Client, method: str, url: str, **kwargs) -> Optional[Dict[str, Any]]:
     try:
-        r = await client.request(method, url, **kwargs)
+        r = client.request(method, url, **kwargs)
         r.raise_for_status()
         try:
             return r.json()
@@ -29,24 +16,19 @@ async def _try_request(client: httpx.AsyncClient, method: str, url: str, **kwarg
         return None
 
 
-async def fetch_imei(imei: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
-    """Try to fetch IMEI details from configured IMEIService.
-
-    This function attempts multiple common endpoint shapes and auth
-    methods (query param, header) to increase compatibility with
-    providers such as dash.imei.info. Returns provider JSON on success
-    or None on failure.
-    """
+def fetch_imei(imei: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+    """Fetch IMEI details from configured IMEIService. Returns None if unavailable."""
     cfg = get_by_service("IMEIService")
     if not cfg or not cfg.is_enabled:
         return None
 
-    base = cfg.base_url.rstrip("/")
+    base = (cfg.base_url or "").rstrip("/")
+    if not base:
+        return None
     creds = getattr(cfg, "_credentials", {}) or {}
     api_key = cfg.api_key or creds.get("api_key") or creds.get("client_key") or creds.get("client_secret")
 
-    # Candidate endpoint patterns to try (path templates)
-    endpoints: Iterable[str] = (
+    endpoints = (
         f"{base}/imei",
         f"{base}/api/imei",
         f"{base}/api/v1/imei/{imei}",
@@ -57,39 +39,33 @@ async def fetch_imei(imei: str, timeout: float = 5.0) -> Optional[Dict[str, Any]
 
     headers = {}
     if api_key:
-        # Try common header styles
-        headers.update({"Authorization": f"Bearer {api_key}", "X-API-KEY": api_key})
+        headers = {"Authorization": f"Bearer {api_key}", "X-API-KEY": api_key}
 
     params_base = {"imei": imei}
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        # First try provider-specific quick path for imei.info (dash.imei.info)
+    with httpx.Client(timeout=timeout) as client:
         if "imei.info" in base or "dash.imei.info" in base:
-            # Known pattern: dash.imei.info often expects path like /api/v1/{imei} or /api/imei
             candidate = f"{base}/api/v1/imei/{imei}"
             if api_key:
-                # try with api_key as query param
-                out = await _try_request(client, "GET", candidate, params={"key": api_key})
+                out = _try_request(client, "GET", candidate, params={"key": api_key})
                 if out:
                     return out
-                out = await _try_request(client, "GET", candidate, headers={"Authorization": f"Bearer {api_key}"})
+                out = _try_request(client, "GET", candidate, headers={"Authorization": f"Bearer {api_key}"})
                 if out:
                     return out
-            # try without key
-            out = await _try_request(client, "GET", candidate)
+            out = _try_request(client, "GET", candidate)
             if out:
                 return out
 
-        # Generic attempts: try endpoints with api_key as param, then headers, then without
         for ep in endpoints:
             if api_key:
-                out = await _try_request(client, "GET", ep, params={**params_base, "api_key": api_key}, headers=headers)
+                out = _try_request(client, "GET", ep, params={**params_base, "api_key": api_key}, headers=headers)
                 if out:
                     return out
-                out = await _try_request(client, "GET", ep, params=params_base, headers=headers)
+                out = _try_request(client, "GET", ep, params=params_base, headers=headers)
                 if out:
                     return out
-            out = await _try_request(client, "GET", ep, params=params_base)
+            out = _try_request(client, "GET", ep, params=params_base)
             if out:
                 return out
 

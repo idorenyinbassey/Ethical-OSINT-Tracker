@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}File Forensics – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">File & Document Forensics</h1>
+<p class="text-sm text-yellow-500 mb-6">Extracts hidden metadata from images, audio, video, PDF, and Office documents. All analysis is local — no API key required.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Upload File</label>
+        <input type="file" name="file" required
+          accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.tif,.webp,.mp3,.flac,.wav,.ogg,.aac,.m4a,.wma,.mp4,.avi,.mov,.mkv,.wmv,.flv,.webm,.pdf,.docx,.xlsx,.xls"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm file:mr-3 file:py-1 file:px-3 file:rounded file:bg-indigo-600 file:text-white file:text-xs file:border-0 cursor-pointer">
+        <p class="text-xs text-gray-500 mt-2">{{ allowed_types }} — max 16 MB</p>
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Analyse File
+      </button>
+    </form>
+
+    {% if result %}
+      <div class="mt-5 bg-gray-800 rounded-lg p-3 text-sm space-y-1">
+        <div class="flex justify-between">
+          <span class="text-gray-400">File</span>
+          <span class="text-white text-xs font-mono truncate ml-2">{{ result.file_name }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-400">Type</span>
+          <span class="text-indigo-300">{{ result.file_type | upper }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-400">Size</span>
+          <span class="text-white">{{ result.file_size_human or result.file_size_bytes }}</span>
+        </div>
+        {% if result.page_count is defined %}
+          <div class="flex justify-between">
+            <span class="text-gray-400">Pages</span>
+            <span class="text-white">{{ result.page_count }}</span>
+          </div>
+        {% endif %}
+        {% if result.sheet_count is defined %}
+          <div class="flex justify-between">
+            <span class="text-gray-400">Sheets</span>
+            <span class="text-white">{{ result.sheet_count }}</span>
+          </div>
+        {% endif %}
+        {% if result.dimensions is defined %}
+          <div class="flex justify-between">
+            <span class="text-gray-400">Dimensions</span>
+            <span class="text-white">{{ result.dimensions }}</span>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.error %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-300 text-sm">
+          Error: {{ result.error }}
+        </div>
+      {% endif %}
+
+      {% if result.note %}
+        <div class="bg-yellow-900/20 border border-yellow-800 rounded-xl p-3 text-yellow-300 text-xs">
+          {{ result.note }}
+        </div>
+      {% endif %}
+
+      {# Audio info block #}
+      {% if result.audio_info %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Audio Properties</h2>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {% for k, v in result.audio_info.items() %}
+              {% if v is not none %}
+                <dt class="text-gray-400">{{ k | replace('_', ' ') | title }}</dt>
+                <dd class="text-white">{{ v }}</dd>
+              {% endif %}
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {# Metadata block #}
+      {% if result.metadata %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">
+            {% if result.file_type == 'image' %}EXIF Metadata{% else %}Embedded Metadata{% endif %}
+          </h2>
+          {% if result.metadata | length == 0 %}
+            <p class="text-sm text-gray-500">No metadata found in this file.</p>
+          {% else %}
+            <dl class="grid grid-cols-1 gap-y-2 text-sm">
+              {% for k, v in result.metadata.items() %}
+                <div class="grid grid-cols-2 gap-2">
+                  <dt class="text-gray-400 break-words">{{ k }}</dt>
+                  <dd class="text-white break-all">{{ v }}</dd>
+                </div>
+              {% endfor %}
+            </dl>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# GPS highlight for images #}
+      {% if result.metadata and result.metadata.GPS_Coordinates %}
+        <div class="bg-green-900/20 border border-green-800 rounded-xl p-4">
+          <p class="text-xs text-green-400 font-semibold mb-1">GPS Location Detected</p>
+          <p class="text-white font-mono text-sm">{{ result.metadata.GPS_Coordinates }}</p>
+          <a href="https://www.openstreetmap.org/?mlat={{ result.metadata.GPS_Coordinates.split(',')[0] }}&mlon={{ result.metadata.GPS_Coordinates.split(',')[1] }}&zoom=14"
+             target="_blank" rel="noopener noreferrer"
+             class="text-xs text-indigo-400 hover:text-indigo-300 mt-1 inline-block">
+            View on map →
+          </a>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Upload any file to extract its hidden metadata.<br>
+        <span class="text-xs text-gray-600 mt-2 block">
+          Images (EXIF/GPS) · Audio (ID3, artist, BPM) · Video (duration, encoder) · PDF (author, creation date) · DOCX/XLSX (document properties)
+        </span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

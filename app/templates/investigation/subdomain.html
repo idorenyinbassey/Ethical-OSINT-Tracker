@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Subdomain Scanner – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Subdomain Scanner</h1>
+<p class="text-sm text-yellow-500 mb-6">Combines Certificate Transparency logs (crt.sh) with DNS wordlist bruteforce. No API key required. Only scan domains you are authorised to test.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Domain</label>
+        <input type="text" name="query" required placeholder="e.g. example.com"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Scan Domain
+      </button>
+    </form>
+
+    {% if result %}
+      <div class="mt-5 grid grid-cols-2 gap-2 text-center text-sm">
+        <div class="bg-indigo-900/30 border border-indigo-800 rounded-lg p-3">
+          <p class="text-xs text-indigo-400">Subdomains</p>
+          <p class="text-2xl font-bold text-indigo-300">{{ result.subdomains_found }}</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-xs text-gray-400">From CT Logs</p>
+          <p class="text-2xl font-bold text-white">{{ result.ct_subdomains }}</p>
+        </div>
+      </div>
+
+      {% if result.dns %}
+        <div class="mt-4 bg-gray-800 rounded-lg p-3 text-sm space-y-1">
+          <p class="text-xs text-gray-500 uppercase mb-2">DNS Records</p>
+          {% if result.dns.a_record %}
+            <div><span class="text-gray-400">A:</span> <span class="text-white">{{ result.dns.a_record }}</span></div>
+          {% endif %}
+          {% if result.dns.mx %}
+            {% for mx in result.dns.mx %}
+              <div><span class="text-gray-400">MX:</span> <span class="text-white text-xs">{{ mx }}</span></div>
+            {% endfor %}
+          {% endif %}
+          {% if result.dns.ns %}
+            {% for ns in result.dns.ns %}
+              <div><span class="text-gray-400">NS:</span> <span class="text-white text-xs">{{ ns }}</span></div>
+            {% endfor %}
+          {% endif %}
+          {% if result.dns.txt %}
+            {% for txt in result.dns.txt[:3] %}
+              <div><span class="text-gray-400">TXT:</span> <span class="text-white text-xs break-all">{{ txt[:80] }}</span></div>
+            {% endfor %}
+          {% endif %}
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      {% if result.subdomains %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <span class="text-sm font-medium text-white">Live subdomains of {{ result.domain }}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Hostname</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">IP Address</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for sub in result.subdomains %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="px-4 py-2 text-indigo-300 font-mono text-xs">{{ sub.hostname }}</td>
+                    <td class="px-4 py-2 text-gray-300 font-mono text-xs">{{ sub.ip }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          No live subdomains found for {{ result.domain }}.
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a domain to enumerate its subdomains.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Uses crt.sh Certificate Transparency + DNS resolution. No API key required.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

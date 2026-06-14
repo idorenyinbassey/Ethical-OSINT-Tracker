@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}New Case – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-xl">
+  <h1 class="text-2xl font-bold text-white mb-6">New Case</h1>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Title *</label>
+        <input type="text" name="title" required
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+          placeholder="Case title">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Description</label>
+        <textarea name="description" rows="3"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+          placeholder="Optional description"></textarea>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Priority</label>
+        <select name="priority"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Create Case
+        </button>
+        <a href="{{ url_for('cases.index') }}"
+           class="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
