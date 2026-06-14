@@ -66,3 +66,13 @@ def count_by_kind() -> Dict[str, int]:
         stmt = select(Investigation.kind, func.count(Investigation.id)).group_by(Investigation.kind)
         results = session.exec(stmt).all()
         return {kind: count for kind, count in results}
+
+
+def list_by_case(case_id: int) -> List[Investigation]:
+    with session_scope() as session:
+        stmt = select(Investigation).where(Investigation.case_id == case_id).order_by(Investigation.id.desc())
+        results = session.exec(stmt).all()
+        return [Investigation(
+            id=inv.id, kind=inv.kind, query=inv.query,
+            result_json=inv.result_json, user_id=inv.user_id, created_at=inv.created_at
+        ) for inv in results]

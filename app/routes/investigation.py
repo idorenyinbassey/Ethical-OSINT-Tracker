@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -381,3 +381,115 @@ def imei():
         flash(f"IMEI lookup complete for {imei_num}.", "success")
 
     return render_template("investigation/imei.html", cases=cases, result=result)
+
+
+# ── Dark Web Monitor ──────────────────────────────────────────────────────────
+
+@investigation_bp.route("/darkweb", methods=["GET", "POST"])
+@login_required
+def darkweb():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        query = request.form.get("query", "").strip()
+        case_id = request.form.get("case_id") or None
+        if case_id:
+            case_id = int(case_id)
+        if not query:
+            flash("Search term is required.", "error")
+            return render_template("investigation/darkweb.html", cases=cases, result=None)
+
+        from app.services import darkweb_client
+        result = darkweb_client.search_ahmia(query)
+
+        create_investigation(kind="darkweb", query=query, result_json=json.dumps(result),
+                             user_id=current_user.id, case_id=case_id)
+        flash(f"Dark web search complete: {result.get('total', 0)} results found.", "success")
+
+    return render_template("investigation/darkweb.html", cases=cases, result=result)
+
+
+# ── Network Graph ─────────────────────────────────────────────────────────────
+
+@investigation_bp.route("/graph")
+@login_required
+def graph():
+    return render_template("investigation/graph.html")
+
+
+@investigation_bp.route("/graph/data")
+@login_required
+def graph_data():
+    """Return JSON graph data: nodes + edges for vis.js."""
+    from app.repositories.investigation_repository import list_recent
+    from app.repositories.case_repository import list_cases
+    invs = list_recent(200)
+    cases = list_cases()
+
+    nodes = []
+    edges = []
+
+    for case in cases:
+        nodes.append({
+            "id": f"case-{case.id}",
+            "label": case.title[:30],
+            "group": "case",
+            "title": f"Case: {case.title}\nStatus: {case.status}\nPriority: {case.priority}",
+        })
+
+    seen_entities = {}
+    for inv in invs:
+        inv_node_id = f"inv-{inv.id}"
+        label = f"{inv.query[:20]}\n({inv.kind.replace('_', ' ')})"
+        nodes.append({
+            "id": inv_node_id,
+            "label": label,
+            "group": inv.kind,
+            "title": f"Type: {inv.kind}\nQuery: {inv.query}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
+        })
+        if inv.case_id:
+            edges.append({"from": inv_node_id, "to": f"case-{inv.case_id}"})
+
+    return jsonify({"nodes": nodes, "edges": edges})
+
+
+# ── Plugins ───────────────────────────────────────────────────────────────────
+
+@investigation_bp.route("/plugins")
+@login_required
+def plugins():
+    from app.plugins import get_all
+    all_plugins = get_all()
+    return render_template("investigation/plugins.html", plugins=all_plugins)
+
+
+@investigation_bp.route("/plugins/<plugin_name>", methods=["GET", "POST"])
+@login_required
+def plugin_run(plugin_name):
+    from app.plugins import get_plugin
+    plugin = get_plugin(plugin_name)
+    if not plugin:
+        flash(f"Plugin '{plugin_name}' not found.", "error")
+        return redirect(url_for("investigation.plugins"))
+
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        query = request.form.get("query", "").strip()
+        case_id = request.form.get("case_id") or None
+        if case_id:
+            case_id = int(case_id)
+        if not query:
+            flash("Query is required.", "error")
+        else:
+            try:
+                result = plugin.run(query)
+            except Exception as exc:
+                result = {"error": str(exc)}
+            create_investigation(kind=f"plugin_{plugin.name}", query=query,
+                                 result_json=json.dumps(result),
+                                 user_id=current_user.id, case_id=case_id)
+            flash(f"Plugin '{plugin.label}' completed.", "success")
+
+    return render_template("investigation/plugin_run.html",
+                           plugin=plugin, cases=cases, result=result)

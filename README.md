@@ -263,12 +263,12 @@ pip install -r requirements.txt --force-reinstall --no-cache-dir
 
 ## Roadmap
 
-- [ ] PDF/DOCX report exports
-- [ ] Advanced network graph visualization
-- [ ] Real-time collaboration features
+- [x] PDF/DOCX report exports
+- [x] Advanced network graph visualization
+- [x] Real-time collaboration features
 - [x] Blockchain address tracking
-- [ ] Dark web monitoring integration
-- [ ] Plugin architecture for custom tools
+- [x] Dark web monitoring integration
+- [x] Plugin architecture for custom tools
 
 ## License
 

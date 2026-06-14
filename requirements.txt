@@ -37,3 +37,9 @@ openpyxl>=3.1.0
 
 # DNS record resolution (optional — subdomain scanner falls back to socket if absent)
 dnspython>=2.6.0
+
+# PDF report generation
+fpdf2>=2.7.0
+
+# HTML parsing (dark web search result extraction)
+beautifulsoup4>=4.12.0
