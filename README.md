@@ -1,109 +1,79 @@
 # Ethical OSINT Tracker
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Reflex 0.8+](https://img.shields.io/badge/reflex-0.8+-orange.svg)](https://reflex.dev/)
+[![Flask 3.0+](https://img.shields.io/badge/flask-3.0+-green.svg)](https://flask.palletsprojects.com/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Copyright (C) 2025 Idorenyin Bassey](https://img.shields.io/badge/copyright-©%202025%20Idorenyin%20Bassey-lightgrey.svg)](https://github.com/idorenyinbassey)
 
-A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with Reflex (Python). Perform legally compliant investigations with domain analysis, IP geolocation, email validation, social media reconnaissance, phone number verification, and more.
+A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with **Flask** (Python). Perform legally compliant investigations with domain analysis, IP geolocation, email validation, social media reconnaissance, phone number verification, image forensics, and more.
 
-## 🌟 Features
+## Features
 
 ### Investigation Tools
-- **Domain Intelligence**: WHOIS lookups, DNS records, registration history
-- **IP Geolocation**: ASN mapping, ISP identification, threat scoring
-- **Email Analysis**: Format validation, breach detection, domain reputation
-- **Social Media OSINT**: Username enumeration across platforms
-- **Phone Intelligence**: Carrier lookup, fraud scoring, location data
-- **Image Forensics**: Facial recognition, EXIF metadata extraction
-- **IMEI/Device Tracking**: Device identification, blacklist checks
+- **IP Lookup** — Geolocation (IPInfo), threat scoring (VirusTotal), port scan (Shodan)
+- **Domain WHOIS** — Registration data via public RDAP (no key required)
+- **Email Analysis** — Breach detection (Have I Been Pwned) + deliverability (Hunter.io)
+- **Social Media Search** — Username enumeration across 10 platforms
+- **Phone Intelligence** — Carrier lookup and validation via NumVerify
+- **Image Forensics** — EXIF metadata extraction + optional Google Cloud Vision AI
+- **IMEI Lookup** — Device identification via configurable IMEI service
 
-### Collaboration & Management
-- **Case Management**: Organize investigations by priority and status
-- **Team Collaboration**: Multi-user teams with role-based access
-- **Intelligence Reports**: Auto-enrichment from investigation data with export
-- **Network Graph Visualization**: Spiderfoot-style entity relationship mapping
+### Case Management
+- Create and organise investigations into cases with priority and status tracking
+- Link any investigation result to an existing case
 
 ### Security & Compliance
-- **Authentication**: Argon2 password hashing with secure session management
-- **Rate Limiting**: Per-user and global API throttling
-- **Audit Logging**: Investigation history and data persistence
-- **Ethical Guidelines**: Built-in reminders for legal OSINT practices
-- **API Configuration**: Centralized management of external OSINT services
+- **Authentication** — Argon2 password hashing with Flask-Login session management
+- **Rate Limiting** — Per-user in-memory throttling on social search
+- **Graceful Degradation** — Falls back to deterministic mock data when APIs are unavailable
+- **Ethical Guidelines** — Built-in reminders on every investigation page
 
-### Technical Highlights
-- **Reactive UI**: Built with Reflex for seamless real-time updates
-- **Deterministic Mock Data**: Reproducible results for testing/demos
-- **Graceful Degradation**: Fallback to mock data when APIs unavailable
-- **Modern Stack**: SQLModel, SQLite/MySQL, Tailwind CSS styling
+### Tech Stack
+- **Backend** — Flask 3, Flask-Login, SQLModel (SQLite / MySQL), httpx
+- **Frontend** — Jinja2 templates, Tailwind CSS (CDN), dark-mode UI
+- **Services** — All external API calls are synchronous (no asyncio required)
 
-## 📋 Prerequisites
+## Quick Start
 
-- Python 3.11 or higher
-- pip (Python package manager)
-- Git
-- Linux/macOS/WSL (recommended)
+### 1. Clone
 
-## 🚀 Quick Start
-
-### 1. Clone the Repository
-
-## Database setup (SQLite + Alembic)
-
-To make initializing the local database and migrations easy for new contributors, this repo includes a small helper script.
-
-1. From the project root run (this will create a `.venv` if missing, install requirements, and run migrations):
-
-```bash
-bash scripts/setup_migrations.sh
-```
-
-2. The script uses `DB_URL` if present; by default it uses `sqlite:///./dev.db`.
-
-3. To check database tables:
-
-```bash
-sqlite3 dev.db ".tables"
-```
-
-Notes:
-- The script is conservative and idempotent — migrations created in `alembic/versions/` use checks to avoid errors when tables already exist.
-- If you prefer manual steps: activate your venv, `pip install -r requirements.txt`, then run `alembic upgrade head`.
 ```bash
 git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
 cd Ethical-OSINT-Tracker
 ```
 
-### 2. Create Virtual Environment
+### 2. Create a virtual environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+python3.11 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Initialize Database
+### 4. Initialise the database & create demo admin
 
 ```bash
 python reset_admin.py
 ```
 
-This creates a demo admin user:
+This creates:
 - **Username**: `admin`
 - **Password**: `changeme`
 
-⚠️ **Change this password immediately in production!**
+> Change this password immediately in any non-local deployment.
 
-### 5. Run the Application
+### 5. Run
 
 ```bash
-reflex run
+python run.py
 ```
+
+Open [http://localhost:3000](http://localhost:3000).
 
 Or use the convenience script:
 
@@ -112,229 +82,176 @@ chmod +x start.sh
 ./start.sh
 ```
 
-The app will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
+## Environment Variables
 
-## 📖 Documentation
+| Variable | Default | Description |
+|---|---|---|
+| `DB_URL` | `sqlite:///./dev.db` | SQLAlchemy database URL |
+| `SECRET_KEY` | random (generated at startup) | Flask session signing key — set a fixed value in production |
 
-Detailed documentation is available in the [`docs/`](./docs/) directory:
-
-- [Installation Guide](./docs/INSTALLATION.md) - Detailed setup instructions
-- [User Guide](./docs/USER_GUIDE.md) - Complete feature walkthrough
-- [Architecture](./docs/ARCHITECTURE.md) - Technical design and patterns
-- [API Integration](./docs/API_INTEGRATION.md) - External service configuration
-- [Development Guide](./docs/DEVELOPMENT.md) - Contributing and extending
-- [Deployment](./docs/DEPLOYMENT.md) - Production deployment strategies
-- [Termux Guide](./docs/TERMUX.md) - Running on Android (Termux), headless mode
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root:
+Example `.env` (load with `python-dotenv` or export manually):
 
 ```env
-# Database (optional, defaults to SQLite)
-DB_URL=sqlite:///./reflex.db
-# For MySQL:
-# DB_URL=mysql+pymysql://user:password@localhost/osint_tracker
-
-# API Keys (optional for live data)
-WHOISXML_API_KEY=your_key_here
-HIBP_API_KEY=your_key_here
-IPINFO_TOKEN=your_token_here
-HUNTER_API_KEY=your_key_here
-NUMVERIFY_KEY=your_key_here
+DB_URL=sqlite:///./dev.db
+SECRET_KEY=change-me-to-something-long-and-random
 ```
 
-### API Services Configuration
+For MySQL in production:
 
-Navigate to **Settings** page in the app to configure:
-- WhoisXML API (domain WHOIS)
-- Have I Been Pwned (breach data)
-- IPInfo.io (IP geolocation)
-- Shodan (device search)
-- VirusTotal (threat analysis)
-- Hunter.io (email verification)
-- NumVerify (phone validation)
+```env
+DB_URL=mysql+pymysql://osint_user:password@localhost/osint_tracker
+```
 
-## 🗂️ Project Structure
+## API Services Configuration
+
+Navigate to **Settings** in the app to configure external OSINT services. No restart required — keys are stored in the database and read at request time.
+
+| Service key | Provider | Required for |
+|---|---|---|
+| `IPInfo` | ipinfo.io | IP geolocation |
+| `Shodan` | shodan.io | Port scan / open services |
+| `VirusTotal` | virustotal.com | IP threat intelligence |
+| `HIBP` | haveibeenpwned.com | Email breach check |
+| `Hunter.io` | hunter.io | Email deliverability |
+| `NumVerify` | numverify.com | Phone validation |
+| `SocialSearch` | GitHub / Twitter APIs | Authenticated social search |
+| `ImageRecognition` | Google Cloud Vision | Face / label detection |
+| `IMEIService` | imei.info or similar | IMEI device lookup |
+
+For `SocialSearch`, store API keys as JSON in the **Notes** field:
+```json
+{"github": "ghp_xxx", "twitter": "AAA...bearer..."}
+```
+
+API keys are stored in plaintext. For production, implement a secrets manager backend in `app/utils/key_manager.py`.
+
+## Project Structure
 
 ```
 Ethical-OSINT-Tracker/
 ├── app/
-│   ├── components/         # Reusable UI components
-│   ├── models/            # SQLModel database models
-│   ├── pages/             # Page components
-│   ├── repositories/      # Data access layer
-│   ├── services/          # External API clients
-│   ├── states/            # Reflex state management
-│   └── utils/             # Helper utilities
-├── alembic/               # Database migrations
-├── assets/                # Static assets
-├── docs/                  # Documentation
-├── requirements.txt       # Python dependencies
-├── rxconfig.py           # Reflex configuration
-├── reset_admin.py        # Admin user setup
-└── start.sh              # Launch script
+│   ├── __init__.py          # Flask app factory
+│   ├── config.py            # Flask configuration
+│   ├── db.py                # SQLModel engine + init_db()
+│   ├── models/              # SQLModel table definitions
+│   ├── repositories/        # Data access layer (session_scope)
+│   ├── routes/              # Flask blueprints
+│   │   ├── auth.py          # /login  /register  /logout
+│   │   ├── dashboard.py     # /
+│   │   ├── investigation.py # /investigate/ip|domain|email|social|phone|image|imei
+│   │   ├── cases.py         # /cases  (CRUD)
+│   │   └── settings.py      # /settings
+│   ├── services/            # External API clients (sync httpx)
+│   ├── templates/           # Jinja2 HTML templates
+│   │   ├── base.html        # Dark sidebar layout
+│   │   ├── auth/
+│   │   ├── dashboard/
+│   │   ├── investigation/
+│   │   ├── cases/
+│   │   └── settings/
+│   ├── uploads/             # Uploaded images (gitignored)
+│   └── utils/               # crypto, rate_limiter, key_manager
+├── alembic/                 # Database migration scripts
+├── docs/                    # Documentation
+├── tests/                   # pytest test suite
+├── requirements.txt
+├── run.py                   # Entry point
+├── reset_admin.py           # Creates / resets the demo admin user
+└── start.sh                 # One-command dev start
 ```
 
-## 🔒 Security & Ethics
+## Security & Ethics
 
 ### Ethical Use Policy
 
 This tool is designed **exclusively** for:
-✅ Authorized security research  
-✅ Lawful investigations with proper consent  
-✅ Academic research and education  
-✅ Penetration testing with written permission  
+- Authorized security research
+- Lawful investigations with proper consent
+- Academic research and education
+- Penetration testing with written permission
 
-**Prohibited Uses**:
-❌ Unauthorized surveillance or stalking  
-❌ Harassment or doxxing  
-❌ Privacy violations  
-❌ Illegal data collection  
+**Prohibited uses**: unauthorized surveillance, harassment, doxxing, privacy violations, illegal data collection.
 
 ### Security Best Practices
 
-1. **Change default credentials** immediately
-2. **Never commit** API keys or `.env` files
-3. **Use HTTPS** in production (reverse proxy recommended)
-4. **Enable rate limiting** for public deployments
-5. **Encrypt API keys** at rest (see `app/utils/crypto.py`)
-6. **Regular updates** to dependencies for security patches
+1. Set a strong `SECRET_KEY` environment variable in production
+2. Change the default `admin / changeme` credentials immediately
+3. Never commit `.env` or API key files to source control
+4. Use HTTPS in production (see [Deployment Guide](./docs/DEPLOYMENT.md))
+5. For production deployments, implement real API key encryption in `app/utils/crypto.py`
 
-## 🛠️ Development
-
-### Running Tests
+## Development
 
 ```bash
 # Install dev dependencies
-pip install pytest pytest-asyncio
+pip install black ruff pytest
 
 # Run tests
-pytest
-```
+PYTHONPATH=. pytest -q
 
-### Code Style
-
-```bash
-# Format with black
+# Format and lint
 black app/
-
-# Lint with ruff
-ruff check app/
+ruff check app/ --fix
 ```
 
-### Contributing
+See [Development Guide](./docs/DEVELOPMENT.md) for contributing guidelines.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Documentation
 
-See [DEVELOPMENT.md](./docs/DEVELOPMENT.md) for detailed guidelines.
+- [Installation Guide](./docs/INSTALLATION.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [API Integration](./docs/API_INTEGRATION.md)
+- [Development Guide](./docs/DEVELOPMENT.md)
+- [Deployment Guide](./docs/DEPLOYMENT.md)
+- [Termux / Android](./docs/TERMUX.md)
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### Port Already in Use
-
+**Port 3000 already in use**
 ```bash
-# Kill existing Reflex processes
-pkill -f "reflex run"
-
-# Or specify different ports in rxconfig.py
+lsof -ti:3000 | xargs kill -9
 ```
 
-### Database Locked Error
-
+**Database reset**
 ```bash
-# Reset database
-rm reflex.db
+rm dev.db
 python reset_admin.py
 ```
 
-### Import Errors
-
+**Import errors**
 ```bash
-# Reinstall dependencies
-pip install -r requirements.txt --force-reinstall
+pip install -r requirements.txt --force-reinstall --no-cache-dir
 ```
 
-## 📊 Performance
+## Roadmap
 
-- **Mock Mode**: Instant responses with deterministic data
-- **Live APIs**: 1-5 second response times (depends on external services)
-- **Rate Limits**: Configurable per-service (default: 100/hour)
-- **Caching**: 1-hour TTL for domain/IP lookups
-
-## 🗺️ Roadmap
-
-- [ ] Advanced graph analytics and clustering
 - [ ] PDF/DOCX report exports
+- [ ] Advanced network graph visualization
 - [ ] Real-time collaboration features
 - [ ] Blockchain address tracking
 - [ ] Dark web monitoring integration
-- [ ] Mobile app (React Native)
 - [ ] Plugin architecture for custom tools
 
-## 📜 License
+## License
 
-This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details.
+Licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
 
-This means:
-- ✅ You can use this software for any purpose
-- ✅ You can modify and distribute it
-- ✅ You must share modifications under GPL v3
-- ✅ You must include the original copyright notice
+## Acknowledgments
 
-## 🙏 Acknowledgments
-
-- [Reflex](https://reflex.dev/) - Pure Python web framework
-- [SQLModel](https://sqlmodel.tiangolo.com/) - Database ORM
-- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS
-- Lucide Icons via Reflex icon library
+- [Flask](https://flask.palletsprojects.com/) — Web framework
+- [Flask-Login](https://flask-login.readthedocs.io/) — Authentication
+- [SQLModel](https://sqlmodel.tiangolo.com/) — Database ORM
+- [Tailwind CSS](https://tailwindcss.com/) — Utility-first CSS
+- [httpx](https://www.python-httpx.org/) — HTTP client
 - OSINT community for methodology and best practices
 
-## 📞 Support
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/idorenyinbassey/Ethical-OSINT-Tracker/issues)
-- **Documentation**: [docs/](./docs/)
 - **Discussions**: [GitHub Discussions](https://github.com/idorenyinbassey/Ethical-OSINT-Tracker/discussions)
-
-## ⚠️ Disclaimer
-
-This software is provided for **educational and lawful purposes only**. Users are solely responsible for ensuring their use complies with all applicable laws and regulations. The authors assume no liability for misuse or illegal activities conducted with this tool.
 
 ---
 
-**Built with ❤️ for the ethical OSINT community**
+**Built for the ethical OSINT community**
 
-Star ⭐ this repo if you find it useful!
-
-## Supported API service keys
-
-The Settings page accepts a set of known service keys which pre-fill sensible defaults. Supported keys:
-
-- `WhoisXML` — WhoisXML API (domain WHOIS)
-- `HIBP` — Have I Been Pwned (breach data)
-- `IPInfo` — IPInfo.io (IP geolocation)
-- `Shodan` — Shodan (device search)
-- `VirusTotal` — VirusTotal (threat analysis)
-- `Hunter.io` — Hunter.io (email verification)
-- `NumVerify` — NumVerify (phone validation)
-- `ImageRecognition` — Example: DeepAI (image analysis)
-- `IMEIService` — Example: imei.info (IMEI/device lookup)
-- `SocialSearch` — Example: GitHub/Reddit public APIs or aggregators
-
-You may save custom service names; the UI will warn if a name isn't one of the supported keys above but will still allow saving.
-
-API key storage and CI
----------------------
-
-- Encryption removed: to simplify local development, this repository no longer encrypts API keys at rest. `app/utils/crypto.py` now stores API keys as plaintext. Do NOT commit `.env` or any API keys to source control.
-- For production, wire a secure key management solution (HashiCorp Vault, AWS KMS, Google KMS, Azure Key Vault) and implement a backend for `app.utils.key_manager.key_manager` to fetch keys at runtime.
-- CI / GitHub Actions no longer requires `API_KEYS_FERNET_KEY`. If you reintroduce encryption, add the secret in repository settings.
-
+> This software is provided for educational and lawful purposes only. Users are solely responsible for ensuring their use complies with all applicable laws and regulations.
