@@ -5,14 +5,16 @@ from app.repositories.api_config_repository import get_all_configs, create_or_up
 settings_bp = Blueprint("settings", __name__, url_prefix="/settings")
 
 SERVICES = [
-    {"name": "IPInfo", "label": "IPInfo.io", "default_url": "https://ipinfo.io"},
-    {"name": "Shodan", "label": "Shodan", "default_url": "https://api.shodan.io"},
-    {"name": "VirusTotal", "label": "VirusTotal", "default_url": "https://www.virustotal.com/api/v3"},
-    {"name": "HIBP", "label": "Have I Been Pwned", "default_url": "https://haveibeenpwned.com/api/v3"},
-    {"name": "Hunter.io", "label": "Hunter.io", "default_url": "https://api.hunter.io/v2"},
-    {"name": "NumVerify", "label": "NumVerify", "default_url": "http://apilayer.net/api"},
-    {"name": "SocialSearch", "label": "Social Search (GitHub/Twitter keys in notes as JSON)", "default_url": ""},
-    {"name": "ImageRecognition", "label": "Google Cloud Vision", "default_url": "https://vision.googleapis.com/v1"},
+    # Free sources (no API key needed)
+    {"name": "TorProxy", "label": "Tor / Proxy (SOCKS5 or HTTP)", "default_url": "socks5://127.0.0.1:9050"},
+    # Optional enrichment APIs
+    {"name": "IPInfo", "label": "IPInfo.io (optional — ip-api.com is used free by default)", "default_url": "https://ipinfo.io"},
+    {"name": "Shodan", "label": "Shodan (port scans & CVEs)", "default_url": "https://api.shodan.io"},
+    {"name": "VirusTotal", "label": "VirusTotal (threat intelligence)", "default_url": "https://www.virustotal.com/api/v3"},
+    {"name": "HIBP", "label": "Have I Been Pwned (breach data)", "default_url": "https://haveibeenpwned.com/api/v3"},
+    {"name": "Hunter.io", "label": "Hunter.io (email deliverability)", "default_url": "https://api.hunter.io/v2"},
+    {"name": "NumVerify", "label": "NumVerify (phone validation)", "default_url": "http://apilayer.net/api"},
+    {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},
     {"name": "IMEIService", "label": "IMEI Service", "default_url": "https://api.imei.info"},
 ]
 
