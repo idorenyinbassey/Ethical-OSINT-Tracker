@@ -3,7 +3,7 @@ import os
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -42,6 +42,23 @@ def _safe_case_id(raw: str | None) -> int | None:
 
 def _cases_for_select():
     return list_cases()
+
+
+@investigation_bp.before_request
+def _investigation_before():
+    from flask_login import current_user
+    if not current_user.is_authenticated:
+        return
+    # Save case selection to session on POST
+    if request.method == 'POST':
+        cid = _safe_case_id(request.form.get('case_id'))
+        if cid:
+            session['active_case_id'] = cid
+    # Require at least one case to exist
+    cases = _cases_for_select()
+    if not cases:
+        flash("Please create a case first before running investigations.", "error")
+        return redirect(url_for('cases.new'))
 
 
 # ── index ────────────────────────────────────────────────────────────────────
@@ -443,7 +460,7 @@ def graph_data():
             "title": f"Type: {inv.kind}\nQuery: {inv.query}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
         })
         if inv.case_id:
-            edges.append({"from": inv_node_id, "to": f"case-{inv.case_id}"})
+            edges.append({"from": f"case-{inv.case_id}", "to": inv_node_id})
 
     return jsonify({"nodes": nodes, "edges": edges})
 

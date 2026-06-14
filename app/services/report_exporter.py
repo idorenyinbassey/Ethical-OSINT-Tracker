@@ -121,3 +121,129 @@ def export_docx(case, investigations) -> bytes:
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def export_html(case, investigations) -> str:
+    """Return a standalone HTML report."""
+    import html as _html
+    esc = lambda s: _html.escape(str(s) if s is not None else "")
+    rows = ""
+    for inv in investigations:
+        detail = esc(_format_result(inv.result_json)).replace('\n', '<br>')
+        ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
+        rows += f"""
+        <div class="inv">
+          <div class="inv-hd">
+            <span class="kind">{esc(inv.kind.replace('_',' ').title())}</span>
+            <code class="query">{esc(inv.query)}</code>
+            <span class="ts">{ts}</span>
+          </div>
+          <pre class="detail">{detail}</pre>
+        </div>"""
+    created = case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else "Unknown"
+    generated = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+    desc_html = f"<p>{esc(case.description)}</p>" if case.description else ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OSINT Report — {esc(case.title)}</title>
+<style>
+  body{{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1.5rem;color:#111;background:#fff}}
+  h1{{color:#4338ca;margin-bottom:.25rem}}h2{{color:#374151;margin-top:0}}
+  .meta{{color:#6b7280;font-size:.875rem;border-bottom:1px solid #e5e7eb;padding-bottom:1rem;margin-bottom:1.5rem}}
+  .inv{{border:1px solid #e5e7eb;border-radius:.5rem;margin-bottom:1rem;overflow:hidden}}
+  .inv-hd{{background:#f9fafb;padding:.6rem 1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}}
+  .kind{{background:#eef2ff;color:#4338ca;font-size:.7rem;font-weight:600;padding:.2rem .5rem;border-radius:.25rem;white-space:nowrap}}
+  .query{{font-size:.875rem;word-break:break-all}}
+  .ts{{color:#9ca3af;font-size:.75rem;margin-left:auto;white-space:nowrap}}
+  .detail{{margin:0;padding:.75rem 1rem;font-size:.8rem;color:#374151;white-space:pre-wrap;word-break:break-word;background:#fff;border-top:1px solid #f3f4f6}}
+</style>
+</head>
+<body>
+<h1>OSINT Investigation Report</h1>
+<h2>{esc(case.title)}</h2>
+<div class="meta">
+  <p>Status: <strong>{esc(case.status.replace('_',' ').title())}</strong> &nbsp;|&nbsp; Priority: <strong>{esc(case.priority.title())}</strong></p>
+  <p>Created: {created} &nbsp;|&nbsp; Generated: {generated} UTC &nbsp;|&nbsp; {len(investigations)} investigation(s)</p>
+  {desc_html}
+</div>
+<h3>Investigations ({len(investigations)})</h3>
+{rows}
+</body>
+</html>"""
+
+
+def export_csv(case, investigations) -> bytes:
+    """Return UTF-8 CSV bytes (BOM for Excel compatibility)."""
+    import csv
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["OSINT Investigation Report"])
+    w.writerow(["Case", case.title])
+    w.writerow(["Status", case.status.replace("_", " ").title()])
+    w.writerow(["Priority", case.priority.title()])
+    w.writerow(["Created", case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else ""])
+    w.writerow(["Description", case.description or ""])
+    w.writerow(["Generated", datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M') + " UTC"])
+    w.writerow([])
+    w.writerow(["#", "Type", "Query", "Date", "Summary"])
+    for i, inv in enumerate(investigations, 1):
+        summary = _format_result(inv.result_json).replace('\n', ' | ')[:300]
+        ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
+        w.writerow([i, inv.kind.replace("_", " ").title(), inv.query, ts, summary])
+    return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
+
+
+def export_xlsx(case, investigations) -> bytes:
+    """Return XLSX bytes using openpyxl."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        raise RuntimeError("openpyxl not installed. Run: pip install openpyxl")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    # Header styles
+    title_font = Font(bold=True, size=14, color="4338CA")
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="4338CA")
+    # Title
+    ws.append(["OSINT Investigation Report"])
+    ws["A1"].font = title_font
+    ws.append(["Case", case.title])
+    ws.append(["Status", case.status.replace("_", " ").title()])
+    ws.append(["Priority", case.priority.title()])
+    ws.append(["Created", case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else ""])
+    if case.description:
+        ws.append(["Description", case.description])
+    ws.append(["Generated", datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M') + " UTC"])
+    ws.append([])
+    # Column headers
+    hdrs = ["#", "Type", "Query", "Date", "Summary"]
+    ws.append(hdrs)
+    hdr_row = ws.max_row
+    for col_i, _ in enumerate(hdrs, 1):
+        cell = ws.cell(row=hdr_row, column=col_i)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+    # Data rows
+    alt_fill = PatternFill("solid", fgColor="EEF2FF")
+    for i, inv in enumerate(investigations, 1):
+        summary = _format_result(inv.result_json).replace('\n', ' | ')[:500]
+        ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
+        ws.append([i, inv.kind.replace("_", " ").title(), inv.query, ts, summary])
+        if i % 2 == 0:
+            for col_i in range(1, 6):
+                ws.cell(row=ws.max_row, column=col_i).fill = alt_fill
+    # Column widths
+    ws.column_dimensions["A"].width = 5
+    ws.column_dimensions["B"].width = 16
+    ws.column_dimensions["C"].width = 30
+    ws.column_dimensions["D"].width = 18
+    ws.column_dimensions["E"].width = 70
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

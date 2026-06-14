@@ -1,6 +1,6 @@
 import io
 import datetime
-from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session
 from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
@@ -52,6 +52,7 @@ def detail(case_id):
             flash("Comment added.", "success")
         return redirect(url_for("cases.detail", case_id=case_id))
 
+    session['active_case_id'] = case_id
     investigations = list_by_case(case_id)
     comments = list_comments(case_id)
     return render_template("cases/detail.html", case=case,
@@ -143,3 +144,63 @@ def export_docx(case_id):
         as_attachment=True,
         download_name=filename,
     )
+
+
+@cases_bp.route("/<int:case_id>/export/html")
+@login_required
+def export_html(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    investigations = list_by_case(case_id)
+    html_str = report_exporter.export_html(case, investigations)
+    safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+    filename = f"osint-report-{safe_title or case_id}.html"
+    return send_file(io.BytesIO(html_str.encode('utf-8')), mimetype="text/html",
+                     as_attachment=True, download_name=filename)
+
+
+@cases_bp.route("/<int:case_id>/export/csv")
+@login_required
+def export_csv(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    investigations = list_by_case(case_id)
+    csv_bytes = report_exporter.export_csv(case, investigations)
+    safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+    filename = f"osint-report-{safe_title or case_id}.csv"
+    return send_file(io.BytesIO(csv_bytes), mimetype="text/csv",
+                     as_attachment=True, download_name=filename)
+
+
+@cases_bp.route("/<int:case_id>/export/xlsx")
+@login_required
+def export_xlsx(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    investigations = list_by_case(case_id)
+    try:
+        xlsx_bytes = report_exporter.export_xlsx(case, investigations)
+    except Exception as e:
+        flash(str(e), "error")
+        return redirect(url_for("cases.detail", case_id=case_id))
+    safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+    filename = f"osint-report-{safe_title or case_id}.xlsx"
+    return send_file(io.BytesIO(xlsx_bytes),
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=filename)
+
+
+@cases_bp.route("/<int:case_id>/set-active", methods=["POST"])
+@login_required
+def set_active(case_id):
+    case = get_case(case_id)
+    if case:
+        session['active_case_id'] = case_id
+        flash(f"'{case.title}' is now your active case.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
