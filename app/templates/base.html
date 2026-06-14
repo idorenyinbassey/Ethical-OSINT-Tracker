@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-950">
+<html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,19 +7,58 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <script>
+    (function(){
+      var t = localStorage.getItem('osint-theme') || 'system';
+      var dark = t==='dark' || (t==='system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.classList.add('dark');
+    })();
+  </script>
   <style>
-    .sidebar-link { @apply flex items-center gap-3 px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors text-sm; }
-    .sidebar-link.active { @apply bg-indigo-700 text-white; }
+    .sidebar-link { display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;border-radius:.5rem;font-size:.875rem;transition:all .15s;color:#4b5563; }
+    .dark .sidebar-link { color:#d1d5db; }
+    .sidebar-link:hover { background:#f3f4f6;color:#111827; }
+    .dark .sidebar-link:hover { background:#1f2937;color:#fff; }
+    .sidebar-link.active { background:#eef2ff;color:#4338ca;font-weight:500; }
+    .dark .sidebar-link.active { background:#4f46e5;color:#fff; }
   </style>
 </head>
-<body class="h-full flex dark text-white">
+<body class="h-full flex bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
+
+  <!-- Mobile backdrop -->
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/60 z-20 md:hidden" onclick="closeSidebar()"></div>
 
   <!-- Sidebar -->
-  <aside class="w-56 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
-    <div class="px-4 py-5 border-b border-gray-800">
-      <span class="text-indigo-400 font-bold text-lg tracking-tight">OSINT Tracker</span>
-      <p class="text-xs text-gray-500 mt-0.5">Ethical Investigation</p>
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col -translate-x-full md:translate-x-0 md:static md:z-auto transition-transform duration-200">
+    <div class="px-4 py-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+      <div>
+        <span class="text-indigo-600 dark:text-indigo-400 font-bold text-lg tracking-tight">OSINT Tracker</span>
+        <p class="text-xs text-gray-500 mt-0.5">Ethical Investigation</p>
+      </div>
+      <!-- Close button (mobile only) -->
+      <button onclick="closeSidebar()" class="md:hidden text-gray-400 hover:text-gray-700 dark:hover:text-white p-1 rounded">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
+
+    {% if active_case %}
+    <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50 dark:bg-indigo-900/20">
+      <p class="text-xs text-indigo-500 dark:text-indigo-400 font-medium uppercase tracking-wider mb-1">Active Case</p>
+      <a href="{{ url_for('cases.detail', case_id=active_case.id) }}" class="text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white truncate block">{{ active_case.title }}</a>
+      {% if case_investigations %}
+      <div class="mt-1.5">
+        <p class="text-xs text-gray-500 dark:text-gray-500 mb-1">Case History</p>
+        <div class="flex flex-wrap gap-1">
+          {% for inv in case_investigations[-5:] %}
+          <span class="text-xs px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300 rounded">{{ inv.kind.replace('_',' ') }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
 
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
       <a href="{{ url_for('dashboard.index') }}"
@@ -150,15 +189,41 @@
       </a>
     </nav>
 
-    <div class="p-4 border-t border-gray-800">
+    <!-- Sidebar footer: user + theme toggle -->
+    <div class="p-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
+      <!-- Theme toggle -->
+      <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+        <!-- Sun / Light -->
+        <button id="theme-light" onclick="setTheme('light')" title="Light mode"
+          class="flex-1 flex items-center justify-center py-1 rounded-md transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+          </svg>
+        </button>
+        <!-- Monitor / System -->
+        <button id="theme-system" onclick="setTheme('system')" title="System theme"
+          class="flex-1 flex items-center justify-center py-1 rounded-md transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </button>
+        <!-- Moon / Dark -->
+        <button id="theme-dark" onclick="setTheme('dark')" title="Dark mode"
+          class="flex-1 flex items-center justify-center py-1 rounded-md transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+          </svg>
+        </button>
+      </div>
+
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
+        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">
           {{ current_user.username[0].upper() }}
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium truncate">{{ current_user.username }}</p>
+          <p class="text-sm font-medium truncate text-gray-900 dark:text-white">{{ current_user.username }}</p>
         </div>
-        <a href="{{ url_for('auth.logout') }}" class="text-gray-400 hover:text-white" title="Logout">
+        <a href="{{ url_for('auth.logout') }}" class="text-gray-400 hover:text-gray-700 dark:hover:text-white" title="Logout">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
           </svg>
@@ -169,15 +234,28 @@
 
   <!-- Main content -->
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-    <main class="flex-1 overflow-y-auto p-6 bg-gray-950">
+    <!-- Mobile top bar -->
+    <div class="md:hidden flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      <button onclick="openSidebar()" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <span class="font-semibold text-indigo-600 dark:text-indigo-400 flex-1">OSINT Tracker</span>
+      {% if active_case %}
+      <span class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{{ active_case.title }}</span>
+      {% endif %}
+    </div>
+
+    <main class="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-950">
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="mb-4 space-y-2">
             {% for category, message in messages %}
               <div class="px-4 py-3 rounded-lg text-sm
-                {% if category == 'error' %}bg-red-900/50 border border-red-700 text-red-200
-                {% else %}bg-green-900/50 border border-green-700 text-green-200{% endif %}">
+                {% if category == 'error' %}bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-200
+                {% else %}bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200{% endif %}">
                 {{ message }}
               </div>
             {% endfor %}
@@ -190,16 +268,46 @@
   </div>
 
 <script>
-// Auto-inject CSRF token into every form so Flask-WTF validation passes
-(function() {
+function openSidebar() {
+  document.getElementById('sidebar').classList.remove('-translate-x-full');
+  document.getElementById('sidebar-backdrop').classList.remove('hidden');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.add('-translate-x-full');
+  document.getElementById('sidebar-backdrop').classList.add('hidden');
+}
+function setTheme(t) {
+  localStorage.setItem('osint-theme', t);
+  var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+  _updateThemeBtns(t);
+}
+function _updateThemeBtns(t) {
+  var isDark = document.documentElement.classList.contains('dark');
+  ['light','system','dark'].forEach(function(m) {
+    var btn = document.getElementById('theme-'+m);
+    if (!btn) return;
+    var on = m === t;
+    btn.classList.toggle('bg-white', on && !isDark);
+    btn.classList.toggle('shadow-sm', on);
+    btn.classList.toggle('bg-gray-700', on && isDark);
+    btn.classList.toggle('text-gray-900', on && !isDark);
+    btn.classList.toggle('text-white', on && isDark);
+  });
+}
+(function(){
+  var t = localStorage.getItem('osint-theme') || 'system';
+  _updateThemeBtns(t);
+})();
+// CSRF injection
+(function(){
   var token = document.querySelector('meta[name="csrf-token"]');
   if (!token) return;
-  document.querySelectorAll('form').forEach(function(form) {
+  document.querySelectorAll('form').forEach(function(form){
     if (!form.querySelector('[name="csrf_token"]')) {
       var inp = document.createElement('input');
-      inp.type = 'hidden';
-      inp.name = 'csrf_token';
-      inp.value = token.getAttribute('content');
+      inp.type='hidden'; inp.name='csrf_token';
+      inp.value=token.getAttribute('content');
       form.appendChild(inp);
     }
   });

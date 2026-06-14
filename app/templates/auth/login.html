@@ -1,20 +1,28 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-950">
+<html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login – OSINT Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+    (function(){
+      var t = localStorage.getItem('osint-theme') || 'system';
+      var dark = t==='dark' || (t==='system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.classList.add('dark');
+    })();
+  </script>
 </head>
-<body class="h-full flex items-center justify-center dark bg-gray-950">
+<body class="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
   <div class="w-full max-w-md px-4">
     <div class="text-center mb-8">
       <h1 class="text-3xl font-bold text-indigo-400">OSINT Tracker</h1>
       <p class="text-gray-400 text-sm mt-1">Ethical Open Source Intelligence</p>
     </div>
 
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-8">
-      <h2 class="text-xl font-semibold text-white mb-6">Sign In</h2>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8">
+      <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">Sign In</h2>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -31,15 +39,15 @@
       <form method="post" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
-          <label class="block text-sm text-gray-400 mb-1">Username</label>
+          <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Username</label>
           <input type="text" name="username" required
-            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
             placeholder="Enter username">
         </div>
         <div>
-          <label class="block text-sm text-gray-400 mb-1">Password</label>
+          <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Password</label>
           <input type="password" name="password" required
-            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
             placeholder="Enter password">
         </div>
         <button type="submit"
