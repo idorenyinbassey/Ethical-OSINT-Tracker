@@ -1,67 +1,55 @@
 # Deployment Guide
 
-This guide provides instructions for deploying the Ethical OSINT Tracker to a production environment.
+Production deployment instructions for Ethical OSINT Tracker (Flask).
 
 ## Prerequisites
 
-- A server or cloud instance (e.g., AWS EC2, DigitalOcean Droplet, Vultr).
-- A domain name (recommended).
-- Docker and Docker Compose (recommended for easiest deployment).
-- Or, Python 3.11+, a production-grade web server (like Gunicorn), and a reverse proxy (like Nginx).
+- Python 3.11+ on the server
+- A domain name (recommended)
+- Nginx or another reverse proxy for HTTPS
 
-## Option 1: Deployment with Docker (Recommended)
+## Option 1: Docker (Recommended)
 
-Using Docker is the most reliable and straightforward way to deploy the application.
+### Dockerfile
 
-### 1. Create `Dockerfile`
+Create `Dockerfile` in the project root:
 
-Create a `Dockerfile` in the project root:
-
-```Dockerfile
-# Use an official Python runtime as a parent image
+```dockerfile
 FROM python:3.11-slim
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the dependencies file to the working directory
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install gunicorn
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application's code
 COPY . .
 
-# Export the frontend
-RUN reflex export
+RUN python reset_admin.py
 
-# Command to run the app
-CMD ["uvicorn", "app.app:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 3000
+
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:3000", "run:app"]
 ```
 
-### 2. Create `docker-compose.yml`
-
-Create a `docker-compose.yml` file to manage the application and a reverse proxy.
+### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     build: .
-    container_name: osint_tracker_app
+    container_name: osint_tracker
     restart: always
-    env_file:
-      - .env
+    env_file: .env
     volumes:
-      - ./reflex.db:/app/reflex.db  # Persist the SQLite database
+      - ./dev.db:/app/dev.db          # persist SQLite DB
+      - ./app/uploads:/app/app/uploads
     networks:
       - osint_net
 
   nginx:
     image: nginx:latest
-    container_name: osint_tracker_nginx
+    container_name: osint_nginx
     restart: always
     ports:
       - "80:80"
@@ -75,22 +63,12 @@ services:
     networks:
       - osint_net
 
-  certbot:
-    image: certbot/certbot
-    container_name: osint_tracker_certbot
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    command: certonly --webroot -w /var/www/certbot --email your-email@example.com -d your-domain.com --agree-tos --no-eff-email -n
-
 networks:
   osint_net:
     driver: bridge
 ```
 
-### 3. Create `nginx.conf`
-
-Create an `nginx.conf` file for the reverse proxy.
+### nginx.conf
 
 ```nginx
 events {}
@@ -100,12 +78,12 @@ http {
         listen 80;
         server_name your-domain.com;
 
-        location / {
-            return 301 https://$host$request_uri;
-        }
-
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
         }
     }
 
@@ -116,205 +94,145 @@ http {
         ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
+        client_max_body_size 16M;   # match Flask MAX_CONTENT_LENGTH
+
         location / {
-            proxy_pass http://app:3000; # Reflex frontend runs on 3000
+            proxy_pass http://app:3000;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        location /_event {
-            proxy_pass http://app:8000/_event; # Reflex backend
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
     }
 }
 ```
-**Note**: Replace `your-domain.com` and `your-email@example.com` with your actual domain and email.
 
-### 4. Create `.env` File
-
-Create a `.env` file for production secrets.
+### .env (production)
 
 ```env
-# Use MySQL in production
-DB_URL=mysql+pymysql://user:password@db_host/osint_tracker
-
-# Generate a strong, random secret key
-SECRET_KEY=your_super_secret_key_here
-
-# Enable API key encryption
-ENCRYPT_API_KEYS=true
-
-# API Keys
-WHOISXML_API_KEY=...
-HIBP_API_KEY=...
-# ... etc.
+DB_URL=mysql+pymysql://osint_user:password@db_host/osint_tracker
+SECRET_KEY=generate-a-long-random-string-here
 ```
 
-### 5. Deploy
+### Deploy
 
-1. **Initial Certbot Run**:
-   ```bash
-   docker-compose run --rm certbot
-   ```
-2. **Start Application**:
-   ```bash
-   docker-compose up -d
-   ```
-3. **Initialize Database**:
-   ```bash
-   docker-compose exec app python reset_admin.py
-   ```
+```bash
+# First run — get TLS certificate
+docker compose run --rm certbot certonly --webroot \
+  -w /var/www/certbot --email you@example.com \
+  -d your-domain.com --agree-tos --no-eff-email -n
 
-The application will be available at `https://your-domain.com`.
+# Start everything
+docker compose up -d
+```
 
-## Option 2: Manual Deployment (without Docker)
+## Option 2: Manual (Gunicorn + Nginx)
 
-### 1. Prepare the Server
+### 1. Set up the server
 
-- SSH into your server.
-- Install Python 3.11+, Git, Nginx, and other dependencies.
-- Clone the repository.
-- Set up a virtual environment and install `requirements.txt`.
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3-pip nginx certbot python3-certbot-nginx
 
-### 2. Configure Gunicorn
+git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
+cd Ethical-OSINT-Tracker
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install gunicorn
+```
 
-Gunicorn is a production-grade WSGI server.
+### 2. Configure environment
 
-1. **Install Gunicorn**:
-   ```bash
-   pip install gunicorn
-   ```
-2. **Create a Gunicorn service file**:
-   Create `/etc/systemd/system/osint-tracker.service`:
-   ```ini
-   [Unit]
-   Description=Gunicorn instance to serve Ethical OSINT Tracker
-   After=network.target
+```bash
+export DB_URL=mysql+pymysql://osint_user:password@localhost/osint_tracker
+export SECRET_KEY=your-long-random-secret
+python reset_admin.py
+```
 
-   [Service]
-   User=your_user
-   Group=www-data
-   WorkingDirectory=/path/to/Ethical-OSINT-Tracker
-   Environment="PATH=/path/to/Ethical-OSINT-Tracker/.venv/bin"
-   ExecStart=/path/to/Ethical-OSINT-Tracker/.venv/bin/gunicorn --workers 3 --bind unix:osint-tracker.sock -m 007 app.app:app
+### 3. Create a systemd service
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
-   - Replace `your_user` and paths accordingly.
+`/etc/systemd/system/osint-tracker.service`:
 
-3. **Start and enable the service**:
-   ```bash
-   sudo systemctl start osint-tracker
-   sudo systemctl enable osint-tracker
-   ```
+```ini
+[Unit]
+Description=Ethical OSINT Tracker (Flask/Gunicorn)
+After=network.target
 
-### 3. Configure Nginx
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/Ethical-OSINT-Tracker
+EnvironmentFile=/opt/Ethical-OSINT-Tracker/.env
+ExecStart=/opt/Ethical-OSINT-Tracker/.venv/bin/gunicorn \
+    --workers 4 \
+    --bind unix:/run/osint-tracker.sock \
+    -m 007 \
+    run:app
 
-Nginx will act as a reverse proxy, serving the static frontend and forwarding API requests to Gunicorn.
+[Install]
+WantedBy=multi-user.target
+```
 
-1. **Export the frontend**:
-   ```bash
-   reflex export
-   ```
-   This creates a `.web` directory with the static frontend build.
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now osint-tracker
+```
 
-2. **Create an Nginx configuration file**:
-   Create `/etc/nginx/sites-available/osint-tracker`:
-   ```nginx
-   server {
-       listen 80;
-       server_name your-domain.com;
+### 4. Configure Nginx
 
-       location / {
-           root /path/to/Ethical-OSINT-Tracker/.web;
-           try_files $uri $uri/ /index.html;
-       }
+`/etc/nginx/sites-available/osint-tracker`:
 
-       location /_event {
-           proxy_pass http://unix:/path/to/Ethical-OSINT-Tracker/osint-tracker.sock;
-           proxy_http_version 1.1;
-           proxy_set_header Upgrade $http_upgrade;
-           proxy_set_header Connection "upgrade";
-           proxy_set_header Host $host;
-       }
-   }
-   ```
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
 
-3. **Enable the site**:
-   ```bash
-   sudo ln -s /etc/nginx/sites-available/osint-tracker /etc/nginx/sites-enabled
-   sudo nginx -t # Test configuration
-   sudo systemctl restart nginx
-   ```
+    client_max_body_size 16M;
 
-4. **Set up SSL with Certbot**:
-   ```bash
-   sudo apt install certbot python3-certbot-nginx
-   sudo certbot --nginx -d your-domain.com
-   ```
+    location / {
+        proxy_pass http://unix:/run/osint-tracker.sock;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
 
-### 4. Final Steps
+```bash
+sudo ln -s /etc/nginx/sites-available/osint-tracker /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
 
-1. **Set up `.env` file** as described in the Docker section.
-2. **Initialize the database**:
-   ```bash
-   python reset_admin.py
-   ```
+# Add HTTPS
+sudo certbot --nginx -d your-domain.com
+```
 
 ## Production Checklist
 
-- [ ] **Use MySQL**: Switch from SQLite to a more robust database like MySQL or PostgreSQL.
-- [ ] **Set `SECRET_KEY`**: Generate a long, random string for the `SECRET_KEY` in your `.env` file.
-- [ ] **Enable API Key Encryption**: Set `ENCRYPT_API_KEYS=true` in `.env`.
-- [ ] **Configure Logging**: Adjust logging levels in `rxconfig.py` for production.
-- [ ] **Enable HTTPS**: Use SSL/TLS to encrypt all traffic.
-- [ ] **Change Default Admin Password**: Do this immediately after the first login.
-- [ ] **Backup Strategy**: Implement regular backups for your database and any uploaded files.
-- [ ] **Firewall**: Configure a firewall to only allow traffic on ports 80 and 443.
-- [ ] **Monitoring**: Set up monitoring for application uptime and server health.
+- [ ] Set a strong, unique `SECRET_KEY`
+- [ ] Switch `DB_URL` to MySQL or PostgreSQL
+- [ ] Change default `admin / changeme` password immediately
+- [ ] Enable HTTPS (TLS via Let's Encrypt)
+- [ ] Implement API key encryption in `app/utils/crypto.py`
+- [ ] Restrict `app/uploads/` directory in Nginx (no public listing)
+- [ ] Set up database backups
+- [ ] Configure a firewall (ports 80 and 443 only)
+- [ ] Add CSRF protection (`flask-wtf`) for production
 
-## Updating the Application
+## Updating
 
-### Docker Deployment
+```bash
+git pull origin main
+pip install -r requirements.txt --upgrade
+sudo systemctl restart osint-tracker
+```
 
-1. **Pull latest code**:
-   ```bash
-   git pull origin main
-   ```
-2. **Rebuild and restart**:
-   ```bash
-   docker-compose up -d --build
-   ```
-3. **Run database migrations** (if any):
-   ```bash
-   docker-compose exec app reflex db upgrade
-   ```
+If the schema changed:
 
-### Manual Deployment
-
-1. **Pull latest code**:
-   ```bash
-   git pull origin main
-   ```
-2. **Update dependencies**:
-   ```bash
-   pip install -r requirements.txt --upgrade
-   ```
-3. **Run database migrations**:
-   ```bash
-   reflex db upgrade
-   ```
-4. **Re-export the frontend**:
-   ```bash
-   reflex export
-   ```
-5. **Restart the Gunicorn service**:
-   ```bash
-   sudo systemctl restart osint-tracker
-   ```
+```bash
+alembic upgrade head
+sudo systemctl restart osint-tracker
+```

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Plugins – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Investigation Plugins</h1>
+<p class="text-sm text-yellow-500 mb-6">Modular investigation tools. Place Python files in <code class="bg-gray-800 px-1 rounded text-xs">app/plugins/</code> implementing <code class="bg-gray-800 px-1 rounded text-xs">BasePlugin</code> and decorate with <code class="bg-gray-800 px-1 rounded text-xs">@register</code>.</p>
+
+{% set ns = namespace(cats=[]) %}
+{% for plugin in plugins %}
+  {% if plugin.category not in ns.cats %}
+    {% set ns.cats = ns.cats + [plugin.category] %}
+  {% endif %}
+{% endfor %}
+
+{% for cat in ns.cats %}
+  <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-6">{{ cat }}</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for plugin in plugins %}
+      {% if plugin.category == cat %}
+        <a href="{{ url_for('investigation.plugin_run', plugin_name=plugin.name) }}"
+           class="bg-gray-900 border border-gray-800 hover:border-indigo-700 rounded-xl p-5 transition-colors block">
+          <h3 class="text-base font-semibold text-white mb-1">{{ plugin.label }}</h3>
+          <p class="text-sm text-gray-400">{{ plugin.description }}</p>
+          <span class="mt-3 inline-block text-xs text-indigo-400">Run →</span>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endfor %}
+
+{% if not plugins %}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+    No plugins registered.<br>
+    <span class="text-xs text-gray-600 mt-2 block">Create a Python file in app/plugins/ implementing BasePlugin with @register.</span>
+  </div>
+{% endif %}
+{% endblock %}

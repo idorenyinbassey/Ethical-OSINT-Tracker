@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Email Analysis – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Email Analysis</h1>
+<p class="text-sm text-yellow-500 mb-6">Only investigate email addresses with proper authorization.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Email Address</label>
+        <input type="email" name="query" required placeholder="user@example.com"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Analyze Email
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.breaches is not none %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">
+            Breach Check (HIBP)
+            <span class="ml-2 text-xs px-2 py-0.5 rounded
+              {% if result.breaches %}bg-red-900/50 text-red-300{% else %}bg-green-900/50 text-green-300{% endif %}">
+              {% if result.breaches %}{{ result.breaches|length }} breach(es){% else %}No breaches found{% endif %}
+            </span>
+          </h2>
+          {% if result.breaches %}
+            <div class="space-y-3">
+              {% for b in result.breaches %}
+                <div class="border border-gray-700 rounded-lg p-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <p class="font-medium text-white text-sm">{{ b.name }}</p>
+                    <span class="text-xs text-gray-400">{{ b.date }}</span>
+                  </div>
+                  {% if b.data_classes %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                      {% for dc in b.data_classes %}
+                        <span class="px-1.5 py-0.5 bg-red-900/40 text-red-300 rounded text-xs">{{ dc }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm text-yellow-400">
+          HIBP API not configured. Add your API key in <a href="{{ url_for('settings.index') }}" class="underline">Settings</a>.
+        </div>
+      {% endif %}
+
+      {% if result.verification %}
+        {% set v = result.verification %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Email Verification (Hunter.io)</h2>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <dt class="text-gray-400">Deliverable</dt>
+            <dd class="{% if v.deliverable %}text-green-400{% else %}text-red-400{% endif %}">
+              {{ 'Yes' if v.deliverable else 'No' }}
+            </dd>
+            <dt class="text-gray-400">Disposable</dt>
+            <dd class="{% if v.disposable %}text-red-400{% else %}text-green-400{% endif %}">
+              {{ 'Yes' if v.disposable else 'No' }}
+            </dd>
+            <dt class="text-gray-400">Webmail</dt><dd class="text-white">{{ 'Yes' if v.webmail else 'No' }}</dd>
+            <dt class="text-gray-400">Score</dt><dd class="text-white">{{ v.score }}%</dd>
+          </dl>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter an email address and run analysis to see results.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

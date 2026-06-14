@@ -1,287 +1,214 @@
 # Development Guide
 
-This guide provides instructions for developers who want to contribute to the Ethical OSINT Tracker project.
-
-## Table of Contents
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Development Workflow](#development-workflow)
-- [Coding Standards](#coding-standards)
-- [Running Tests](#running-tests)
-- [Adding a New Investigation Tool](#adding-a-new-investigation-tool)
-- [Database Migrations](#database-migrations)
-- [Submitting Contributions](#submitting-contributions)
+Contributing to Ethical OSINT Tracker.
 
 ## Prerequisites
 
-- All requirements from the [Installation Guide](./INSTALLATION.md).
-- A good understanding of Python, Reflex, and SQLModel.
-- Familiarity with OSINT techniques and ethical considerations.
-- A code editor like VS Code with Python support.
+- All requirements from [INSTALLATION.md](./INSTALLATION.md)
+- Python 3.11+
+- Familiarity with Flask, SQLModel, and Jinja2
+- Understanding of OSINT techniques and ethical considerations
 
-### Development Dependencies
+### Dev dependencies
 
-Install these packages for linting, formatting, and testing:
 ```bash
-pip install black ruff pytest pytest-asyncio
+pip install black ruff pytest
 ```
 
 ## Getting Started
 
-1. **Fork the repository** on GitHub.
-2. **Clone your fork** locally:
+1. **Fork** the repo on GitHub
+2. **Clone** your fork:
    ```bash
    git clone https://github.com/YOUR_USERNAME/Ethical-OSINT-Tracker.git
    cd Ethical-OSINT-Tracker
-   ```
-3. **Set up the upstream remote**:
-   ```bash
    git remote add upstream https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
    ```
-4. **Create a virtual environment** and install dependencies as described in the [Installation Guide](./INSTALLATION.md).
+3. **Create a virtual environment** and install dependencies (see [INSTALLATION.md](./INSTALLATION.md))
 
 ## Development Workflow
 
-1. **Sync your fork**:
-   ```bash
-   git fetch upstream
-   git checkout main
-   git merge upstream/main
-   ```
-2. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/my-new-feature
-   ```
-3. **Run the app in development mode**:
-   ```bash
-   reflex run
-   ```
-   The app will hot-reload as you make changes to the code.
+```bash
+# Keep your fork up to date
+git fetch upstream
+git checkout main
+git merge upstream/main
 
-4. **Make your changes**. Follow the architectural patterns outlined in [ARCHITECTURE.md](./ARCHITECTURE.md).
-   - Add new state logic in `app/states/`.
-   - Create new UI components in `app/components/`.
-   - Implement new pages in `app/pages/`.
-   - Add database models in `app/models/`.
-   - Create repositories for data access in `app/repositories/`.
+# Start a feature branch
+git checkout -b feature/my-new-feature
 
-5. **Write tests** for your new features (see [Running Tests](#running-tests)).
+# Run the app (hot-reloads with Flask debug mode)
+python run.py
 
-6. **Format and lint** your code:
-   ```bash
-   black .
-   ruff check . --fix
-   ```
+# Format and lint before committing
+black app/
+ruff check app/ --fix
 
-7. **Commit your changes** with a descriptive message:
-   ```bash
-   git add .
-   git commit -m "feat: Add my new feature"
-   ```
+# Run tests
+PYTHONPATH=. pytest -q
 
-8. **Push to your fork**:
-   ```bash
-   git push origin feature/my-new-feature
-   ```
+# Commit
+git add app/
+git commit -m "feat: describe the change"
+git push origin feature/my-new-feature
+```
 
-9. **Open a Pull Request** on the main repository.
+Then open a Pull Request against `main`.
 
 ## Coding Standards
 
-### Python
+- **Style**: PEP 8, enforced with `black` (formatter) and `ruff` (linter)
+- **Type hints**: required on all function signatures
+- **Docstrings**: one-line for simple functions; skip if the name is self-explanatory
+- **Comments**: only where the *why* is non-obvious
+- **Imports**: stdlib → third-party → local, one blank line between groups
 
-- **Style**: Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/). We use `black` for formatting and `ruff` for linting to enforce this.
-- **Type Hinting**: All functions and methods must have type hints.
-- **Docstrings**: Use Google-style docstrings for all public modules, classes, and functions.
-- **Imports**: Group imports in the following order:
-  1. Standard library imports
-  2. Third-party imports
-  3. Local application imports
+## Project Conventions
 
-### Reflex
+### Routes (app/routes/)
 
-- **State Management**: Keep state logic separate from UI components. State classes should be the single source of truth.
-- **Componentization**: Break down the UI into small, reusable components.
-- **Reactivity**: Use `rx.cond` and `rx.foreach` for conditional and dynamic rendering. Avoid standard Python `if/else` or `for` loops on reactive variables within component functions.
-- **Events**: Event handlers should be clearly named and, where possible, handle a single responsibility.
+Each blueprint follows this pattern:
 
-## Running Tests
+```python
+from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask_login import login_required, current_user
 
-We use `pytest` for testing.
+my_bp = Blueprint("my", __name__, url_prefix="/my")
 
-1. **Create a test file**: For a module `app/utils/my_util.py`, create a test file `tests/utils/test_my_util.py`.
-2. **Write your tests**:
+@my_bp.route("/")
+@login_required
+def index():
+    data = some_repository.list_all()
+    return render_template("my/index.html", data=data)
+```
 
-   ```python
-   # tests/utils/test_my_util.py
-   from app.utils.my_util import my_function
+Register new blueprints in `app/__init__.py`.
 
-   def test_my_function():
-       assert my_function(2, 2) == 4
-       assert my_function(-1, 1) == 0
-   ```
-   For async functions, use `pytest-asyncio`:
-   ```python
-   import pytest
+### Templates (app/templates/)
 
-   @pytest.mark.asyncio
-   async def test_my_async_function():
-       result = await my_async_function()
-       assert result is True
-   ```
+- Extend `base.html` for all authenticated pages
+- Auth pages (login, register) are standalone (no `base.html`)
+- Use Tailwind utility classes directly in templates; no custom CSS file needed
+- Flash messages are rendered automatically by `base.html`
 
-3. **Run tests**:
-   ```bash
-   pytest
-   ```
+### Services (app/services/)
+
+All service functions are **synchronous** and follow this structure:
+
+```python
+from app.services.cache import cached
+from app.repositories.api_config_repository import get_by_service
+import httpx
+
+@cached(ttl=3600)
+def fetch_something(query: str):
+    cfg = get_by_service("ServiceName")
+    if not cfg or not cfg.is_enabled or not cfg.api_key:
+        return None   # or return mock data
+
+    try:
+        with httpx.Client(timeout=8) as client:
+            r = client.get(cfg.base_url, params={"q": query, "key": cfg.api_key})
+            r.raise_for_status()
+            return r.json()
+    except Exception:
+        return None
+```
+
+Never use `async def` or `httpx.AsyncClient` in services — the Flask dev server and Gunicorn run synchronously.
+
+### Repositories (app/repositories/)
+
+Use `session_scope` for all DB access:
+
+```python
+from app.repositories.base import session_scope
+from app.models.something import Something
+from sqlmodel import select
+
+def get_by_id(item_id: int):
+    with session_scope(expire_on_commit=False) as session:
+        item = session.get(Something, item_id)
+        if item:
+            session.refresh(item)
+        return item
+```
+
+Always return detached instances (or explicit copies) so callers don't hit `DetachedInstanceError`.
 
 ## Adding a New Investigation Tool
 
-Follow this pattern to add a new tool (e.g., for "Username" lookup):
-
-1. **Extend `InvestigationState`** (`app/states/investigation_state.py`):
-   - Add state variables for the query, result, and loading status.
+1. **Create a service client** in `app/services/my_tool_client.py`
+2. **Add a route** in `app/routes/investigation.py`:
    ```python
-   class InvestigationState(rx.State):
-       # ...
-       username_query: str = ""
-       username_results: list[dict] = []
-       is_loading_username: bool = False
+   @investigation_bp.route("/mytool", methods=["GET", "POST"])
+   @login_required
+   def mytool():
+       result = None
+       if request.method == "POST":
+           query = request.form.get("query", "").strip()
+           result = my_tool_client.fetch(query)
+           create_investigation(kind="mytool", query=query,
+                                result_json=json.dumps(result),
+                                user_id=current_user.id)
+       return render_template("investigation/mytool.html", result=result,
+                              cases=list_cases())
    ```
-   - Create an `async` event handler to perform the lookup.
-   ```python
-   @rx.event
-   async def search_username(self):
-       if not self.username_query:
-           return
-       self.is_loading_username = True
-       self.username_results = []
-       yield
+3. **Add a template** at `app/templates/investigation/mytool.html` (extend `base.html`)
+4. **Add a sidebar link** in `app/templates/base.html`
 
-       # Call your service client (or mock data function)
-       self.username_results = await fetch_username_data(self.username_query)
-       
-       # Add to graph
-       self._add_to_graph(
-           node_id=self.username_query, 
-           node_type="person", 
-           label=self.username_query
-       )
+## Running Tests
 
-       self.is_loading_username = False
-   ```
+```bash
+PYTHONPATH=. pytest -q
+```
 
-2. **Create a Service Client** (`app/services/`):
-   - Create `username_client.py` to handle the API call and mocking logic.
+Tests live in `tests/`. Name files `test_*.py` and functions `test_*`.
 
-3. **Create the UI Component** (`app/components/investigation_tools.py`):
-   - Create a function `username_tool()` that returns an `rx.Component`.
-   - Follow the existing structure: ethical reminder card, input form, and conditional result panel.
-   ```python
-   def username_tool() -> rx.Component:
-       return rx.el.div(
-           ethical_reminder_card(...),
-           rx.el.input(on_change=InvestigationState.set_username_query),
-           rx.el.button("Search", on_click=InvestigationState.search_username),
-           rx.cond(
-               InvestigationState.is_loading_username,
-               rx.spinner(),
-               rx.foreach(
-                   InvestigationState.username_results,
-                   username_result_card
-               )
-           )
-       )
-   ```
+Example:
 
-4. **Add to Investigation Page** (`app/pages/investigation.py`):
-   - Add a new tab button in the `tools_tabs()` component.
-   ```python
-   tools_tabs():
-       # ...
-       tab_button("Username", "username", "user"),
-       # ...
-   ```
-   - Add a case to the `rx.match()` to render your new tool.
-   ```python
-   rx.match(
-       InvestigationState.active_tab,
-       # ...
-       ("username", username_tool()),
-       # ...
-   )
-   ```
+```python
+# tests/test_my_util.py
+from app.utils.my_util import my_function
+
+def test_my_function_returns_expected():
+    assert my_function("input") == "expected output"
+```
 
 ## Database Migrations
 
-We use **Alembic** directly (not Reflex wrapper commands) for schema migrations. The migration environment lives in the `alembic/` directory and is configured via `alembic.ini` and `alembic/env.py`.
+We use Alembic for schema changes.
 
-### Why sys.path Injection?
-
-Alembic executes `env.py` from its own context; depending on how it's invoked, the project root might not be on `sys.path`. We inject the project root at the top of `alembic/env.py` so that imports like `from app.models.user import User` are reliable across environments (CI, local shells, container runs). This prevents `ModuleNotFoundError: No module named 'app'` during migration operations.
-
-### When to Create a Migration
-Create a migration whenever you modify models in `app/models/`:
-1. Adding or removing a table/model.
-2. Changing column definitions (type, nullable, constraints, indexes).
-3. Adding/removing relationships or foreign keys.
-
-### Preparing for Autogenerate
-Alembic only sees models that are imported in `alembic/env.py`. Always add new model imports there before generating a revision to avoid false positives (e.g., unintended table drop operations).
-
-### Generating a Migration
 ```bash
-source .venv/bin/activate
-export DB_URL=sqlite:///./dev.db   # or mysql+pymysql://user:pass@host/db
-alembic revision --autogenerate -m "add audit_log table"
-```
-Review the generated file in `alembic/versions/`. Ensure only intended changes appear (create/drop/alter). Remove accidental operations before committing.
+# Set DB URL
+export DB_URL=sqlite:///./dev.db
 
-### Applying Migrations
-```bash
-alembic upgrade head            # Apply all pending migrations
-alembic upgrade <revision_id>   # Apply up to a specific revision
-```
+# Create a migration after editing a model
+alembic revision --autogenerate -m "add new column to case"
 
-### Downgrading (Use Sparingly)
-```bash
-alembic downgrade -1            # Step back one revision
-alembic downgrade <revision_id> # Downgrade to a specific revision
-```
-Downgrades can be destructive—avoid running them in production unless absolutely necessary.
+# Review alembic/versions/<hash>_add_new_column_to_case.py before committing
 
-### Adding a Test/Demo Migration
-Example: Adding an `auditlog` table for event tracking (see model in `app/models/audit_log.py`). After adding the model and importing it in `env.py`, the revision was generated:
-```bash
-alembic revision --autogenerate -m "add audit_log table"
+# Apply
 alembic upgrade head
 ```
-Resulting migration creates the `auditlog` table with fields `id`, `event`, `detail`, `created_at`.
 
-### Common Pitfalls
-- Missing imports in `env.py` → Alembic thinks tables were removed.
-- Forgetting to set `DB_URL` → Falls back to default SQLite; unexpected environment.
-- Manual edits introducing syntax errors (e.g., leaving plain text in migration body). Always keep migration body valid Python.
+Always import new models in `alembic/env.py` before generating autogenerate revisions — otherwise Alembic may generate DROP TABLE operations for unimported tables.
 
-### Production Recommendations
-1. Use **MySQL/PostgreSQL** for multi-user deployments (set `DB_URL`).
-2. Run migrations as part of deployment pipeline (CI/CD step before app start).
-3. Keep migration messages concise but descriptive (e.g. `add team member table`).
-4. Never autogenerate inside a dirty working directory (uncommitted model changes cause confusion).
+### Key commands
 
-### Inspect Current Revision State
 ```bash
-alembic current      # Show current applied revision
-alembic history      # List all revisions
+alembic current    # Current applied revision
+alembic history    # All revisions
+alembic upgrade head          # Apply all pending
+alembic downgrade -1          # Roll back one revision
 ```
-Include output in PRs when submitting schema changes.
 
 ## Submitting Contributions
 
-- **Create a Pull Request (PR)** from your feature branch to the `main` branch of the upstream repository.
-- **Provide a clear title and description** for your PR, explaining the "what" and "why" of your changes.
-- **Link to any relevant issues** (e.g., "Closes #123").
-- **Ensure all automated checks (CI/CD) pass**. If they fail, review the logs and push fixes to your branch.
-- **Be responsive** to feedback and review comments.
+- Open a Pull Request from your feature branch to `main`
+- Write a clear title and description (what + why)
+- Link to related issues (`Closes #123`)
+- Ensure CI passes before requesting review
+- Be responsive to review comments
 
-Thank you for contributing to the Ethical OSINT Tracker!
+Thank you for contributing!

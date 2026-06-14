@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Investigations – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-6">Investigation History</h1>
+
+{% if recent %}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800 text-left">
+          <th class="px-4 py-3 text-xs text-gray-400 uppercase">Type</th>
+          <th class="px-4 py-3 text-xs text-gray-400 uppercase">Query</th>
+          <th class="px-4 py-3 text-xs text-gray-400 uppercase">Date</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-800">
+        {% for inv in recent %}
+          <tr class="hover:bg-gray-800/50">
+            <td class="px-4 py-3">
+              <span class="px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/50 text-indigo-300 capitalize">
+                {{ inv.kind }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-gray-300">{{ inv.query }}</td>
+            <td class="px-4 py-3 text-gray-500">{{ inv.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
+    <p class="text-gray-500">No investigations yet. Use the tools in the sidebar to get started.</p>
+  </div>
+{% endif %}
+{% endblock %}

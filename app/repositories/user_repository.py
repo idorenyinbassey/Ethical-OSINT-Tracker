@@ -4,6 +4,14 @@ from app.models.user import User
 from app.repositories.base import session_scope
 
 
+def get_by_id(user_id: int) -> Optional[User]:
+    with session_scope(expire_on_commit=False) as session:
+        user = session.get(User, user_id)
+        if user:
+            session.refresh(user)
+        return user
+
+
 def get_by_username(username: str) -> Optional[User]:
     with session_scope(expire_on_commit=False) as session:
         stmt = select(User).where(User.username == username)

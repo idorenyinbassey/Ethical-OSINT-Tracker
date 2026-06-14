@@ -13,6 +13,7 @@ def init_db():
     from app.models.case import Case  # noqa: F401
     from app.models.intelligence_report import IntelligenceReport  # noqa: F401
     from app.models.team import Team, TeamMember  # noqa: F401
+    from app.models.case_comment import CaseComment  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
 def get_session():

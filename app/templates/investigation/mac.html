@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}MAC Vendor Lookup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">MAC Vendor Lookup</h1>
+<p class="text-sm text-yellow-500 mb-6">Identifies the hardware manufacturer from a MAC address OUI prefix. Uses macvendors.com — free, no API key required.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">MAC Address</label>
+        <input type="text" name="query" required placeholder="e.g. AA:BB:CC:DD:EE:FF"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm font-mono">
+        <p class="text-xs text-gray-500 mt-1">Formats: AA:BB:CC:DD:EE:FF, AA-BB-CC, AABBCC</p>
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Lookup Vendor
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      {% if result.error %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-5 text-red-300 text-sm">
+          {{ result.error }}
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 bg-indigo-900/40 border border-indigo-800 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h2 class="text-lg font-bold text-white mb-1">{{ result.vendor or 'Unknown Vendor' }}</h2>
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mt-3">
+                <dt class="text-gray-400">MAC Address</dt>
+                <dd class="text-white font-mono">{{ result.mac_address }}</dd>
+                <dt class="text-gray-400">OUI Prefix</dt>
+                <dd class="text-white font-mono">{{ result.oui }}</dd>
+                <dt class="text-gray-400">Manufacturer</dt>
+                <dd class="text-white">{{ result.vendor or '—' }}</dd>
+              </dl>
+              <p class="text-xs text-gray-500 mt-4">OUI (Organisationally Unique Identifier) — first 3 octets assigned to a hardware manufacturer by IEEE.</p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a MAC address to identify its hardware manufacturer.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Works with full MAC (AA:BB:CC:DD:EE:FF) or just the OUI prefix (AA:BB:CC).</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

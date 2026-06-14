@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Email Header Analysis – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Email Header Analyser</h1>
+<p class="text-sm text-yellow-500 mb-6">Paste raw email headers to trace the sending path, detect spoofing, and extract originating IPs. Fully offline — no API key required.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Raw Email Headers</label>
+        <textarea name="headers" required rows="14" placeholder="Paste full email headers here...
+From: sender@example.com
+To: recipient@example.com
+Received: from mail.example.com..."
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-xs font-mono resize-y"></textarea>
+        <p class="text-xs text-gray-500 mt-1">In Gmail: ⋮ → Show original. In Outlook: File → Properties.</p>
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Analyse Headers
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+    {% if result %}
+      {% if result.flags %}
+        <div class="bg-red-900/20 border border-red-800 rounded-xl p-4">
+          <p class="text-xs text-red-400 uppercase font-semibold mb-2">Anomaly Flags</p>
+          <ul class="space-y-1">
+            {% for flag in result.flags %}
+              <li class="text-sm text-red-300 flex items-start gap-2">
+                <span class="text-red-500 mt-0.5">▲</span> {{ flag }}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-3">Envelope</h2>
+        <dl class="grid grid-cols-1 gap-y-2 text-sm">
+          {% if result.from %}<dt class="text-gray-400">From</dt><dd class="text-white break-all">{{ result.from }}</dd>{% endif %}
+          {% if result.to %}<dt class="text-gray-400">To</dt><dd class="text-white break-all">{{ result.to }}</dd>{% endif %}
+          {% if result.subject %}<dt class="text-gray-400">Subject</dt><dd class="text-white break-all">{{ result.subject }}</dd>{% endif %}
+          {% if result.date %}<dt class="text-gray-400">Date</dt><dd class="text-white">{{ result.date }}</dd>{% endif %}
+          {% if result.reply_to %}<dt class="text-gray-400">Reply-To</dt><dd class="text-white break-all">{{ result.reply_to }}</dd>{% endif %}
+          {% if result.x_mailer %}<dt class="text-gray-400">X-Mailer</dt><dd class="text-white">{{ result.x_mailer }}</dd>{% endif %}
+          {% if result.x_originating_ip %}<dt class="text-gray-400">Originating IP</dt><dd class="text-indigo-300 font-mono">{{ result.x_originating_ip }}</dd>{% endif %}
+        </dl>
+      </div>
+
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-3">Authentication</h2>
+        <dl class="grid grid-cols-1 gap-y-2 text-sm">
+          <dt class="text-gray-400">SPF</dt>
+          <dd class="text-white">
+            {% if result.spf %}
+              <span class="{% if 'pass' in result.spf.lower() %}text-green-400{% elif 'fail' in result.spf.lower() %}text-red-400{% else %}text-yellow-400{% endif %}">
+                {{ result.spf[:200] }}
+              </span>
+            {% else %}
+              <span class="text-gray-500">Not present</span>
+            {% endif %}
+          </dd>
+          <dt class="text-gray-400">DKIM</dt>
+          <dd class="{% if result.dkim_present %}text-green-400{% else %}text-red-400{% endif %}">
+            {{ 'Signature present' if result.dkim_present else 'No signature' }}
+          </dd>
+          {% if result.dmarc %}
+            <dt class="text-gray-400">Authentication Results</dt>
+            <dd class="text-white text-xs font-mono break-all">{{ result.dmarc[:300] }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+
+      {% if result.received_chain %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Routing Chain ({{ result.received_chain|length }} hops)</h2>
+          <div class="space-y-3">
+            {% for hop in result.received_chain %}
+              <div class="bg-gray-800 rounded-lg p-3 text-xs">
+                <div class="flex flex-wrap gap-3 mb-2">
+                  {% if hop.from_host %}
+                    <span><span class="text-gray-400">from</span> <span class="text-indigo-300 font-mono">{{ hop.from_host }}</span></span>
+                  {% endif %}
+                  {% if hop.by_host %}
+                    <span><span class="text-gray-400">by</span> <span class="text-indigo-300 font-mono">{{ hop.by_host }}</span></span>
+                  {% endif %}
+                  {% if hop.ips %}
+                    {% for ip in hop.ips %}
+                      <span class="px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded font-mono">{{ ip }}</span>
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <p class="text-gray-500 break-all">{{ hop.raw[:300] }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Paste email headers to trace routing, detect spoofing, and extract originating IPs.<br>
+        <span class="text-xs text-gray-600 mt-2 block">No API key or internet connection required.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

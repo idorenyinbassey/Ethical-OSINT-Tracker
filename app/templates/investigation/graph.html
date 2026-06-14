@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Network Graph – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Network Graph</h1>
+<p class="text-sm text-yellow-500 mb-4">Visual relationship map of cases and investigations. Nodes group by investigation type; edges connect investigations to their linked cases.</p>
+
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style="height: 600px; position: relative;">
+  <div id="graph-container" style="width: 100%; height: 100%;"></div>
+  <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+    Loading graph data…
+  </div>
+</div>
+
+<div class="mt-4 flex flex-wrap gap-3 text-xs">
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-indigo-500 inline-block"></span> Case</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-400 inline-block"></span> IP Lookup</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-green-400 inline-block"></span> Domain</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span> Social</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-orange-400 inline-block"></span> Email</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-pink-400 inline-block"></span> Crypto</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-400 inline-block"></span> Other</span>
+</div>
+
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+const COLOR_MAP = {
+  case:         { background: "#6366f1", border: "#4f46e5", font: { color: "#fff" } },
+  ip:           { background: "#60a5fa", border: "#3b82f6", font: { color: "#fff" } },
+  domain:       { background: "#4ade80", border: "#22c55e", font: { color: "#111" } },
+  social:       { background: "#facc15", border: "#eab308", font: { color: "#111" } },
+  email:        { background: "#fb923c", border: "#f97316", font: { color: "#fff" } },
+  crypto:       { background: "#f472b6", border: "#ec4899", font: { color: "#fff" } },
+  file_forensics:{ background: "#a78bfa", border: "#8b5cf6", font: { color: "#fff" } },
+  subdomain:    { background: "#34d399", border: "#10b981", font: { color: "#111" } },
+  email_header: { background: "#f87171", border: "#ef4444", font: { color: "#fff" } },
+  mac:          { background: "#94a3b8", border: "#64748b", font: { color: "#fff" } },
+};
+
+fetch("{{ url_for('investigation.graph_data') }}")
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById("graph-loading").style.display = "none";
+    if (!data.nodes.length) {
+      document.getElementById("graph-loading").textContent = "No data yet — run some investigations first.";
+      document.getElementById("graph-loading").style.display = "flex";
+      return;
+    }
+
+    const nodes = data.nodes.map(n => {
+      const colors = COLOR_MAP[n.group] || { background: "#6b7280", border: "#4b5563", font: { color: "#fff" } };
+      return {
+        id: n.id, label: n.label, title: n.title,
+        color: colors, font: colors.font,
+        shape: n.group === "case" ? "diamond" : "dot",
+        size: n.group === "case" ? 20 : 12,
+      };
+    });
+
+    const edges = data.edges.map(e => ({
+      from: e.from, to: e.to,
+      color: { color: "#4b5563", opacity: 0.6 },
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    }));
+
+    const container = document.getElementById("graph-container");
+    const network = new vis.Network(container,
+      { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+      {
+        physics: { stabilization: { iterations: 100 }, barnesHut: { gravitationalConstant: -3000, springLength: 120 } },
+        interaction: { hover: true, tooltipDelay: 200 },
+        layout: { improvedLayout: true },
+      }
+    );
+  })
+  .catch(err => {
+    document.getElementById("graph-loading").textContent = "Failed to load graph: " + err.message;
+  });
+</script>
+{% endblock %}
