@@ -5,17 +5,24 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Copyright (C) 2025 Idorenyin Bassey](https://img.shields.io/badge/copyright-©%202025%20Idorenyin%20Bassey-lightgrey.svg)](https://github.com/idorenyinbassey)
 
-A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with **Flask** (Python). Perform legally compliant investigations with domain analysis, IP geolocation, email validation, social media reconnaissance, phone number verification, image forensics, and more.
+A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with **Flask** (Python). Perform legally compliant investigations with domain analysis, IP geolocation, subdomain enumeration, email header forensics, social media reconnaissance, MAC vendor lookup, file metadata extraction, blockchain lookups, phone number verification, and more.
 
 ## Features
 
 ### Investigation Tools
-- **IP Lookup** — Geolocation (IPInfo), threat scoring (VirusTotal), port scan (Shodan)
-- **Domain WHOIS** — Registration data via public RDAP (no key required)
+
+All tools marked **zero-key** work without any API configuration out of the box.
+
+- **IP Lookup** — ip-api.com geolocation (free, zero-key primary); optional enrichment via IPInfo.io, threat scoring via VirusTotal, port scan via Shodan
+- **Domain WHOIS** — Registration data via public RDAP (zero-key)
+- **Subdomain Scanner** — crt.sh Certificate Transparency log enumeration + DNS wordlist bruteforce of 75 common subdomains; discovered entries resolved via socket (zero-key)
 - **Email Analysis** — Breach detection (Have I Been Pwned) + deliverability (Hunter.io)
-- **Social Media Search** — Username enumeration across 10 platforms
-- **Phone Intelligence** — Carrier lookup and validation via NumVerify
-- **Image Forensics** — EXIF metadata extraction + optional Google Cloud Vision AI
+- **Email Header Analyser** — Parse raw email headers: full Received chain, originating IP extraction, SPF/DKIM/DMARC flag detection, relay hop visualisation (zero-key)
+- **Social Search** — Sherlock/Maigret-style username enumeration across 36 platforms; HTTP response analysis (status code, page content, redirect URL detection) via ThreadPoolExecutor(12) (zero-key)
+- **Phone Lookup** — Carrier lookup and validation via NumVerify
+- **MAC Vendor Lookup** — OUI prefix to manufacturer resolution via macvendors.com (zero-key)
+- **File & Document Forensics** — Metadata extraction for images (EXIF + GPS via Pillow), audio (ID3/Vorbis via mutagen), video (hachoir), PDF (pypdf), DOCX (python-docx), XLSX (openpyxl); replaces the former Image Forensics tool (zero-key for metadata; Google Cloud Vision optional)
+- **Crypto / Blockchain Lookup** — Bitcoin balance and transaction history via blockchain.info; Ethereum via blockcypher.com (zero-key)
 - **IMEI Lookup** — Device identification via configurable IMEI service
 
 ### Case Management
@@ -25,11 +32,12 @@ A comprehensive ethical Open Source Intelligence (OSINT) investigation platform 
 ### Security & Compliance
 - **Authentication** — Argon2 password hashing with Flask-Login session management
 - **Rate Limiting** — Per-user in-memory throttling on social search
+- **Tor / Proxy Support** — Route all HTTP requests through Tor (`socks5://127.0.0.1:9050`) or any HTTP proxy via the TorProxy setting
 - **Graceful Degradation** — Falls back to deterministic mock data when APIs are unavailable
 - **Ethical Guidelines** — Built-in reminders on every investigation page
 
 ### Tech Stack
-- **Backend** — Flask 3, Flask-Login, SQLModel (SQLite / MySQL), httpx
+- **Backend** — Flask 3, Flask-Login, SQLModel (SQLite / MySQL), httpx[socks]
 - **Frontend** — Jinja2 templates, Tailwind CSS (CDN), dark-mode UI
 - **Services** — All external API calls are synchronous (no asyncio required)
 
@@ -108,20 +116,15 @@ Navigate to **Settings** in the app to configure external OSINT services. No res
 
 | Service key | Provider | Required for |
 |---|---|---|
-| `IPInfo` | ipinfo.io | IP geolocation |
+| `IPInfo` | ipinfo.io | IP geolocation (optional enrichment — ip-api.com is the free default) |
 | `Shodan` | shodan.io | Port scan / open services |
 | `VirusTotal` | virustotal.com | IP threat intelligence |
 | `HIBP` | haveibeenpwned.com | Email breach check |
 | `Hunter.io` | hunter.io | Email deliverability |
 | `NumVerify` | numverify.com | Phone validation |
-| `SocialSearch` | GitHub / Twitter APIs | Authenticated social search |
-| `ImageRecognition` | Google Cloud Vision | Face / label detection |
+| `ImageRecognition` | Google Cloud Vision | Face / label detection on uploaded files |
 | `IMEIService` | imei.info or similar | IMEI device lookup |
-
-For `SocialSearch`, store API keys as JSON in the **Notes** field:
-```json
-{"github": "ghp_xxx", "twitter": "AAA...bearer..."}
-```
+| `TorProxy` | Tor / any HTTP proxy | Route all HTTP requests through Tor or a proxy (`socks5://127.0.0.1:9050`) |
 
 API keys are stored in plaintext. For production, implement a secrets manager backend in `app/utils/key_manager.py`.
 
@@ -138,10 +141,26 @@ Ethical-OSINT-Tracker/
 │   ├── routes/              # Flask blueprints
 │   │   ├── auth.py          # /login  /register  /logout
 │   │   ├── dashboard.py     # /
-│   │   ├── investigation.py # /investigate/ip|domain|email|social|phone|image|imei
+│   │   ├── investigation.py # /investigate/ip|domain|subdomain|email|email-header
+│   │   │                    #              |social|phone|mac|file|crypto|imei
 │   │   ├── cases.py         # /cases  (CRUD)
 │   │   └── settings.py      # /settings
 │   ├── services/            # External API clients (sync httpx)
+│   │   ├── cache.py         # TTL in-memory cache decorator
+│   │   ├── ip_client.py     # ip-api.com (primary) + IPInfo.io (optional)
+│   │   ├── rdap_client.py   # Public RDAP
+│   │   ├── subdomain_client.py  # crt.sh CT logs + DNS wordlist bruteforce
+│   │   ├── hibp_client.py   # Have I Been Pwned
+│   │   ├── hunter_client.py # Hunter.io
+│   │   ├── email_header_client.py  # Raw header parsing (SPF/DKIM/DMARC)
+│   │   ├── numverify_client.py
+│   │   ├── virustotal_client.py
+│   │   ├── shodan_client.py
+│   │   ├── social_client.py # 36-platform Sherlock-style, ThreadPoolExecutor(12)
+│   │   ├── mac_client.py    # macvendors.com OUI lookup
+│   │   ├── file_client.py   # Pillow/mutagen/hachoir/pypdf/python-docx/openpyxl
+│   │   ├── crypto_client.py # blockchain.info + blockcypher.com
+│   │   └── imei_client.py
 │   ├── templates/           # Jinja2 HTML templates
 │   │   ├── base.html        # Dark sidebar layout
 │   │   ├── auth/
@@ -149,8 +168,8 @@ Ethical-OSINT-Tracker/
 │   │   ├── investigation/
 │   │   ├── cases/
 │   │   └── settings/
-│   ├── uploads/             # Uploaded images (gitignored)
-│   └── utils/               # crypto, rate_limiter, key_manager
+│   ├── uploads/             # Uploaded files (gitignored)
+│   └── utils/               # crypto, rate_limiter, key_manager, proxy_client
 ├── alembic/                 # Database migration scripts
 ├── docs/                    # Documentation
 ├── tests/                   # pytest test suite
@@ -159,6 +178,25 @@ Ethical-OSINT-Tracker/
 ├── reset_admin.py           # Creates / resets the demo admin user
 └── start.sh                 # One-command dev start
 ```
+
+## Dependencies
+
+Core runtime dependencies (see `requirements.txt` for pinned versions):
+
+| Package | Purpose |
+|---|---|
+| `flask` | Web framework |
+| `flask-login` | Session management |
+| `sqlmodel` | ORM (SQLAlchemy wrapper) |
+| `httpx[socks]` | HTTP client with SOCKS5 / Tor proxy support |
+| `argon2-cffi` | Argon2id password hashing |
+| `Pillow` | Image EXIF + GPS metadata extraction |
+| `mutagen` | Audio file ID3 / Vorbis tag extraction |
+| `pypdf` | PDF metadata extraction |
+| `hachoir` | Video file metadata extraction |
+| `python-docx` | DOCX document property extraction |
+| `openpyxl` | XLSX workbook property extraction |
+| `dnspython` | DNS record enumeration (optional; falls back to socket) |
 
 ## Security & Ethics
 
@@ -228,7 +266,7 @@ pip install -r requirements.txt --force-reinstall --no-cache-dir
 - [ ] PDF/DOCX report exports
 - [ ] Advanced network graph visualization
 - [ ] Real-time collaboration features
-- [ ] Blockchain address tracking
+- [x] Blockchain address tracking
 - [ ] Dark web monitoring integration
 - [ ] Plugin architecture for custom tools
 

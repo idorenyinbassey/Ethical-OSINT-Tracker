@@ -10,9 +10,15 @@ Technical architecture of Ethical OSINT Tracker — a Flask web application for 
 | Authentication | [Flask-Login](https://flask-login.readthedocs.io/) | ≥ 0.6 |
 | ORM | [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy) | ≥ 0.0.21 |
 | Database | SQLite (dev) / MySQL (prod) | — |
-| HTTP client | [httpx](https://www.python-httpx.org/) | ≥ 0.23 |
+| HTTP client | [httpx[socks]](https://www.python-httpx.org/) | ≥ 0.23 |
 | Password hashing | [argon2-cffi](https://argon2-cffi.readthedocs.io/) | 23.1.0 |
 | Image processing | [Pillow](https://pillow.readthedocs.io/) | ≥ 10.0 |
+| Audio metadata | [mutagen](https://mutagen.readthedocs.io/) | — |
+| PDF metadata | [pypdf](https://pypdf.readthedocs.io/) | — |
+| Video metadata | [hachoir](https://hachoir.readthedocs.io/) | — |
+| DOCX metadata | [python-docx](https://python-docx.readthedocs.io/) | — |
+| XLSX metadata | [openpyxl](https://openpyxl.readthedocs.io/) | — |
+| DNS enumeration | [dnspython](https://www.dnspython.org/) (optional) | — |
 | Frontend | Jinja2 templates + Tailwind CSS (CDN) | — |
 
 ## Project Structure
@@ -41,20 +47,24 @@ Ethical-OSINT-Tracker/
 │   ├── routes/              # Flask blueprints
 │   │   ├── auth.py          # /login  /register  /logout
 │   │   ├── dashboard.py     # /
-│   │   ├── investigation.py # /investigate/* (7 tools)
+│   │   ├── investigation.py # /investigate/* (11 tools)
 │   │   ├── cases.py         # /cases  (CRUD + detail + edit)
 │   │   └── settings.py      # /settings
 │   ├── services/            # External API clients (all sync)
 │   │   ├── cache.py         # TTL in-memory cache decorator
-│   │   ├── ip_client.py     # IPInfo.io
+│   │   ├── ip_client.py     # ip-api.com (primary) + IPInfo.io (optional)
 │   │   ├── rdap_client.py   # Public RDAP (no key needed)
+│   │   ├── subdomain_client.py  # crt.sh CT logs + DNS wordlist bruteforce
 │   │   ├── hibp_client.py   # Have I Been Pwned
 │   │   ├── hunter_client.py # Hunter.io
+│   │   ├── email_header_client.py  # Raw header parsing (SPF/DKIM/DMARC)
 │   │   ├── numverify_client.py
 │   │   ├── virustotal_client.py
 │   │   ├── shodan_client.py
-│   │   ├── social_client.py # ThreadPoolExecutor parallel checks
-│   │   ├── image_client.py  # Pillow + Google Cloud Vision
+│   │   ├── social_client.py # 36-platform Sherlock-style, ThreadPoolExecutor(12)
+│   │   ├── mac_client.py    # macvendors.com OUI lookup
+│   │   ├── file_client.py   # Pillow/mutagen/hachoir/pypdf/python-docx/openpyxl
+│   │   ├── crypto_client.py # blockchain.info (BTC) + blockcypher.com (ETH)
 │   │   └── imei_client.py
 │   ├── templates/           # Jinja2 templates
 │   │   ├── base.html        # Shared sidebar layout
@@ -63,11 +73,12 @@ Ethical-OSINT-Tracker/
 │   │   ├── investigation/
 │   │   ├── cases/
 │   │   └── settings/
-│   ├── uploads/             # Uploaded images (runtime, gitignored)
+│   ├── uploads/             # Uploaded files (runtime, gitignored)
 │   └── utils/
 │       ├── crypto.py        # API key encrypt/decrypt (passthrough dev)
 │       ├── rate_limiter.py  # In-memory rate limiter + RateLimiter class
-│       └── key_manager.py   # Stub for external secrets managers
+│       ├── key_manager.py   # Stub for external secrets managers
+│       └── proxy_client.py  # httpx client factory — injects TorProxy if enabled
 ├── alembic/                 # Alembic migration environment
 ├── tests/
 ├── run.py                   # Entry point: python run.py
@@ -136,7 +147,13 @@ Common patterns:
 - **Graceful fallback**: if the API key is missing, the service is disabled, or the call fails, the client returns `None` (or mock data for VirusTotal/Shodan)
 - **Config from DB**: `get_by_service("ServiceName")` fetches the stored `APIConfig` at call time — no restart needed after updating keys
 
-`social_client.py` is the exception: it checks 10 platforms in parallel using `concurrent.futures.ThreadPoolExecutor` (max 5 workers) to avoid sequential 5-second HTTP timeouts.
+`social_client.py` checks 36 platforms in parallel using `concurrent.futures.ThreadPoolExecutor` (12 workers). Each check analyses the HTTP response status code, page content, and redirect URL to determine whether a profile exists — no API key required.
+
+`subdomain_client.py` queries the crt.sh Certificate Transparency log API and then resolves discovered names (plus a 75-entry common-subdomain wordlist) via dnspython or the built-in `socket` module.
+
+`file_client.py` dispatches to different metadata backends based on file extension: Pillow for images (EXIF + GPS), mutagen for audio (ID3/Vorbis), hachoir for video, pypdf for PDF, python-docx for DOCX, and openpyxl for XLSX.
+
+All service clients obtain their `httpx.Client` instance through `utils/proxy_client.py`, which transparently injects the configured TorProxy SOCKS5 or HTTP proxy when the TorProxy setting is enabled in the database.
 
 ## Database
 
