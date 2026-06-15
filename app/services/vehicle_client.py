@@ -1,6 +1,7 @@
 """Vehicle / VIN decoder — NHTSA vPIC public API (free, no key required)."""
 from typing import Optional
 import httpx
+from app.utils.proxy_config import get_http_client
 
 _NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
 
@@ -51,7 +52,7 @@ def decode_vin(vin: str) -> dict:
 
     try:
         url = _NHTSA_URL.format(vin=vin)
-        with httpx.Client(timeout=15) as client:
+        with get_http_client(timeout=15) as client:
             response = client.get(url)
             response.raise_for_status()
             data = response.json()

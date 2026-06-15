@@ -8,6 +8,7 @@ import httpx
 import concurrent.futures
 from html.parser import HTMLParser
 from typing import Optional
+from app.utils.proxy_config import get_http_client
 
 
 _USER_AGENT = "OSINT-Tracker/1.0 (ethical research)"
@@ -67,8 +68,8 @@ def _search_us_edgar(name: str) -> dict:
             "dateRange": "custom",
             "startdt": "2010-01-01",
         }
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            r = client.get(url, params=params, headers={"User-Agent": _USER_AGENT})
+        with get_http_client(timeout=_TIMEOUT) as client:
+            r = client.get(url, params=params, headers={"User-Agent": _USER_AGENT}, follow_redirects=True)
             r.raise_for_status()
             data = r.json()
 
@@ -117,12 +118,13 @@ def _search_uk_companies_house(name: str, api_key: Optional[str]) -> dict:
     try:
         url = "https://api.company-information.service.gov.uk/search/companies"
         params = {"q": name, "items_per_page": 10}
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
+        with get_http_client(timeout=_TIMEOUT) as client:
             r = client.get(
                 url,
                 params=params,
                 headers={"User-Agent": _USER_AGENT},
                 auth=(api_key, ""),
+                follow_redirects=True,
             )
             r.raise_for_status()
             data = r.json()
@@ -166,13 +168,15 @@ def _search_uk_companies_house(name: str, api_key: Optional[str]) -> dict:
 def _search_nigeria_cac(name: str) -> dict:
     """Search CAC Nigeria company registry."""
     source = "CAC Nigeria"
-    manual_url = f"https://pre.cac.gov.ng/home/search_name?query={name}"
+    from urllib.parse import urlencode
+    manual_url = "https://pre.cac.gov.ng/home/search_name?" + urlencode({"query": name})
     try:
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
+        with get_http_client(timeout=_TIMEOUT) as client:
             r = client.get(
                 "https://pre.cac.gov.ng/home/search_name",
                 params={"query": name},
                 headers={"User-Agent": _USER_AGENT},
+                follow_redirects=True,
             )
             r.raise_for_status()
             data = r.json()
@@ -218,8 +222,8 @@ def _search_canada_corporations(name: str) -> dict:
             "SEARCH_TYPE": "ft",
             "CORPORATION_NAME": name,
         }
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            r = client.get(url, params=params, headers={"User-Agent": _USER_AGENT})
+        with get_http_client(timeout=_TIMEOUT) as client:
+            r = client.get(url, params=params, headers={"User-Agent": _USER_AGENT}, follow_redirects=True)
             r.raise_for_status()
             html = r.text
 

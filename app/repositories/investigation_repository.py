@@ -78,10 +78,13 @@ def list_by_case(case_id: int) -> List[Investigation]:
         ) for inv in results]
 
 
-def list_all() -> List[Investigation]:
-    """Return every investigation row (no limit)."""
+def list_all(user_id: int | None = None) -> List[Investigation]:
+    """Return all investigations, optionally filtered to a single user."""
     with session_scope() as session:
-        results = session.exec(select(Investigation)).all()
+        stmt = select(Investigation)
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
+        results = session.exec(stmt).all()
         return [Investigation(
             id=inv.id, kind=inv.kind, query=inv.query,
             result_json=inv.result_json, user_id=inv.user_id,
@@ -95,15 +98,20 @@ def find_related_cases(case_id: int) -> List[Dict]:
         this_invs = session.exec(
             select(Investigation).where(Investigation.case_id == case_id)
         ).all()
-        queries = {inv.query.strip().lower() for inv in this_invs if inv.query and inv.query.strip()}
-        if not queries:
+        # Match on (query, kind) pairs to avoid false correlations between
+        # different tool types that share the same query string.
+        query_kinds = {
+            (inv.query.strip().lower(), inv.kind)
+            for inv in this_invs if inv.query and inv.query.strip()
+        }
+        if not query_kinds:
             return []
         all_invs = session.exec(select(Investigation)).all()
         related: Dict[int, list] = {}
         for inv in all_invs:
             if inv.case_id is None or inv.case_id == case_id:
                 continue
-            if inv.query and inv.query.strip().lower() in queries:
+            if inv.query and (inv.query.strip().lower(), inv.kind) in query_kinds:
                 cid = inv.case_id
                 if cid not in related:
                     related[cid] = []
