@@ -609,12 +609,34 @@ def location_map():
     return render_template("investigation/map.html")
 
 
+_KIND_LABEL = {
+    "ip": "IP Lookup",
+    "file_forensics": "File Forensics",
+    "domain": "Domain Lookup",
+    "subdomain": "Subdomain Scan",
+    "social": "Social Search",
+    "email": "Email Lookup",
+    "email_header": "Email Header",
+    "crypto": "Crypto Lookup",
+    "mac": "MAC Lookup",
+    "imei": "IMEI Lookup",
+    "company": "Company Registry",
+    "person": "Person Search",
+    "vehicle": "Vehicle/VIN",
+}
+
+
 @investigation_bp.route("/map/data")
 @login_required
 def map_data():
     """Return JSON markers extracted from geo-tagged investigations."""
-    from app.repositories.investigation_repository import list_recent
-    invs = list_recent(500)
+    from app.repositories.investigation_repository import list_all
+    from app.repositories.case_repository import list_cases
+
+    # Build case_id → title lookup
+    case_lookup = {c.id: c.title for c in list_cases()}
+
+    invs = list_all()
     markers = []
 
     for inv in invs:
@@ -625,30 +647,29 @@ def map_data():
         except Exception:
             continue
 
-        lat = lon = label = info = None
+        lat = lon = info = None
+        case_name = case_lookup.get(inv.case_id, "") if inv.case_id else ""
+        tool_label = _KIND_LABEL.get(inv.kind, inv.kind.replace("_", " ").title())
 
         if inv.kind == "ip":
             geo = data.get("geo") or {}
             lat = geo.get("lat")
             lon = geo.get("lon")
             if lat and lon:
-                label = f"IP: {inv.query}"
-                info = f"{geo.get('city', '')}, {geo.get('country', '')}<br>ISP: {geo.get('isp', '')}"
+                city = geo.get("city", "")
+                country = geo.get("country", "")
+                isp = geo.get("isp", "")
+                info = f"{city}, {country}" + (f"<br>ISP: {isp}" if isp else "")
 
         elif inv.kind == "file_forensics":
-            coords = (data.get("metadata") or {}).get("GPS_Coordinates") or \
-                     (data.get("metadata") or {}).get("GPS_Coordinates")
-            if not coords:
-                coords = data.get("metadata", {}).get("GPS_Coordinates")
+            meta = data.get("metadata") or {}
+            coords = meta.get("GPS_Coordinates")
             if coords and isinstance(coords, str) and "," in coords:
                 try:
                     parts = coords.split(",")
                     lat = float(parts[0].strip())
                     lon = float(parts[1].strip())
-                    label = f"Image GPS: {inv.query}"
-                    info = (data.get("location") or
-                            (data.get("metadata") or {}).get("GPS_Location") or
-                            coords)
+                    info = (data.get("location") or meta.get("GPS_Location") or coords)
                 except (ValueError, IndexError):
                     pass
 
@@ -656,7 +677,9 @@ def map_data():
             markers.append({
                 "lat": lat,
                 "lon": lon,
-                "label": label,
+                "label": inv.query,
+                "case_name": case_name,
+                "tool": tool_label,
                 "info": info or "",
                 "kind": inv.kind,
                 "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
