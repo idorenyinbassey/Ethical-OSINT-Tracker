@@ -13,7 +13,7 @@ cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 @cases_bp.route("/")
 @login_required
 def index():
-    cases = list_cases()
+    cases = list_cases(owner_user_id=current_user.id)
     return render_template("cases/index.html", cases=cases)
 
 

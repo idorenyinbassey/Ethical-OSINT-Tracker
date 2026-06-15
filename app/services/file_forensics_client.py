@@ -60,19 +60,30 @@ def _file_base(path: Path) -> dict:
     }
 
 
+# Simple in-process cache keyed on (lat, lon) rounded to 4 decimal places (~11 m).
+# Prevents duplicate Nominatim calls for the same location and respects the
+# Nominatim usage policy of max 1 request/second per IP.
+_geocode_cache: dict = {}
+
+
 def _reverse_geocode(lat: float, lon: float) -> str | None:
     """Look up a human-readable address from GPS coords via Nominatim (free, no key)."""
+    key = (round(lat, 4), round(lon, 4))
+    if key in _geocode_cache:
+        return _geocode_cache[key]
     try:
         import httpx
         r = httpx.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={"lat": lat, "lon": lon, "format": "json"},
             headers={"User-Agent": "OSINT-Tracker/1.0 (ethical research)"},
-            timeout=8,
+            timeout=5,
         )
         if r.status_code == 200:
             data = r.json()
-            return data.get("display_name") or None
+            result = data.get("display_name") or None
+            _geocode_cache[key] = result
+            return result
     except Exception:
         pass
     return None
