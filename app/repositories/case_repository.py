@@ -4,9 +4,11 @@ from app.models.case import Case
 from app.repositories.base import session_scope
 
 
-def list_cases() -> List[Case]:
+def list_cases(owner_user_id: int | None = None) -> List[Case]:
     with session_scope() as session:
         stmt = select(Case).order_by(Case.created_at.desc())
+        if owner_user_id is not None:
+            stmt = stmt.where(Case.owner_user_id == owner_user_id)
         results = session.exec(stmt).all()
         # Eagerly load all attributes before session closes
         return [Case(

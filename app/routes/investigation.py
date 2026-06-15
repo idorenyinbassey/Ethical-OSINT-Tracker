@@ -41,13 +41,17 @@ def _safe_case_id(raw: str | None) -> int | None:
 
 
 def _cases_for_select():
-    return list_cases()
+    return list_cases(owner_user_id=current_user.id)
 
 
 @investigation_bp.before_request
 def _investigation_before():
     from flask_login import current_user
     if not current_user.is_authenticated:
+        return
+    # JSON data endpoints are consumed by fetch() — skip case enforcement
+    # so they return proper JSON instead of an HTML redirect.
+    if request.endpoint in ("investigation.graph_data", "investigation.map_data"):
         return
     # Require at least one case to exist
     cases = _cases_for_select()
@@ -440,8 +444,8 @@ def graph_data():
     from app.repositories.investigation_repository import list_all
     from app.repositories.case_repository import list_cases
 
-    cases = list_cases()
-    invs = list_all()
+    cases = list_cases(owner_user_id=current_user.id)
+    invs = list_all(user_id=current_user.id)
 
     nodes = []
     edges = []
@@ -456,17 +460,20 @@ def graph_data():
             "title": f"Case: {case.title}\nStatus: {case.status}\nPriority: {case.priority}",
         })
 
-    # Collect queries per case for case↔case shared-data edges
+    # Collect (query, kind) pairs per case for case↔case shared-data edges.
+    # Including kind prevents spurious edges when two different tools happen
+    # to share the same query string (e.g. "john" as username vs. IP query).
     case_queries: dict = {}
 
     for inv in invs:
         inv_node_id = f"inv-{inv.id}"
-        label = f"{inv.query[:20]}\n({inv.kind.replace('_', ' ')})"
+        query_str = inv.query or ""
+        label = f"{query_str[:20]}\n({inv.kind.replace('_', ' ')})"
         nodes.append({
             "id": inv_node_id,
             "label": label,
             "group": inv.kind,
-            "title": f"Type: {inv.kind}\nQuery: {inv.query}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
+            "title": f"Type: {inv.kind}\nQuery: {query_str}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
         })
         if inv.case_id and inv.case_id in case_ids:
             edges.append({
@@ -474,9 +481,9 @@ def graph_data():
                 "to": inv_node_id,
                 "edge_type": "case_inv",
             })
-            q = (inv.query or "").strip().lower()
+            q = query_str.strip().lower()
             if q:
-                case_queries.setdefault(inv.case_id, set()).add(q)
+                case_queries.setdefault(inv.case_id, set()).add((q, inv.kind))
 
         # Expand subdomain results as child nodes
         if inv.kind == "subdomain" and inv.result_json:
@@ -500,23 +507,19 @@ def graph_data():
             except Exception:
                 pass
 
-    # Case↔case edges for shared investigation queries
+    # Case↔case edges for shared (query, kind) pairs
     cid_list = list(case_queries.keys())
-    seen_pairs: set = set()
     for i, cid_a in enumerate(cid_list):
         for cid_b in cid_list[i + 1:]:
             shared = case_queries[cid_a] & case_queries[cid_b]
             if shared:
-                pair = (min(cid_a, cid_b), max(cid_a, cid_b))
-                if pair not in seen_pairs:
-                    seen_pairs.add(pair)
-                    shared_preview = ", ".join(list(shared)[:3])
-                    edges.append({
-                        "from": f"case-{cid_a}",
-                        "to": f"case-{cid_b}",
-                        "edge_type": "case_case",
-                        "title": f"Shared data: {shared_preview}",
-                    })
+                shared_preview = ", ".join(q for q, _ in list(shared)[:3])
+                edges.append({
+                    "from": f"case-{cid_a}",
+                    "to": f"case-{cid_b}",
+                    "edge_type": "case_case",
+                    "title": f"Shared data: {shared_preview}",
+                })
 
     return jsonify({"nodes": nodes, "edges": edges})
 
@@ -633,10 +636,10 @@ def map_data():
     from app.repositories.investigation_repository import list_all
     from app.repositories.case_repository import list_cases
 
-    # Build case_id → title lookup
-    case_lookup = {c.id: c.title for c in list_cases()}
+    # Build case_id → title lookup (scoped to current user's cases)
+    case_lookup = {c.id: c.title for c in list_cases(owner_user_id=current_user.id)}
 
-    invs = list_all()
+    invs = list_all(user_id=current_user.id)
     markers = []
 
     for inv in invs:
@@ -655,7 +658,7 @@ def map_data():
             geo = data.get("geo") or {}
             lat = geo.get("lat")
             lon = geo.get("lon")
-            if lat and lon:
+            if lat is not None and lon is not None:
                 city = geo.get("city", "")
                 country = geo.get("country", "")
                 isp = geo.get("isp", "")
@@ -673,7 +676,7 @@ def map_data():
                 except (ValueError, IndexError):
                     pass
 
-        if lat is not None and lon is not None:
+        if lat is not None and lon is not None:  # explicit None check — 0.0 is a valid coordinate
             markers.append({
                 "lat": lat,
                 "lon": lon,
