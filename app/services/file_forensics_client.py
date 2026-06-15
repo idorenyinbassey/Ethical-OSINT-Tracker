@@ -97,34 +97,40 @@ def _image(path: Path) -> dict:
             try:
                 raw = img.getexif()
                 if raw:
+                    # --- GPS: use get_ifd() — Pillow 10+ returns GPSInfo as an
+                    # integer offset when iterating getexif(), not a dict.
+                    GPS_IFD_TAG = 0x8825
+                    try:
+                        from PIL.ExifTags import GPSTAGS
+                        gps_ifd = raw.get_ifd(GPS_IFD_TAG)
+                        if gps_ifd:
+                            gps = {GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
+                            lat_raw = gps_ifd.get(2)   # GPSLatitude
+                            lon_raw = gps_ifd.get(4)   # GPSLongitude
+                            lat_ref = str(gps_ifd.get(1, "N"))
+                            lon_ref = str(gps_ifd.get(3, "E"))
+                            if lat_raw and lon_raw:
+                                ld = float(lat_raw[0]) + float(lat_raw[1]) / 60 + float(lat_raw[2]) / 3600
+                                lo = float(lon_raw[0]) + float(lon_raw[1]) / 60 + float(lon_raw[2]) / 3600
+                                if lat_ref == "S":
+                                    ld = -ld
+                                if lon_ref == "W":
+                                    lo = -lo
+                                gps_lat, gps_lon = ld, lo
+                                exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
+                                exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
+                                exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
+                                if "GPSAltitude" in gps:
+                                    exif["GPS_Altitude"] = str(gps["GPSAltitude"])
+                    except Exception:
+                        pass
+
+                    # --- All other tags
                     for tag_id, val in raw.items():
+                        if tag_id == GPS_IFD_TAG:
+                            continue  # already handled above
                         tag = ExifTags.TAGS.get(tag_id, str(tag_id))
-                        if tag == "GPSInfo":
-                            try:
-                                from PIL.ExifTags import GPSTAGS
-                                if not isinstance(val, dict):
-                                    continue
-                                gps = {GPSTAGS.get(k, k): v for k, v in val.items()}
-                                lat_raw = val.get(2)
-                                lon_raw = val.get(4)
-                                lat_ref = str(val.get(1, "N"))
-                                lon_ref = str(val.get(3, "E"))
-                                if lat_raw and lon_raw:
-                                    ld = float(lat_raw[0]) + float(lat_raw[1]) / 60 + float(lat_raw[2]) / 3600
-                                    lo = float(lon_raw[0]) + float(lon_raw[1]) / 60 + float(lon_raw[2]) / 3600
-                                    if lat_ref == "S":
-                                        ld = -ld
-                                    if lon_ref == "W":
-                                        lo = -lo
-                                    gps_lat, gps_lon = ld, lo
-                                    exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
-                                    exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
-                                    exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
-                                    if "GPSAltitude" in gps:
-                                        exif["GPS_Altitude"] = str(gps["GPSAltitude"])
-                            except Exception:
-                                pass
-                        elif val is None:
+                        if val is None:
                             continue
                         elif isinstance(val, bytes):
                             decoded = val.decode("utf-8", errors="ignore").strip()
