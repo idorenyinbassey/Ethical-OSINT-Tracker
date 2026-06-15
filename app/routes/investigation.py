@@ -437,13 +437,16 @@ def graph():
 @login_required
 def graph_data():
     """Return JSON graph data: nodes + edges for vis.js."""
-    from app.repositories.investigation_repository import list_recent
+    from app.repositories.investigation_repository import list_all
     from app.repositories.case_repository import list_cases
-    invs = list_recent(200)
+
     cases = list_cases()
+    invs = list_all()
 
     nodes = []
     edges = []
+
+    case_ids = {c.id for c in cases}
 
     for case in cases:
         nodes.append({
@@ -452,6 +455,9 @@ def graph_data():
             "group": "case",
             "title": f"Case: {case.title}\nStatus: {case.status}\nPriority: {case.priority}",
         })
+
+    # Collect queries per case for case↔case shared-data edges
+    case_queries: dict = {}
 
     for inv in invs:
         inv_node_id = f"inv-{inv.id}"
@@ -462,8 +468,16 @@ def graph_data():
             "group": inv.kind,
             "title": f"Type: {inv.kind}\nQuery: {inv.query}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
         })
-        if inv.case_id:
-            edges.append({"from": f"case-{inv.case_id}", "to": inv_node_id})
+        if inv.case_id and inv.case_id in case_ids:
+            edges.append({
+                "from": f"case-{inv.case_id}",
+                "to": inv_node_id,
+                "edge_type": "case_inv",
+            })
+            q = (inv.query or "").strip().lower()
+            if q:
+                case_queries.setdefault(inv.case_id, set()).add(q)
+
         # Expand subdomain results as child nodes
         if inv.kind == "subdomain" and inv.result_json:
             try:
@@ -478,9 +492,31 @@ def graph_data():
                             "group": "subdomain",
                             "title": f"Subdomain: {hostname}\nIP: {sub.get('ip', 'unresolved')}",
                         })
-                        edges.append({"from": inv_node_id, "to": sub_node_id, "color": "#6ee7b7"})
+                        edges.append({
+                            "from": inv_node_id,
+                            "to": sub_node_id,
+                            "edge_type": "subdomain",
+                        })
             except Exception:
                 pass
+
+    # Case↔case edges for shared investigation queries
+    cid_list = list(case_queries.keys())
+    seen_pairs: set = set()
+    for i, cid_a in enumerate(cid_list):
+        for cid_b in cid_list[i + 1:]:
+            shared = case_queries[cid_a] & case_queries[cid_b]
+            if shared:
+                pair = (min(cid_a, cid_b), max(cid_a, cid_b))
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    shared_preview = ", ".join(list(shared)[:3])
+                    edges.append({
+                        "from": f"case-{cid_a}",
+                        "to": f"case-{cid_b}",
+                        "edge_type": "case_case",
+                        "title": f"Shared data: {shared_preview}",
+                    })
 
     return jsonify({"nodes": nodes, "edges": edges})
 
