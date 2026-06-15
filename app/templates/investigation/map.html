@@ -58,8 +58,10 @@ fetch("{{ url_for('investigation.map_data') }}")
         iconAnchor: [7, 7],
       });
       const marker = L.marker([m.lat, m.lon], { icon });
+      const caseLine = m.case_name ? `<span style="color:#6366f1;font-weight:600">📁 ${m.case_name}</span><br>` : "";
+      const toolLine = `<span style="color:#6b7280;font-size:11px">🔧 ${m.tool}</span><br>`;
       marker.bindPopup(
-        `<strong>${m.label || m.kind}</strong><br>${m.info || ""}<br><small style="color:#6b7280">${m.date}</small>`
+        `${caseLine}${toolLine}<strong>${m.label || m.kind}</strong><br>${m.info || ""}<br><small style="color:#9ca3af">${m.date}</small>`
       );
       marker.addTo(map);
       bounds.push([m.lat, m.lon]);
