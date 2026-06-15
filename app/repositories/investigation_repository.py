@@ -78,6 +78,17 @@ def list_by_case(case_id: int) -> List[Investigation]:
         ) for inv in results]
 
 
+def list_all() -> List[Investigation]:
+    """Return every investigation row (no limit)."""
+    with session_scope() as session:
+        results = session.exec(select(Investigation)).all()
+        return [Investigation(
+            id=inv.id, kind=inv.kind, query=inv.query,
+            result_json=inv.result_json, user_id=inv.user_id,
+            created_at=inv.created_at, case_id=inv.case_id,
+        ) for inv in results]
+
+
 def find_related_cases(case_id: int) -> List[Dict]:
     """Return other cases that share investigation queries with this case."""
     with session_scope() as session:
