@@ -274,6 +274,112 @@ def _search_cyprus_drcor(_name: str) -> dict:
     }
 
 
+def _search_duckduckgo_business(name: str) -> dict:
+    """Query DuckDuckGo Instant Answer API for business info (free, no key)."""
+    source = "DuckDuckGo Instant Answer"
+    try:
+        with get_http_client(timeout=_TIMEOUT) as client:
+            r = client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": name, "format": "json", "no_redirect": "1", "no_html": "1"},
+                headers={"User-Agent": _USER_AGENT},
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        info: dict = {}
+        abstract = data.get("AbstractText") or ""
+        if abstract:
+            info["abstract"] = abstract
+        if data.get("AbstractURL"):
+            info["source_url"] = data["AbstractURL"]
+
+        # Infobox entries (phone, website, email, etc.)
+        infobox = data.get("Infobox") or {}
+        for entry in infobox.get("content", []):
+            label = str(entry.get("label", "")).lower()
+            value = str(entry.get("value", "")).strip()
+            if not value:
+                continue
+            if "phone" in label or "telephone" in label:
+                info.setdefault("phone", value)
+            elif "website" in label or "url" in label or "homepage" in label:
+                info.setdefault("website", value)
+            elif "email" in label:
+                info.setdefault("email", value)
+            elif "address" in label or "location" in label:
+                info.setdefault("address", value)
+            elif "founded" in label or "inception" in label:
+                info.setdefault("founded", value)
+            elif "employees" in label:
+                info.setdefault("employees", value)
+            elif "industry" in label or "type" in label:
+                info.setdefault("industry", value)
+
+        # RelatedTopics sometimes surface the official site
+        if "website" not in info:
+            for topic in data.get("RelatedTopics", []):
+                first_url = topic.get("FirstURL", "")
+                if first_url and "duckduckgo.com" not in first_url:
+                    break
+
+        image = data.get("Image") or ""
+        if image and not image.startswith("http"):
+            image = "https://duckduckgo.com" + image
+        if image:
+            info["image"] = image
+
+        has_info = bool(abstract or info.get("phone") or info.get("website"))
+        return {
+            "source": source,
+            "found": has_info,
+            "info": info,
+            "error": None,
+        }
+    except Exception as exc:
+        return {"source": source, "found": False, "info": {}, "error": str(exc)}
+
+
+def _google_dorks(name: str) -> dict:
+    """Generate Google search/dork links for business intelligence (no API needed)."""
+    from urllib.parse import quote_plus
+    q = quote_plus(name)
+    links = [
+        {
+            "label": "Google Business Search",
+            "url": f"https://www.google.com/search?q={q}+business",
+            "description": "General Google search for the company name",
+        },
+        {
+            "label": "Google Maps / Places",
+            "url": f"https://www.google.com/maps/search/{q}",
+            "description": "Find physical address, phone, hours via Google Maps",
+        },
+        {
+            "label": "Contact info dork",
+            "url": f'https://www.google.com/search?q="{q}"+(email+OR+phone+OR+contact)',
+            "description": "Find publicly listed contact information",
+        },
+        {
+            "label": "LinkedIn company page",
+            "url": f"https://www.google.com/search?q=site:linkedin.com+%22{q}%22",
+            "description": "Find the official LinkedIn company profile",
+        },
+        {
+            "label": "Official website dork",
+            "url": f'https://www.google.com/search?q="{q}"+official+site',
+            "description": "Locate the official company website",
+        },
+        {
+            "label": "News articles",
+            "url": f"https://news.google.com/search?q={q}",
+            "description": "Recent press coverage and news mentions",
+        },
+    ]
+    return {"source": "Google Dorks", "links": links, "error": None}
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -298,15 +404,16 @@ def search_companies(name: str, uk_api_key: Optional[str] = None) -> dict:
         }
     """
     tasks = {
-        "us_edgar": lambda: _search_us_edgar(name),
-        "uk":       lambda: _search_uk_companies_house(name, uk_api_key),
-        "nigeria":  lambda: _search_nigeria_cac(name),
-        "canada":   lambda: _search_canada_corporations(name),
-        "cyprus":   lambda: _search_cyprus_drcor(name),
+        "us_edgar":   lambda: _search_us_edgar(name),
+        "uk":         lambda: _search_uk_companies_house(name, uk_api_key),
+        "nigeria":    lambda: _search_nigeria_cac(name),
+        "canada":     lambda: _search_canada_corporations(name),
+        "cyprus":     lambda: _search_cyprus_drcor(name),
+        "duckduckgo": lambda: _search_duckduckgo_business(name),
     }
 
     results: dict = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = {executor.submit(fn): key for key, fn in tasks.items()}
         for future in concurrent.futures.as_completed(futures):
             key = futures[future]
@@ -315,10 +422,14 @@ def search_companies(name: str, uk_api_key: Optional[str] = None) -> dict:
             except Exception as exc:
                 results[key] = {
                     "source": key,
-                    "found": [],
+                    "found": False,
+                    "info": {},
                     "error": f"Unexpected error: {exc}",
                 }
 
+    # Google dorks are generated locally (no network), add after parallel block
+    results["google_dorks"] = _google_dorks(name)
+
     # Return in a stable key order regardless of completion order
-    ordered = {k: results[k] for k in tasks}
+    ordered = {k: results[k] for k in (*tasks, "google_dorks")}
     return {"query": name, "results": ordered}
