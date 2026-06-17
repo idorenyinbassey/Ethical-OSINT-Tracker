@@ -42,6 +42,85 @@
   <div class="lg:col-span-2 space-y-4">
     {% if result %}
 
+      {# ── DuckDuckGo Business Info ── #}
+      {% set ddg = result.results.duckduckgo %}
+      {% if ddg.found or ddg.error %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ ddg.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if ddg.error %}
+            <p class="text-red-400 text-sm">{{ ddg.error }}</p>
+          {% elif ddg.found %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              {% if ddg.info.abstract %}
+                <div class="sm:col-span-2 text-gray-300 text-xs leading-relaxed">{{ ddg.info.abstract }}</div>
+              {% endif %}
+              {% if ddg.info.website %}
+                <div><span class="text-gray-500 text-xs">Website</span><br>
+                  <a href="{{ ddg.info.website }}" target="_blank" rel="noopener noreferrer"
+                     class="text-indigo-400 hover:text-indigo-300 text-sm break-all">{{ ddg.info.website }}</a></div>
+              {% endif %}
+              {% if ddg.info.phone %}
+                <div><span class="text-gray-500 text-xs">Phone</span><br>
+                  <span class="text-white">{{ ddg.info.phone }}</span></div>
+              {% endif %}
+              {% if ddg.info.email %}
+                <div><span class="text-gray-500 text-xs">Email</span><br>
+                  <a href="mailto:{{ ddg.info.email }}" class="text-indigo-400 hover:text-indigo-300">{{ ddg.info.email }}</a></div>
+              {% endif %}
+              {% if ddg.info.address %}
+                <div><span class="text-gray-500 text-xs">Address</span><br>
+                  <span class="text-white text-xs">{{ ddg.info.address }}</span></div>
+              {% endif %}
+              {% if ddg.info.founded %}
+                <div><span class="text-gray-500 text-xs">Founded</span><br>
+                  <span class="text-white">{{ ddg.info.founded }}</span></div>
+              {% endif %}
+              {% if ddg.info.industry %}
+                <div><span class="text-gray-500 text-xs">Industry</span><br>
+                  <span class="text-white">{{ ddg.info.industry }}</span></div>
+              {% endif %}
+              {% if ddg.info.employees %}
+                <div><span class="text-gray-500 text-xs">Employees</span><br>
+                  <span class="text-white">{{ ddg.info.employees }}</span></div>
+              {% endif %}
+              {% if ddg.info.source_url %}
+                <div class="sm:col-span-2 text-xs text-gray-500">
+                  Source: <a href="{{ ddg.info.source_url }}" target="_blank" rel="noopener noreferrer"
+                    class="text-indigo-400 hover:text-indigo-300">{{ ddg.info.source_url }}</a>
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Google Search / Dorks ── #}
+      {% set gd = result.results.google_dorks %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">Google Business Search &amp; Dorks</span>
+          <span class="text-xs text-gray-500 ml-2">— click to open in Google</span>
+        </div>
+        <ul class="divide-y divide-gray-800">
+          {% for link in gd.links %}
+            <li class="px-4 py-3 hover:bg-gray-800/50 transition-colors">
+              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
+                 class="flex items-start justify-between gap-4 group">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-indigo-400 group-hover:text-indigo-300">{{ link.label }}</p>
+                  <p class="text-xs text-gray-500 mt-0.5">{{ link.description }}</p>
+                </div>
+                <span class="shrink-0 text-gray-600 group-hover:text-indigo-400 text-xs mt-0.5">↗</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+
       {# ── US EDGAR ── #}
       {% set us = result.results.us_edgar %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">

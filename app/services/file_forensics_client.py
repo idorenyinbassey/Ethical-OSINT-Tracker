@@ -108,9 +108,10 @@ def _image(path: Path) -> dict:
             try:
                 raw = img.getexif()
                 if raw:
+                    GPS_IFD_TAG = 0x8825
+
                     # --- GPS: use get_ifd() — Pillow 10+ returns GPSInfo as an
                     # integer offset when iterating getexif(), not a dict.
-                    GPS_IFD_TAG = 0x8825
                     try:
                         from PIL.ExifTags import GPSTAGS
                         gps_ifd = raw.get_ifd(GPS_IFD_TAG)
@@ -121,20 +122,29 @@ def _image(path: Path) -> dict:
                             lat_ref = str(gps_ifd.get(1, "N"))
                             lon_ref = str(gps_ifd.get(3, "E"))
                             if lat_raw and lon_raw:
-                                ld = float(lat_raw[0]) + float(lat_raw[1]) / 60 + float(lat_raw[2]) / 3600
-                                lo = float(lon_raw[0]) + float(lon_raw[1]) / 60 + float(lon_raw[2]) / 3600
-                                if lat_ref == "S":
+                                def _dms_to_decimal(dms) -> float:
+                                    """Convert DMS tuple/list to decimal degrees.
+                                    Handles IFDRational, float, int, and tuple elements."""
+                                    parts = list(dms)
+                                    if len(parts) < 3:
+                                        raise ValueError("DMS needs 3 elements")
+                                    return float(parts[0]) + float(parts[1]) / 60 + float(parts[2]) / 3600
+
+                                ld = _dms_to_decimal(lat_raw)
+                                lo = _dms_to_decimal(lon_raw)
+                                if lat_ref.upper() == "S":
                                     ld = -ld
-                                if lon_ref == "W":
+                                if lon_ref.upper() == "W":
                                     lo = -lo
                                 gps_lat, gps_lon = ld, lo
                                 exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
                                 exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
                                 exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
-                                if "GPSAltitude" in gps:
-                                    exif["GPS_Altitude"] = str(gps["GPSAltitude"])
-                    except Exception:
-                        pass
+                                alt = gps.get("GPSAltitude")
+                                if alt is not None:
+                                    exif["GPS_Altitude"] = str(alt)
+                    except Exception as gps_exc:
+                        exif["GPS_Error"] = str(gps_exc)
 
                     # --- All other tags
                     for tag_id, val in raw.items():
@@ -149,8 +159,8 @@ def _image(path: Path) -> dict:
                                 exif[str(tag)] = decoded
                         else:
                             exif[str(tag)] = str(val)
-            except Exception:
-                pass
+            except Exception as exif_exc:
+                result["exif_error"] = str(exif_exc)
 
             # Elevate device fingerprint to top-level fields
             if "Make" in exif:
