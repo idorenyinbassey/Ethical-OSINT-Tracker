@@ -1,72 +1,86 @@
 """IMEI service client — sync version."""
 from typing import Optional, Dict, Any
-import httpx
 from app.repositories.api_config_repository import get_by_service
+from app.utils.proxy_config import get_http_client
 
 
-def _try_request(client: httpx.Client, method: str, url: str, **kwargs) -> Optional[Dict[str, Any]]:
-    try:
-        r = client.request(method, url, **kwargs)
-        r.raise_for_status()
-        try:
-            return r.json()
-        except Exception:
-            return None
-    except Exception:
-        return None
+def fetch_imei(imei: str, timeout: float = 10.0) -> Dict[str, Any]:
+    """Fetch IMEI details from configured IMEIService.
 
-
-def fetch_imei(imei: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
-    """Fetch IMEI details from configured IMEIService. Returns None if unavailable."""
+    Always returns a dict. On failure, the dict contains an 'error' key.
+    If not configured at all, also sets 'not_configured': True.
+    """
     cfg = get_by_service("IMEIService")
-    if not cfg or not cfg.is_enabled:
-        return None
+    if not cfg:
+        return {"error": "IMEI Service not configured. Add API key and base URL in Settings.", "not_configured": True}
+    if not cfg.is_enabled:
+        return {"error": "IMEI Service is disabled. Enable it in Settings.", "not_configured": True}
 
     base = (cfg.base_url or "").rstrip("/")
     if not base:
-        return None
+        return {"error": "IMEI Service base URL is missing. Set it in Settings (e.g. https://api.imei.info).", "not_configured": True}
+
     creds = getattr(cfg, "_credentials", {}) or {}
     api_key = cfg.api_key or creds.get("api_key") or creds.get("client_key") or creds.get("client_secret")
+    if not api_key:
+        return {"error": "IMEI API key is missing. Enter your key in Settings.", "not_configured": True}
 
-    endpoints = (
-        f"{base}/imei",
-        f"{base}/api/imei",
-        f"{base}/api/v1/imei/{imei}",
-        f"{base}/api/v1/imei",
-        f"{base}/api/{imei}",
-        f"{base}/{imei}",
-    )
-
-    headers = {}
+    headers: dict = {}
     if api_key:
         headers = {"Authorization": f"Bearer {api_key}", "X-API-KEY": api_key}
 
-    params_base = {"imei": imei}
+    last_error = "All endpoint attempts failed."
+    try:
+        with get_http_client(timeout=timeout) as client:
+            # imei.info specific — try v2 first, then v1
+            if "imei.info" in base:
+                for version in ("v2", "v1"):
+                    url = f"{base}/api/{version}/imei/{imei}"
+                    for params in ({"key": api_key}, {}):
+                        try:
+                            r = client.get(url, params=params, headers=headers)
+                            if r.status_code == 200:
+                                data = r.json()
+                                if data:
+                                    return data
+                            elif r.status_code == 401:
+                                return {"error": f"IMEI API key rejected (HTTP 401). Check your key in Settings."}
+                            elif r.status_code == 403:
+                                return {"error": f"IMEI API key forbidden (HTTP 403). Your plan may not cover this query."}
+                            else:
+                                last_error = f"HTTP {r.status_code} from {url}"
+                        except Exception as exc:
+                            last_error = str(exc)
 
-    with httpx.Client(timeout=timeout) as client:
-        if "imei.info" in base or "dash.imei.info" in base:
-            candidate = f"{base}/api/v1/imei/{imei}"
-            if api_key:
-                out = _try_request(client, "GET", candidate, params={"key": api_key})
-                if out:
-                    return out
-                out = _try_request(client, "GET", candidate, headers={"Authorization": f"Bearer {api_key}"})
-                if out:
-                    return out
-            out = _try_request(client, "GET", candidate)
-            if out:
-                return out
+            # Generic fallback endpoints
+            endpoints = [
+                f"{base}/api/v2/imei/{imei}",
+                f"{base}/api/v1/imei/{imei}",
+                f"{base}/imei/{imei}",
+                f"{base}/api/imei",
+                f"{base}/imei",
+                f"{base}/{imei}",
+            ]
+            params_base = {"imei": imei}
+            for ep in endpoints:
+                for req_params in (
+                    {**params_base, "key": api_key},
+                    {**params_base, "api_key": api_key},
+                    params_base,
+                ):
+                    try:
+                        r = client.get(ep, params=req_params, headers=headers)
+                        if r.status_code == 200:
+                            data = r.json()
+                            if data and not data.get("error"):
+                                return data
+                        elif r.status_code in (401, 403):
+                            return {"error": f"IMEI API authentication failed (HTTP {r.status_code}). Check key in Settings."}
+                        else:
+                            last_error = f"HTTP {r.status_code} from {ep}"
+                    except Exception as exc:
+                        last_error = str(exc)
+    except Exception as exc:
+        return {"error": f"IMEI connection error: {exc}"}
 
-        for ep in endpoints:
-            if api_key:
-                out = _try_request(client, "GET", ep, params={**params_base, "api_key": api_key}, headers=headers)
-                if out:
-                    return out
-                out = _try_request(client, "GET", ep, params=params_base, headers=headers)
-                if out:
-                    return out
-            out = _try_request(client, "GET", ep, params=params_base)
-            if out:
-                return out
-
-    return None
+    return {"error": f"IMEI lookup failed: {last_error}"}

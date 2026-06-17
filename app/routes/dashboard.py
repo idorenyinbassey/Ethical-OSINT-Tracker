@@ -12,13 +12,21 @@ def index():
     total_investigations = count_all()
     by_kind = count_by_kind()
     recent = list_recent(10)
-    cases = list_cases(owner_user_id=current_user.id)
-    open_cases = sum(1 for c in cases if c.status == "open")
+    all_cases = list_cases(owner_user_id=current_user.id)
+    case_stats = {
+        "total": len(all_cases),
+        "open": sum(1 for c in all_cases if c.status == "open"),
+        "closed": sum(1 for c in all_cases if c.status == "closed"),
+        "in_progress": sum(1 for c in all_cases if c.status == "in_progress"),
+        "leads": sum(1 for c in all_cases if c.status == "leads"),
+    }
+    open_cases = case_stats["open"]
     return render_template(
         "dashboard/index.html",
         total_investigations=total_investigations,
         by_kind=by_kind,
         recent=recent,
         open_cases=open_cases,
-        total_cases=len(cases),
+        total_cases=case_stats["total"],
+        case_stats=case_stats,
     )
