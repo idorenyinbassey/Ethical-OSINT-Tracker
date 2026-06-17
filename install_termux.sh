@@ -1,22 +1,22 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Ethical OSINT Tracker - Termux Installation Script
-# For Android devices using Termux terminal emulator
+# Ethical OSINT Tracker — Termux Installation Script
+# For Android devices using the Termux terminal emulator
 
-set -e  # Exit on error
+set -e
 
 echo "===================================="
-echo "Ethical OSINT Tracker - Termux Setup"
+echo "Ethical OSINT Tracker — Termux Setup"
 echo "===================================="
 echo ""
 
 # Check if running in Termux
 if [ ! -d "/data/data/com.termux" ]; then
-    echo "Error: This script must be run in Termux terminal"
+    echo "Error: This script must be run inside Termux."
     echo "Install Termux from F-Droid: https://f-droid.org/en/packages/com.termux/"
     exit 1
 fi
 
-echo "Termux environment detected"
+echo "Termux environment detected."
 echo ""
 
 # Update package lists
@@ -24,7 +24,7 @@ echo "Updating Termux packages..."
 pkg update -y
 pkg upgrade -y
 
-# Install required system packages
+# Install required system packages (native libs needed by Pillow, etc.)
 echo "Installing system dependencies..."
 pkg install -y \
     python \
@@ -39,75 +39,81 @@ pkg install -y \
     git \
     tmux
 
-echo "System packages installed"
+echo "System packages installed."
 echo ""
 
-# Check Python version
 PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
-echo "Python $PYTHON_VERSION installed"
+echo "Python $PYTHON_VERSION detected."
 
-# Setup storage access (for image uploads)
+# Storage access for image uploads
 echo "Setting up storage access..."
-echo "  This allows the app to access device storage for image uploads."
 echo "  Press 'Allow' when prompted."
 termux-setup-storage
 sleep 2
-echo "Storage access configured"
+echo "Storage access configured."
 echo ""
 
-# Verify we are in the project directory
+# Must be run from the project directory
 if [ ! -f "requirements.txt" ]; then
-    echo "requirements.txt not found in current directory."
-    echo "Please cd to the Ethical-OSINT-Tracker directory first, then run this script."
+    echo "ERROR: requirements.txt not found."
+    echo "Please cd into the Ethical-OSINT-Tracker directory first, then re-run this script."
     exit 1
 fi
 
+VENV_DIR=".venv"
+PIP="$VENV_DIR/bin/pip"
+PYTHON_VENV="$VENV_DIR/bin/python"
+
 # Create virtual environment
 echo "Creating Python virtual environment..."
-python -m venv .venv
-echo "Virtual environment created at .venv"
+python -m venv "$VENV_DIR"
+echo "Virtual environment created at $VENV_DIR"
 echo ""
 
-# Activate virtual environment
-echo "Activating virtual environment..."
-source .venv/bin/activate
-echo "Virtual environment activated"
+# Install into venv using explicit venv pip — no source/activate needed for installation
+echo "Upgrading pip inside venv..."
+"$PIP" install --upgrade pip
+
+echo "Installing Python packages (this may take a few minutes on Termux)..."
+"$PIP" install -r requirements.txt
+echo "Python packages installed."
 echo ""
 
-# Install Python dependencies
-echo "Installing Python packages (this may take a few minutes)..."
-pip install --upgrade pip
-pip install -r requirements.txt
-echo "Python packages installed"
-echo ""
-
-# Initialise database and admin user
+# Initialise database and admin user using venv Python
 echo "Initialising database..."
-python reset_admin.py
+"$PYTHON_VENV" reset_admin.py
 echo ""
 
-# Create .env file for optional overrides
+# Optional environment config file
 echo "Creating environment configuration..."
 if [ ! -f ".env" ]; then
-    cat > .env << EOF
-# Optional overrides — app works fine without these
-# SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+    cat > .env << 'EOF'
+# Optional overrides — the app works without these
+# SECRET_KEY=your-secret-key-here
 # DB_URL=sqlite:///./dev.db
 EOF
-    echo ".env file created (all values optional)"
+    echo ".env file created."
 else
-    echo ".env file already exists"
+    echo ".env file already exists — skipping."
 fi
 echo ""
 
-# Create a convenience launch script
+# Convenience launch script (uses source/activate for the runtime session)
 echo "Creating launch script..."
 cat > run_termux.sh << 'LAUNCH'
 #!/data/data/com.termux/files/usr/bin/bash
 # Launch Ethical OSINT Tracker on Termux
 
 cd "$(dirname "$0")"
-source .venv/bin/activate
+
+VENV_DIR=".venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Virtual environment not found. Run install_termux.sh first."
+    exit 1
+fi
+
+# Activate for the runtime session so Flask and all imports resolve correctly
+source "$VENV_DIR/bin/activate"
 
 # Kill any existing process on port 3000
 fuser -k 3000/tcp 2>/dev/null || true
@@ -129,15 +135,14 @@ echo "Installation Complete!"
 echo "===================================="
 echo ""
 echo "Quick Start:"
-echo "  1. Launch the app: ./run_termux.sh"
-echo "  2. Open browser:   http://localhost:3000"
-echo "  3. Login:          admin / changeme"
+echo "  1. Launch the app:  ./run_termux.sh"
+echo "  2. Open browser:    http://localhost:3000"
+echo "  3. Login:           admin / changeme"
 echo "  4. Change password immediately in Settings"
 echo ""
 echo "Tips:"
-echo "  - Run 'termux-wake-lock' before starting to prevent Android from killing the app"
+echo "  - Run 'termux-wake-lock' before starting to prevent Android killing the app"
 echo "  - Use tmux to keep the server running when Termux loses focus"
-echo "  - See docs/TERMUX_INSTALL.md for more options"
 echo ""
-echo "To start now, run: ./run_termux.sh"
+echo "To start now, run:  ./run_termux.sh"
 echo ""
