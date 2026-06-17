@@ -27,7 +27,9 @@ pkg upgrade -y
 # Install required system packages (native libs needed by Pillow, etc.)
 echo "Installing system dependencies..."
 
-# Build toolchain
+# Build toolchain — rust/cargo is required to compile pydantic-core and
+# argon2-cffi from source on Termux (no pre-built ARM wheels available).
+# Compilation takes 5-15 minutes and needs ~2 GB free RAM; close other apps first.
 pkg install -y \
     clang \
     binutils \
