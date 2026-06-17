@@ -80,7 +80,8 @@
               <div class="p-4 flex gap-4 items-start hover:bg-gray-800/40 transition-colors
                 {% if is_confirmed %}border-l-2 border-green-600{% else %}border-l-2 border-yellow-600{% endif %}">
 
-                <!-- Profile image -->
+                <!-- Profile image / favicon -->
+                {% set _domain = r.url.split('//')[1].split('/')[0] if '//' in r.url else '' %}
                 <div class="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-gray-800 flex items-center justify-center">
                   {% if r.profile_image %}
                     <img src="{{ r.profile_image }}" alt="{{ r.site }} avatar"
@@ -88,8 +89,16 @@
                          loading="lazy"
                          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                     <div class="hidden w-full h-full items-center justify-center text-gray-600 text-xl">?</div>
+                  {% elif _domain %}
+                    <img src="https://icons.duckduckgo.com/ip3/{{ _domain }}.ico"
+                         alt="{{ r.site }}" class="w-full h-full object-contain p-2"
+                         loading="lazy"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="hidden w-full h-full items-center justify-center text-gray-500 text-xl font-bold">
+                      {{ r.site[0] }}
+                    </div>
                   {% else %}
-                    <span class="text-gray-600 text-xl font-bold">{{ r.site[0] }}</span>
+                    <span class="text-gray-500 text-xl font-bold">{{ r.site[0] }}</span>
                   {% endif %}
                 </div>
 
