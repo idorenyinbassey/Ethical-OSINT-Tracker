@@ -506,7 +506,7 @@ def _risk_notes(investigations):
         elif inv.kind == "social":
             confirmed = int(d.get("confirmed_count") or 0)
             if confirmed > 5:
-                notes.append(f"Username '{inv.query}' confirmed on {confirmed} platforms — broad digital footprint.")
+                notes.append(f"Username '{inv.query}' confirmed on {confirmed} platforms - broad digital footprint.")
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")
     return notes
@@ -713,7 +713,7 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
         pdf.rect(0, pdf.get_y(), pdf.w, 12, "F")
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_text_color(*WHITE)
-        heading_text = f"[{conf}]  {kind_label}  —  {inv.query}"
+        heading_text = f"[{conf}]  {kind_label}  --  {inv.query}"
         pdf.cell(w(), 12, _pdf_safe(heading_text[:90]), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(3)
 
