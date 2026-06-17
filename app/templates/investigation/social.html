@@ -6,6 +6,7 @@
 <p class="text-sm text-yellow-500 mb-6">Sherlock/Maigret-style search — checks {{ result.total_checked if result else '273+' }} platforms via HTTP response analysis. Only search usernames with proper authorisation.</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Left panel: form + stats -->
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
     <form method="post" class="space-y-4">
       <div>
@@ -52,21 +53,81 @@
       <!-- Legend -->
       <div class="mt-4 p-3 bg-gray-800/60 rounded-lg text-xs text-gray-400 space-y-1.5">
         <p class="font-semibold text-gray-300 mb-1">Result confidence</p>
-        <p><span class="text-green-400">■ Found</span> — content or redirect verified; profile likely real</p>
-        <p><span class="text-yellow-400">■ Possible</span> — HTTP 200 only; site may return 200 for any URL. Verify manually.</p>
-        <p><span class="text-gray-500">■ Not found</span> — confirmed absent (404 or error message matched)</p>
+        <p><span class="text-green-400">■ Found</span> — content or URL-verified</p>
+        <p><span class="text-yellow-400">■ Possible</span> — HTTP 200 only; verify manually</p>
+        <p><span class="text-gray-500">■ Not found</span> — confirmed absent</p>
       </div>
     {% endif %}
   </div>
 
-  <div class="lg:col-span-2">
+  <!-- Right panel: results -->
+  <div class="lg:col-span-2 space-y-4">
     {% if result %}
+
+      <!-- Profile cards for found results -->
+      {% set found_results = result.results | selectattr('found') | list %}
+      {% if found_results %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+            <span class="text-sm font-semibold text-white">Profiles Found</span>
+            <span class="text-xs text-gray-400">
+              {{ result.confirmed_count }} confirmed · {{ result.found_count - result.confirmed_count }} possible
+            </span>
+          </div>
+          <div class="divide-y divide-gray-800">
+            {% for r in found_results %}
+              {% set is_confirmed = r.confidence == 'high' %}
+              <div class="p-4 flex gap-4 items-start hover:bg-gray-800/40 transition-colors
+                {% if is_confirmed %}border-l-2 border-green-600{% else %}border-l-2 border-yellow-600{% endif %}">
+
+                <!-- Profile image -->
+                <div class="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-gray-800 flex items-center justify-center">
+                  {% if r.profile_image %}
+                    <img src="{{ r.profile_image }}" alt="{{ r.site }} avatar"
+                         class="w-full h-full object-cover"
+                         loading="lazy"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="hidden w-full h-full items-center justify-center text-gray-600 text-xl">?</div>
+                  {% else %}
+                    <span class="text-gray-600 text-xl font-bold">{{ r.site[0] }}</span>
+                  {% endif %}
+                </div>
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap mb-1">
+                    <span class="text-white font-semibold text-sm">{{ r.site }}</span>
+                    {% if is_confirmed %}
+                      <span class="px-1.5 py-0.5 bg-green-900/50 text-green-300 rounded text-xs">Found</span>
+                    {% else %}
+                      <span class="px-1.5 py-0.5 bg-yellow-900/40 text-yellow-300 rounded text-xs">Possible</span>
+                    {% endif %}
+                    <span class="text-gray-500 text-xs">HTTP {{ r.status_code }}</span>
+                  </div>
+
+                  {% if r.display_name %}
+                    <p class="text-gray-200 text-sm font-medium">{{ r.display_name }}</p>
+                  {% endif %}
+                  {% if r.bio %}
+                    <p class="text-gray-400 text-xs mt-0.5 line-clamp-2">{{ r.bio }}</p>
+                  {% endif %}
+
+                  <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer"
+                     class="text-indigo-400 hover:text-indigo-300 text-xs mt-1 inline-block truncate max-w-full">
+                    {{ r.url }}
+                  </a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Full platform table (all results) -->
       <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <span class="text-sm font-medium text-white">Results for "{{ result.username }}"</span>
-          <span class="text-xs text-gray-400">
-            {{ result.confirmed_count }} confirmed · {{ result.found_count - result.confirmed_count }} possible · {{ result.total_checked }} checked
-          </span>
+          <span class="text-sm font-medium text-white">All Platforms</span>
+          <span class="text-xs text-gray-400">{{ result.total_checked }} checked</span>
         </div>
         <table class="w-full text-sm">
           <thead>
@@ -74,18 +135,17 @@
               <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Platform</th>
               <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Status</th>
               <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">HTTP</th>
-              <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Profile URL</th>
+              <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">URL</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-800">
             {% for r in result.results %}
-              {% set is_confirmed = r.found and r.get('confidence') == 'high' %}
-              {% set is_possible  = r.found and r.get('confidence') != 'high' %}
+              {% set is_confirmed = r.found and r.confidence == 'high' %}
+              {% set is_possible  = r.found and r.confidence != 'high' %}
               <tr class="hover:bg-gray-800/50
                 {% if is_confirmed %}bg-green-900/10
-                {% elif is_possible %}bg-yellow-900/10
-                {% endif %}">
-                <td class="px-4 py-2 text-white font-medium">{{ r.site }}</td>
+                {% elif is_possible %}bg-yellow-900/10{% endif %}">
+                <td class="px-4 py-2 text-white font-medium text-sm">{{ r.site }}</td>
                 <td class="px-4 py-2">
                   {% if is_confirmed %}
                     <span class="px-2 py-0.5 bg-green-900/50 text-green-300 rounded text-xs">Found</span>
@@ -102,14 +162,10 @@
                 <td class="px-4 py-2 text-gray-400 text-xs">{{ r.status_code or '—' }}</td>
                 <td class="px-4 py-2">
                   {% if r.found %}
-                    {% if r.url.startswith('https://') or r.url.startswith('http://') %}
-                      <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer"
-                         class="text-indigo-400 hover:text-indigo-300 text-xs truncate max-w-xs block">
-                        {{ r.url }}
-                      </a>
-                    {% else %}
-                      <span class="text-gray-400 text-xs font-mono">{{ r.url }}</span>
-                    {% endif %}
+                    <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer"
+                       class="text-indigo-400 hover:text-indigo-300 text-xs truncate max-w-xs block">
+                      {{ r.url }}
+                    </a>
                   {% else %}
                     <span class="text-gray-600 text-xs">—</span>
                   {% endif %}
@@ -119,10 +175,11 @@
           </tbody>
         </table>
       </div>
+
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
         Enter a username to search across 273+ platforms simultaneously.<br>
-        <span class="text-xs text-gray-600 mt-2 block">No API key required — uses HTTP response analysis (status codes, page content, URL redirects).</span>
+        <span class="text-xs text-gray-600 mt-2 block">Profile pictures and bio are extracted automatically for found accounts.</span>
       </div>
     {% endif %}
   </div>
