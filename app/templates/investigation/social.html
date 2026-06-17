@@ -3,7 +3,7 @@
 
 {% block content %}
 <h1 class="text-2xl font-bold text-white mb-2">Social Username Search</h1>
-<p class="text-sm text-yellow-500 mb-6">Sherlock/Maigret-style search — checks {{ result.total_checked if result else '35+' }} platforms via HTTP response analysis. Only search usernames with proper authorisation.</p>
+<p class="text-sm text-yellow-500 mb-6">Sherlock/Maigret-style search — checks {{ result.total_checked if result else '273+' }} platforms via HTTP response analysis. Only search usernames with proper authorisation.</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
@@ -15,7 +15,7 @@
       </div>
       {% if cases %}
         <div>
-          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case</label>
           <select name="case_id"
             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
             <option value="">— None —</option>
@@ -34,13 +34,27 @@
     {% if result %}
       <div class="mt-5 space-y-2">
         <div class="bg-green-900/30 border border-green-800 rounded-lg p-3 text-center">
-          <p class="text-xs text-green-400">Profiles Found</p>
-          <p class="text-3xl font-bold text-green-300">{{ result.found_count }}</p>
+          <p class="text-xs text-green-400">Confirmed Found</p>
+          <p class="text-3xl font-bold text-green-300">{{ result.confirmed_count }}</p>
+          <p class="text-xs text-gray-500 mt-1">content-verified</p>
+        </div>
+        <div class="bg-yellow-900/20 border border-yellow-800/50 rounded-lg p-3 text-center">
+          <p class="text-xs text-yellow-400">Possibly Found</p>
+          <p class="text-2xl font-bold text-yellow-300">{{ result.found_count - result.confirmed_count }}</p>
+          <p class="text-xs text-gray-500 mt-1">needs manual check</p>
         </div>
         <div class="bg-gray-800 rounded-lg p-3 text-center">
           <p class="text-xs text-gray-400">Platforms Checked</p>
           <p class="text-2xl font-bold text-white">{{ result.total_checked }}</p>
         </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="mt-4 p-3 bg-gray-800/60 rounded-lg text-xs text-gray-400 space-y-1.5">
+        <p class="font-semibold text-gray-300 mb-1">Result confidence</p>
+        <p><span class="text-green-400">■ Found</span> — content or redirect verified; profile likely real</p>
+        <p><span class="text-yellow-400">■ Possible</span> — HTTP 200 only; site may return 200 for any URL. Verify manually.</p>
+        <p><span class="text-gray-500">■ Not found</span> — confirmed absent (404 or error message matched)</p>
       </div>
     {% endif %}
   </div>
@@ -50,7 +64,9 @@
       <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
           <span class="text-sm font-medium text-white">Results for "{{ result.username }}"</span>
-          <span class="text-xs text-gray-400">{{ result.found_count }} found / {{ result.total_checked }} checked</span>
+          <span class="text-xs text-gray-400">
+            {{ result.confirmed_count }} confirmed · {{ result.found_count - result.confirmed_count }} possible · {{ result.total_checked }} checked
+          </span>
         </div>
         <table class="w-full text-sm">
           <thead>
@@ -63,17 +79,24 @@
           </thead>
           <tbody class="divide-y divide-gray-800">
             {% for r in result.results %}
-              <tr class="hover:bg-gray-800/50 {% if r.found %}bg-green-900/10{% endif %}">
+              {% set is_confirmed = r.found and r.get('confidence') == 'high' %}
+              {% set is_possible  = r.found and r.get('confidence') != 'high' %}
+              <tr class="hover:bg-gray-800/50
+                {% if is_confirmed %}bg-green-900/10
+                {% elif is_possible %}bg-yellow-900/10
+                {% endif %}">
                 <td class="px-4 py-2 text-white font-medium">{{ r.site }}</td>
                 <td class="px-4 py-2">
-                  {% if r.found %}
+                  {% if is_confirmed %}
                     <span class="px-2 py-0.5 bg-green-900/50 text-green-300 rounded text-xs">Found</span>
+                  {% elif is_possible %}
+                    <span class="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 rounded text-xs">Possible</span>
                   {% elif r.status == 'not_found' %}
                     <span class="px-2 py-0.5 bg-gray-800 text-gray-500 rounded text-xs">Not found</span>
                   {% elif r.status == 'error' %}
                     <span class="px-2 py-0.5 bg-red-900/40 text-red-400 rounded text-xs">Error</span>
                   {% else %}
-                    <span class="px-2 py-0.5 bg-yellow-900/40 text-yellow-400 rounded text-xs">{{ r.status }}</span>
+                    <span class="px-2 py-0.5 bg-gray-700 text-gray-400 rounded text-xs">{{ r.status }}</span>
                   {% endif %}
                 </td>
                 <td class="px-4 py-2 text-gray-400 text-xs">{{ r.status_code or '—' }}</td>
@@ -98,8 +121,8 @@
       </div>
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
-        Enter a username to search across 35+ platforms simultaneously.<br>
-        <span class="text-xs text-gray-600 mt-2 block">No API key required — uses HTTP response analysis (status codes, page content, redirects).</span>
+        Enter a username to search across 273+ platforms simultaneously.<br>
+        <span class="text-xs text-gray-600 mt-2 block">No API key required — uses HTTP response analysis (status codes, page content, URL redirects).</span>
       </div>
     {% endif %}
   </div>

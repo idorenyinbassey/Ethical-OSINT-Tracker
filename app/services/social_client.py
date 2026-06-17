@@ -1436,7 +1436,10 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
     else:
         url = url_template.format(username=username)
 
-    result = {"site": name, "url": url, "found": False, "status": "error", "status_code": None}
+    result = {
+        "site": name, "url": url, "found": False,
+        "status": "error", "status_code": None, "confidence": "low",
+    }
 
     try:
         with get_http_client(timeout=10) as client:
@@ -1447,9 +1450,20 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
 
         if error_type == "status_code":
             error_code = defn.get("error_code", 404)
+            not_found_string = defn.get("not_found_string", "")
+
             if r.status_code == 200:
-                result["found"] = True
-                result["status"] = "found"
+                # Secondary check: optional body string that signals "not found"
+                if not_found_string and not_found_string.lower() in r.text[:4000].lower():
+                    result["status"] = "not_found"
+                else:
+                    result["found"] = True
+                    result["status"] = "found"
+                    # URL-drift heuristic: if the username vanished from the final
+                    # URL after following redirects, the site probably redirected to
+                    # its homepage — mark as low confidence (possible false positive).
+                    final_url = str(r.url).lower()
+                    result["confidence"] = "high" if username.lower() in final_url else "low"
             elif r.status_code == error_code:
                 result["status"] = "not_found"
             else:
@@ -1460,6 +1474,7 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             if r.status_code == 200 and error_msg not in r.text:
                 result["found"] = True
                 result["status"] = "found"
+                result["confidence"] = "high"  # content-verified
             else:
                 result["status"] = "not_found"
 
@@ -1468,6 +1483,7 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             if r.status_code == 200 and str(r.url) != error_url:
                 result["found"] = True
                 result["status"] = "found"
+                result["confidence"] = "high"  # redirect-verified
             else:
                 result["status"] = "not_found"
 
@@ -1491,9 +1507,11 @@ def search_username(username: str) -> dict:
 
     results.sort(key=lambda r: r["site"])
     found = [r for r in results if r["found"]]
+    confirmed = [r for r in found if r.get("confidence") == "high"]
     return {
         "username": username,
         "found_count": len(found),
+        "confirmed_count": len(confirmed),
         "total_checked": len(results),
         "results": results,
     }
