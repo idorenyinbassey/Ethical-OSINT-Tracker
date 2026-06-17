@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from app.repositories.investigation_repository import create_investigation, list_recent
+from app.repositories.investigation_repository import create_investigation, list_recent, find_or_update_recent
 from app.repositories.case_repository import list_cases
 from app.services import (
     ip_client, rdap_client, hibp_client, hunter_client,
@@ -95,8 +95,9 @@ def ip():
         shodan = shodan_client.fetch_shodan(ip_addr)
         result = {"geo": geo, "virustotal": vt, "shodan": shodan}
 
-        create_investigation(kind="ip", query=ip_addr, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result.get("geo") and not result["geo"].get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="ip", query=ip_addr, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"IP lookup complete for {ip_addr}.", "success")
 
     return render_template("investigation/ip.html", cases=cases, result=result)
@@ -121,8 +122,9 @@ def domain():
             flash(f"WHOIS lookup failed for '{domain_name}'. The domain may not exist or RDAP is temporarily unavailable.", "error")
             return render_template("investigation/domain.html", cases=cases, result=None)
 
-        create_investigation(kind="domain", query=domain_name, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="domain", query=domain_name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Domain lookup complete for {domain_name}.", "success")
 
     return render_template("investigation/domain.html", cases=cases, result=result)
@@ -145,8 +147,9 @@ def subdomain():
         from app.services import subdomain_client
         result = subdomain_client.scan_domain(domain_name)
 
-        create_investigation(kind="subdomain", query=domain_name, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result.get("subdomains_found", 0) > 0 else "UNVERIFIED"
+        find_or_update_recent(kind="subdomain", query=domain_name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found.", "success")
 
     return render_template("investigation/subdomain.html", cases=cases, result=result)
@@ -170,8 +173,10 @@ def email():
         verification = hunter_client.verify_email(email_addr)
         result = {"breaches": breaches, "verification": verification}
 
-        create_investigation(kind="email", query=email_addr, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        breaches = result.get("breaches")
+        conf = "CONFIRMED" if breaches and breaches != "No breaches found" else "UNVERIFIED"
+        find_or_update_recent(kind="email", query=email_addr, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Email analysis complete for {email_addr}.", "success")
 
     return render_template("investigation/email.html", cases=cases, result=result)
@@ -194,8 +199,9 @@ def email_header():
         from app.services.email_header_client import analyse_headers
         result = analyse_headers(raw)
 
-        create_investigation(kind="email_header", query=result.get("from", "unknown"),
-                             result_json=json.dumps(result), user_id=current_user.id, case_id=case_id)
+        find_or_update_recent(kind="email_header", query=result.get("from", "unknown"),
+                              result_json=json.dumps(result), user_id=current_user.id,
+                              case_id=case_id, confidence="CONFIRMED")
         flash("Email header analysis complete.", "success")
 
     return render_template("investigation/email_header.html", cases=cases, result=result)
@@ -217,8 +223,11 @@ def social():
 
         result = social_client.search_username(username)
 
-        create_investigation(kind="social", query=username, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        confirmed = result.get("confirmed_count", 0)
+        found = result.get("found_count", 0)
+        conf = "CONFIRMED" if confirmed > 0 else ("POSSIBLE" if found > 0 else "UNVERIFIED")
+        find_or_update_recent(kind="social", query=username, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Social search complete for '{username}' — {result.get('found_count', 0)} of {result.get('total_checked', 0)} profiles found.", "success")
 
     return render_template("investigation/social.html", cases=cases, result=result)
@@ -242,8 +251,9 @@ def phone():
         if result is None:
             result = {"error": "NumVerify API not configured or unavailable."}
 
-        create_investigation(kind="phone", query=phone_num, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") and result.get("valid") else "UNVERIFIED"
+        find_or_update_recent(kind="phone", query=phone_num, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Phone lookup complete for {phone_num}.", "success")
 
     return render_template("investigation/phone.html", cases=cases, result=result)
@@ -266,8 +276,9 @@ def mac():
         from app.services import mac_client
         result = mac_client.lookup_mac(mac_addr)
 
-        create_investigation(kind="mac", query=mac_addr, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="mac", query=mac_addr, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"MAC vendor lookup complete for {mac_addr}.", "success")
 
     return render_template("investigation/mac.html", cases=cases, result=result)
@@ -312,8 +323,9 @@ def file_forensics():
             except Exception:
                 pass
 
-        create_investigation(kind="file_forensics", query=original_name, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="file_forensics", query=original_name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"File forensics complete for {original_name}.", "success")
 
     return render_template("investigation/file_forensics.html",
@@ -350,8 +362,8 @@ def image():
     file.save(str(filepath))
 
     result = image_client.analyze_image(filepath)
-    create_investigation(kind="image", query=filename, result_json=json.dumps(result),
-                         user_id=current_user.id, case_id=case_id)
+    find_or_update_recent(kind="image", query=filename, result_json=json.dumps(result),
+                          user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
     flash(f"Image analysis complete for {filename}.", "success")
     return render_template("investigation/image.html", cases=cases, result=result)
 
@@ -373,8 +385,9 @@ def crypto():
         from app.services.crypto_client import lookup_address
         result = lookup_address(address)
 
-        create_investigation(kind="crypto", query=address, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="crypto", query=address, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Crypto lookup complete for {address[:12]}...", "success")
 
     return render_template("investigation/crypto.html", cases=cases, result=result)
@@ -395,11 +408,10 @@ def imei():
             return render_template("investigation/imei.html", cases=cases, result=None)
 
         result = imei_client.fetch_imei(imei_num)
-        if result is None:
-            result = {"error": "IMEI Service not configured or unavailable."}
 
-        create_investigation(kind="imei", query=imei_num, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result and not result.get("error") and not result.get("not_configured") else "UNVERIFIED"
+        find_or_update_recent(kind="imei", query=imei_num, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"IMEI lookup complete for {imei_num}.", "success")
 
     return render_template("investigation/imei.html", cases=cases, result=result)
@@ -422,8 +434,9 @@ def darkweb():
         from app.services import darkweb_client
         result = darkweb_client.search_ahmia(query)
 
-        create_investigation(kind="darkweb", query=query, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if result.get("total", 0) > 0 else "UNVERIFIED"
+        find_or_update_recent(kind="darkweb", query=query, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"Dark web search complete: {result.get('total', 0)} results found.", "success")
 
     return render_template("investigation/darkweb.html", cases=cases, result=result)
@@ -544,9 +557,19 @@ def company():
         uk_key = uk_cfg.api_key if uk_cfg and uk_cfg.is_enabled else None
         result = company_client.search_companies(name, uk_api_key=uk_key)
 
-        create_investigation(kind="company", query=name, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
-        total = sum(len(v.get("found", [])) for v in result.get("results", {}).values())
+        reg_results = result.get("results", {})
+        has_confirmed = any(isinstance(v.get("found"), list) and v["found"] for v in reg_results.values())
+        has_manual = any(v.get("manual_url") for v in reg_results.values() if not v.get("found"))
+        ddg_found = reg_results.get("duckduckgo", {}).get("found", False)
+        if has_confirmed or ddg_found:
+            conf = "CONFIRMED"
+        elif has_manual:
+            conf = "POSSIBLE"
+        else:
+            conf = "UNVERIFIED"
+        find_or_update_recent(kind="company", query=name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
+        total = sum(len(v["found"]) for v in reg_results.values() if isinstance(v.get("found"), list))
         flash(f"Company search for '{name}' complete — {total} results across registries.", "success")
 
     return render_template("investigation/company.html", cases=cases, result=result)
@@ -569,8 +592,8 @@ def person():
         from app.services.person_client import search_person
         result = search_person(name)
 
-        create_investigation(kind="person", query=name, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        find_or_update_recent(kind="person", query=name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
         flash(f"Person investigation links generated for '{name}'.", "success")
 
     return render_template("investigation/person.html", cases=cases, result=result)
@@ -593,8 +616,9 @@ def vehicle():
         from app.services.vehicle_client import decode_vin
         result = decode_vin(vin)
 
-        create_investigation(kind="vehicle", query=vin, result_json=json.dumps(result),
-                             user_id=current_user.id, case_id=case_id)
+        conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
+        find_or_update_recent(kind="vehicle", query=vin, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
         if result.get("error"):
             flash(f"VIN decode error: {result['error']}", "error")
         else:

@@ -66,6 +66,33 @@ def _file_base(path: Path) -> dict:
 _geocode_cache: dict = {}
 
 
+def _safe_rational(value):
+    """Convert IFDRational / (num,den) tuple / scalar to float safely."""
+    try:
+        from PIL.TiffImagePlugin import IFDRational
+        if isinstance(value, IFDRational):
+            return None if value.denominator == 0 else float(value.numerator) / float(value.denominator)
+        if isinstance(value, tuple) and len(value) == 2:
+            num, den = value
+            return None if den == 0 else float(num) / float(den)
+        return float(value)
+    except (TypeError, ZeroDivisionError, AttributeError):
+        return None
+
+
+def _dms_to_decimal(dms, ref: str):
+    """Convert GPS DMS tuple + hemisphere ref to signed decimal degrees. Returns None on any error."""
+    if not dms or len(dms) < 3:
+        return None
+    d = _safe_rational(dms[0])
+    m = _safe_rational(dms[1])
+    s = _safe_rational(dms[2])
+    if None in (d, m, s):
+        return None
+    dec = d + m / 60.0 + s / 3600.0
+    return -dec if str(ref).upper() in ("S", "W") else dec
+
+
 def _reverse_geocode(lat: float, lon: float) -> str | None:
     """Look up a human-readable address from GPS coords via Nominatim (free, no key)."""
     key = (round(lat, 4), round(lon, 4))
@@ -122,27 +149,18 @@ def _image(path: Path) -> dict:
                             lat_ref = str(gps_ifd.get(1, "N"))
                             lon_ref = str(gps_ifd.get(3, "E"))
                             if lat_raw and lon_raw:
-                                def _dms_to_decimal(dms) -> float:
-                                    """Convert DMS tuple/list to decimal degrees.
-                                    Handles IFDRational, float, int, and tuple elements."""
-                                    parts = list(dms)
-                                    if len(parts) < 3:
-                                        raise ValueError("DMS needs 3 elements")
-                                    return float(parts[0]) + float(parts[1]) / 60 + float(parts[2]) / 3600
-
-                                ld = _dms_to_decimal(lat_raw)
-                                lo = _dms_to_decimal(lon_raw)
-                                if lat_ref.upper() == "S":
-                                    ld = -ld
-                                if lon_ref.upper() == "W":
-                                    lo = -lo
-                                gps_lat, gps_lon = ld, lo
-                                exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
-                                exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
-                                exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
-                                alt = gps.get("GPSAltitude")
-                                if alt is not None:
-                                    exif["GPS_Altitude"] = str(alt)
+                                ld = _dms_to_decimal(lat_raw, lat_ref)
+                                lo = _dms_to_decimal(lon_raw, lon_ref)
+                                if ld is not None and lo is not None:
+                                    gps_lat, gps_lon = ld, lo
+                                    exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
+                                    exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
+                                    exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
+                                    alt = gps.get("GPSAltitude")
+                                    if alt is not None:
+                                        exif["GPS_Altitude"] = str(alt)
+                                else:
+                                    exif["GPS_Error"] = "GPS tag present but contains malformed/zero-denominator values"
                     except Exception as gps_exc:
                         exif["GPS_Error"] = str(gps_exc)
 
