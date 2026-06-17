@@ -211,3 +211,31 @@ def set_active(case_id):
         session['active_case_id'] = case_id
         flash(f"'{case.title}' is now your active case.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@cases_bp.route("/<int:case_id>/close", methods=["POST"])
+@login_required
+def close_case(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    if case.owner_user_id and case.owner_user_id != current_user.id:
+        abort(403)
+    update_case(case_id, status="closed", updated_at=datetime.datetime.utcnow())
+    flash(f"Case '{case.title}' has been closed.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@cases_bp.route("/<int:case_id>/reopen", methods=["POST"])
+@login_required
+def reopen_case(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    if case.owner_user_id and case.owner_user_id != current_user.id:
+        abort(403)
+    update_case(case_id, status="open", updated_at=datetime.datetime.utcnow())
+    flash(f"Case '{case.title}' has been reopened.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))

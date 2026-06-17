@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from sqlmodel import select, func
 from datetime import datetime, timedelta
 from app.models.investigation import Investigation
@@ -6,22 +6,59 @@ from app.models.investigation import Investigation
 from app.models.user import User  # noqa: F401
 from app.repositories.base import session_scope
 
+DEDUPE_WINDOW = timedelta(hours=1)
 
-def create_investigation(kind: str, query: str, result_json: str, user_id: int | None, case_id: int | None = None) -> Investigation:
+
+def _detach(inv: Investigation) -> Investigation:
+    """Return a plain detached copy with all fields copied."""
+    return Investigation(
+        id=inv.id, kind=inv.kind, query=inv.query,
+        created_at=inv.created_at, updated_at=inv.updated_at,
+        result_json=inv.result_json, confidence=inv.confidence,
+        user_id=inv.user_id, case_id=inv.case_id,
+    )
+
+
+def create_investigation(kind: str, query: str, result_json: str,
+                          user_id: int | None, case_id: int | None = None,
+                          confidence: str = "UNVERIFIED") -> Investigation:
     with session_scope() as session:
-        inv = Investigation(kind=kind, query=query, result_json=result_json, user_id=user_id, case_id=case_id)
+        inv = Investigation(kind=kind, query=query, result_json=result_json,
+                            user_id=user_id, case_id=case_id, confidence=confidence)
         session.add(inv)
         session.flush()
-        # Return a plain detached instance to avoid DetachedInstanceError
-        return Investigation(
-            id=inv.id,
-            kind=inv.kind,
-            query=inv.query,
-            created_at=inv.created_at,
-            result_json=inv.result_json,
-            user_id=inv.user_id,
-            case_id=inv.case_id,
-        )
+        return _detach(inv)
+
+
+def find_or_update_recent(kind: str, query: str, result_json: str,
+                           user_id: int | None, case_id: int | None = None,
+                           confidence: str = "UNVERIFIED") -> Investigation:
+    """Upsert: update existing row if same kind+query+case within 1 hour, else create new."""
+    if case_id is None:
+        return create_investigation(kind=kind, query=query, result_json=result_json,
+                                    user_id=user_id, case_id=None, confidence=confidence)
+    cutoff = datetime.utcnow() - DEDUPE_WINDOW
+    with session_scope() as session:
+        existing = session.exec(
+            select(Investigation)
+            .where(Investigation.case_id == case_id)
+            .where(Investigation.kind == kind)
+            .where(Investigation.query == query)
+            .where(Investigation.created_at >= cutoff)
+            .order_by(Investigation.created_at.desc())
+        ).first()
+        if existing:
+            existing.result_json = result_json
+            existing.updated_at = datetime.utcnow()
+            existing.confidence = confidence
+            session.add(existing)
+            session.flush()
+            return _detach(existing)
+        inv = Investigation(kind=kind, query=query, result_json=result_json,
+                            user_id=user_id, case_id=case_id, confidence=confidence)
+        session.add(inv)
+        session.flush()
+        return _detach(inv)
 
 
 def list_recent(limit: int = 25) -> List[Investigation]:
@@ -35,7 +72,9 @@ def list_recent(limit: int = 25) -> List[Investigation]:
             query=inv.query,
             result_json=inv.result_json,
             user_id=inv.user_id,
-            created_at=inv.created_at
+            created_at=inv.created_at,
+            updated_at=inv.updated_at,
+            confidence=inv.confidence,
         ) for inv in results]
 
 
@@ -52,7 +91,7 @@ def aggregate_by_day(days: int = 7) -> Dict[datetime.date, int]:
         cutoff = datetime.now() - timedelta(days=days)
         stmt = select(Investigation).where(Investigation.created_at >= cutoff)
         records = session.exec(stmt).all()
-        
+
         counts = {}
         for inv in records:
             date_key = inv.created_at.date()
@@ -74,7 +113,8 @@ def list_by_case(case_id: int) -> List[Investigation]:
         results = session.exec(stmt).all()
         return [Investigation(
             id=inv.id, kind=inv.kind, query=inv.query,
-            result_json=inv.result_json, user_id=inv.user_id, created_at=inv.created_at
+            result_json=inv.result_json, user_id=inv.user_id, created_at=inv.created_at,
+            confidence=inv.confidence, updated_at=inv.updated_at,
         ) for inv in results]
 
 
@@ -89,6 +129,7 @@ def list_all(user_id: int | None = None) -> List[Investigation]:
             id=inv.id, kind=inv.kind, query=inv.query,
             result_json=inv.result_json, user_id=inv.user_id,
             created_at=inv.created_at, case_id=inv.case_id,
+            confidence=inv.confidence, updated_at=inv.updated_at,
         ) for inv in results]
 
 
