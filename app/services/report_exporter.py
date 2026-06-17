@@ -23,6 +23,61 @@ def _format_result(result_json: str) -> str:
         return result_json[:300]
 
 
+def _format_social_result(result_json: str) -> str:
+    """Produce a readable text summary of a social username search."""
+    try:
+        d = json.loads(result_json)
+    except Exception:
+        return result_json[:300]
+
+    username = d.get("username", "")
+    found_count = d.get("found_count", 0)
+    confirmed = d.get("confirmed_count", 0)
+    total = d.get("total_checked", 0)
+    lines = [
+        f"Username: {username}",
+        f"Platforms checked: {total}  |  Found: {found_count}  |  Confirmed: {confirmed}",
+        "",
+    ]
+    for r in d.get("results", []):
+        if not r.get("found"):
+            continue
+        conf = "CONFIRMED" if r.get("confidence") == "high" else "POSSIBLE"
+        lines.append(f"[{conf}] {r['site']}")
+        if r.get("display_name"):
+            lines.append(f"  Name: {r['display_name']}")
+        if r.get("bio"):
+            lines.append(f"  Bio:  {r['bio'][:200]}")
+        lines.append(f"  URL:  {r.get('url', '')}")
+        if r.get("profile_image"):
+            lines.append(f"  Img:  {r['profile_image']}")
+        lines.append("")
+    return "\n".join(lines) or "(no profiles found)"
+
+
+def _social_profile_rows(result_json: str) -> list:
+    """Return a list of dicts for each found social profile (for XLSX sheet)."""
+    try:
+        d = json.loads(result_json)
+    except Exception:
+        return []
+    rows = []
+    for r in d.get("results", []):
+        if not r.get("found"):
+            continue
+        rows.append({
+            "platform": r.get("site", ""),
+            "confidence": "Confirmed" if r.get("confidence") == "high" else "Possible",
+            "username": d.get("username", ""),
+            "display_name": r.get("display_name", ""),
+            "bio": r.get("bio", ""),
+            "profile_url": r.get("url", ""),
+            "profile_image_url": r.get("profile_image", ""),
+            "http_status": r.get("status_code", ""),
+        })
+    return rows
+
+
 def _pdf_safe(text: str) -> str:
     """Strip characters Helvetica/latin-1 can't encode to prevent fpdf2 crashes."""
     return text.encode("latin-1", errors="replace").decode("latin-1")
@@ -81,8 +136,8 @@ def export_pdf(case, investigations) -> bytes:
         pdf.set_text_color(100, 100, 100)
         if inv.created_at:
             pdf.cell(w, 5, inv.created_at.strftime('%Y-%m-%d %H:%M'), new_x="LMARGIN", new_y="NEXT")
-        detail = _format_result(inv.result_json)
-        for line in detail.split("\n")[:20]:
+        detail = _format_social_result(inv.result_json) if inv.kind == "social" else _format_result(inv.result_json)
+        for line in detail.split("\n")[:30]:
             if line.strip():
                 pdf.set_x(pdf.l_margin)
                 pdf.multi_cell(w, 5, _pdf_safe("  " + line.strip()[:150]), new_x="LMARGIN", new_y="NEXT")
@@ -123,7 +178,7 @@ def export_docx(case, investigations) -> bytes:
         h = doc.add_heading(f"{kind_label}: {inv.query}", level=3)
         if inv.created_at:
             doc.add_paragraph(inv.created_at.strftime('%Y-%m-%d %H:%M'), style="Caption")
-        detail = _format_result(inv.result_json)
+        detail = _format_social_result(inv.result_json) if inv.kind == "social" else _format_result(inv.result_json)
         p = doc.add_paragraph()
         p.add_run(detail).font.size = Pt(8)
 
@@ -138,16 +193,44 @@ def export_html(case, investigations) -> str:
     esc = lambda s: _html.escape(str(s) if s is not None else "")
     rows = ""
     for inv in investigations:
-        detail = esc(_format_result(inv.result_json)).replace('\n', '<br>')
         ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
+        kind_label = esc(inv.kind.replace('_', ' ').title())
+
+        if inv.kind == "social":
+            # Render social profiles as cards instead of raw text
+            profiles = _social_profile_rows(inv.result_json)
+            cards = ""
+            for p in profiles:
+                img_onerror = "this.style.display='none'"
+                img_tag = f'<img src="{esc(p["profile_image_url"])}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-right:12px;flex-shrink:0" onerror="{img_onerror}">' if p["profile_image_url"] else '<div style="width:48px;height:48px;border-radius:50%;background:#e5e7eb;margin-right:12px;flex-shrink:0"></div>'
+                conf_color = "#15803d" if p["confidence"] == "Confirmed" else "#b45309"
+                conf_bg = "#dcfce7" if p["confidence"] == "Confirmed" else "#fef3c7"
+                cards += f"""<div style="display:flex;align-items:flex-start;padding:10px;border-bottom:1px solid #f3f4f6">
+                  {img_tag}
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                      <strong style="font-size:.875rem">{esc(p['platform'])}</strong>
+                      <span style="font-size:.7rem;padding:1px 6px;border-radius:3px;background:{conf_bg};color:{conf_color}">{esc(p['confidence'])}</span>
+                    </div>
+                    {f'<div style="font-size:.875rem;color:#111;margin-bottom:2px">{esc(p["display_name"])}</div>' if p['display_name'] else ''}
+                    {f'<div style="font-size:.8rem;color:#6b7280;margin-bottom:4px">{esc(p["bio"][:200])}</div>' if p['bio'] else ''}
+                    <a href="{esc(p['profile_url'])}" style="font-size:.8rem;color:#4338ca">{esc(p['profile_url'])}</a>
+                  </div>
+                </div>"""
+            no_profiles = "<p style='padding:12px;color:#9ca3af;font-size:.875rem'>No profiles found.</p>"
+            detail_block = f'<div style="border-top:1px solid #f3f4f6">{cards or no_profiles}</div>'
+        else:
+            detail = esc(_format_result(inv.result_json)).replace('\n', '<br>')
+            detail_block = f'<pre class="detail">{detail}</pre>'
+
         rows += f"""
         <div class="inv">
           <div class="inv-hd">
-            <span class="kind">{esc(inv.kind.replace('_',' ').title())}</span>
+            <span class="kind">{kind_label}</span>
             <code class="query">{esc(inv.query)}</code>
             <span class="ts">{ts}</span>
           </div>
-          <pre class="detail">{detail}</pre>
+          {detail_block}
         </div>"""
     created = case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else "Unknown"
     generated = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')
@@ -198,7 +281,8 @@ def export_csv(case, investigations) -> bytes:
     w.writerow([])
     w.writerow(["#", "Type", "Query", "Date", "Summary"])
     for i, inv in enumerate(investigations, 1):
-        summary = _format_result(inv.result_json).replace('\n', ' | ')[:300]
+        fmt = _format_social_result if inv.kind == "social" else _format_result
+        summary = fmt(inv.result_json).replace('\n', ' | ')[:400]
         ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
         w.writerow([i, inv.kind.replace("_", " ").title(), inv.query, ts, summary])
     return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
@@ -241,18 +325,63 @@ def export_xlsx(case, investigations) -> bytes:
     # Data rows
     alt_fill = PatternFill("solid", fgColor="EEF2FF")
     for i, inv in enumerate(investigations, 1):
-        summary = _format_result(inv.result_json).replace('\n', ' | ')[:500]
+        fmt = _format_social_result if inv.kind == "social" else _format_result
+        summary = fmt(inv.result_json).replace('\n', ' | ')[:500]
         ts = inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else ""
         ws.append([i, inv.kind.replace("_", " ").title(), inv.query, ts, summary])
         if i % 2 == 0:
             for col_i in range(1, 6):
                 ws.cell(row=ws.max_row, column=col_i).fill = alt_fill
-    # Column widths
     ws.column_dimensions["A"].width = 5
     ws.column_dimensions["B"].width = 16
     ws.column_dimensions["C"].width = 30
     ws.column_dimensions["D"].width = 18
     ws.column_dimensions["E"].width = 70
+
+    # Dedicated "Social Profiles" sheet for all social investigations
+    social_invs = [inv for inv in investigations if inv.kind == "social"]
+    if social_invs:
+        from openpyxl.styles import Font as XLFont, PatternFill as XLFill, Alignment as XLAlign
+        ws2 = wb.create_sheet("Social Profiles")
+        sp_hdrs = ["Platform", "Confidence", "Username", "Display Name", "Bio", "Profile URL", "Image URL", "HTTP"]
+        ws2.append(sp_hdrs)
+        hdr2_row = ws2.max_row
+        for col_i, _ in enumerate(sp_hdrs, 1):
+            cell = ws2.cell(row=hdr2_row, column=col_i)
+            cell.font = hdr_font
+            cell.fill = hdr_fill
+            cell.alignment = XLAlign(horizontal="center")
+
+        confirmed_fill = PatternFill("solid", fgColor="D1FAE5")  # green tint
+        possible_fill  = PatternFill("solid", fgColor="FEF3C7")  # amber tint
+
+        for inv in social_invs:
+            for row in _social_profile_rows(inv.result_json):
+                ws2.append([
+                    row["platform"], row["confidence"], row["username"],
+                    row["display_name"], row["bio"],
+                    row["profile_url"], row["profile_image_url"], row["http_status"],
+                ])
+                fill = confirmed_fill if row["confidence"] == "Confirmed" else possible_fill
+                for col_i in range(1, len(sp_hdrs) + 1):
+                    ws2.cell(row=ws2.max_row, column=col_i).fill = fill
+
+            # Make profile URLs clickable
+            for row_i in range(hdr2_row + 1, ws2.max_row + 1):
+                url_cell = ws2.cell(row=row_i, column=6)
+                if url_cell.value and str(url_cell.value).startswith("http"):
+                    url_cell.hyperlink = url_cell.value
+                    url_cell.font = XLFont(color="4338CA", underline="single")
+
+        ws2.column_dimensions["A"].width = 20
+        ws2.column_dimensions["B"].width = 12
+        ws2.column_dimensions["C"].width = 16
+        ws2.column_dimensions["D"].width = 25
+        ws2.column_dimensions["E"].width = 50
+        ws2.column_dimensions["F"].width = 50
+        ws2.column_dimensions["G"].width = 50
+        ws2.column_dimensions["H"].width = 8
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
