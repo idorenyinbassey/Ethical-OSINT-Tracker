@@ -52,6 +52,46 @@ def _generated_now() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Image download helper (used by PDF, DOCX, and HTML exports)
+# ---------------------------------------------------------------------------
+
+def _fetch_image_bytes(url: str, max_bytes: int = 2_097_152):
+    """Download image → (bytes, mime_type) or (None, None). Never raises."""
+    if not url:
+        return None, None
+    try:
+        import httpx
+        with httpx.Client(timeout=3, follow_redirects=True) as client:
+            r = client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; OSINT-Tracker/1.0)",
+                "Referer": url,
+            })
+        if r.status_code != 200:
+            return None, None
+        mime = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        return r.content[:max_bytes], mime
+    except Exception:
+        return None, None
+
+
+_IMG_FMT = {
+    "image/jpeg": "JPEG", "image/jpg": "JPEG",
+    "image/png": "PNG", "image/gif": "GIF",
+    "image/webp": "WEBP", "image/bmp": "BMP",
+}
+
+
+def _img_data_uri(url: str) -> str:
+    """Fetch image and return a base64 data URI, or empty string on failure."""
+    import base64
+    img_bytes, mime = _fetch_image_bytes(url)
+    if not img_bytes:
+        return ""
+    b64 = base64.b64encode(img_bytes).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+# ---------------------------------------------------------------------------
 # Per-kind findings extractor
 # ---------------------------------------------------------------------------
 
@@ -447,7 +487,7 @@ def _social_profile_rows(result_json: str) -> list:
             "display_name": r.get("display_name", ""),
             "bio": r.get("bio", ""),
             "profile_url": r.get("url", ""),
-            "profile_image_url": r.get("profile_image", ""),
+            "profile_image_url": r.get("profile_image") or r.get("image", ""),
             "http_status": r.get("status_code", ""),
         })
     return rows
@@ -737,6 +777,58 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
             pdf.set_text_color(*GRAY)
             pdf.cell(w(), 6, "(No structured findings extracted)", new_x="LMARGIN", new_y="NEXT")
 
+        # Social: append profile photo thumbnails after findings
+        if inv.kind == "social":
+            profiles = _social_profile_rows(inv.result_json)
+            if profiles:
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_text_color(*NAVY)
+                pdf.cell(w(), 5, "PROFILES FOUND", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(2)
+                for p in profiles:
+                    img_bytes, mime = _fetch_image_bytes(p["profile_image_url"])
+                    thumb_size = 18  # mm
+                    x0, y0 = pdf.get_x(), pdf.get_y()
+                    if img_bytes:
+                        fmt = _IMG_FMT.get(mime, "JPEG")
+                        try:
+                            pdf.image(io.BytesIO(img_bytes), x=x0, y=y0, h=thumb_size, type=fmt)
+                        except Exception:
+                            img_bytes = None
+                    if not img_bytes:
+                        pdf.set_fill_color(75, 85, 99)
+                        pdf.rect(x0, y0, thumb_size, thumb_size, "F")
+                        pdf.set_xy(x0 + 3, y0 + 5)
+                        pdf.set_font("Helvetica", "B", 10)
+                        pdf.set_text_color(*WHITE)
+                        pdf.cell(thumb_size - 6, 8, _pdf_safe(p["platform"][:1].upper()))
+                    tx = x0 + thumb_size + 3
+                    conf_color = GREEN if p["confidence"] == "Confirmed" else AMBER
+                    pdf.set_fill_color(*conf_color)
+                    pdf.set_xy(tx, y0)
+                    pdf.set_font("Helvetica", "B", 8)
+                    pdf.set_text_color(*WHITE)
+                    pdf.cell(22, 4, _pdf_safe(p["confidence"].upper()), fill=True)
+                    pdf.set_xy(tx + 24, y0)
+                    pdf.set_font("Helvetica", "B", 9)
+                    pdf.set_text_color(*NAVY)
+                    pdf.cell(w() - tx - 24, 4, _pdf_safe(p["platform"]))
+                    row_y = y0 + 5
+                    for text, size, color in [
+                        (p["display_name"], 8, (30, 41, 59)),
+                        (p["bio"][:100] if p["bio"] else "", 7, GRAY),
+                        (p["profile_url"][:90], 7, (99, 102, 241)),
+                    ]:
+                        if text:
+                            pdf.set_xy(tx, row_y)
+                            pdf.set_font("Helvetica", "", size)
+                            pdf.set_text_color(*color)
+                            pdf.cell(w() - tx, 4, _pdf_safe(text))
+                            row_y += 4
+                    pdf.set_xy(x0, y0 + thumb_size + 3)
+                    divider()
+
     return pdf.output()
 
 
@@ -807,11 +899,16 @@ def export_html(case, investigations, investigator: str = "Unknown") -> str:
             findings_html = ""
             for p in profiles:
                 img_onerror = "this.style.display='none'"
-                img_tag = (
-                    f'<img src="{esc(p["profile_image_url"])}" '
-                    f'style="width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:10px;flex-shrink:0" '
-                    f'onerror="{img_onerror}">'
-                ) if p["profile_image_url"] else '<div class="avatar-placeholder"></div>'
+                if p["profile_image_url"]:
+                    data_uri = _img_data_uri(p["profile_image_url"])
+                    src = data_uri if data_uri else esc(p["profile_image_url"])
+                    img_tag = (
+                        f'<img src="{src}" '
+                        f'style="width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:10px;flex-shrink:0" '
+                        f'onerror="{img_onerror}">'
+                    )
+                else:
+                    img_tag = '<div class="avatar-placeholder"></div>'
                 conf_cls = "badge-confirmed" if p["confidence"] == "Confirmed" else "badge-possible"
                 bio_html = f'<p class="profile-bio">{esc(p["bio"][:200])}</p>' if p["bio"] else ""
                 dn_html = f'<p class="profile-dn">{esc(p["display_name"])}</p>' if p["display_name"] else ""
@@ -1295,16 +1392,63 @@ def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
         mr.italic = True
 
         # Findings
-        findings = _extract_findings(inv.kind, inv.result_json)
-        if findings:
-            findings_tbl = doc.add_table(rows=0, cols=2)
-            findings_tbl.style = "Table Grid"
-            for i, (lbl, val) in enumerate(findings):
-                add_table_row(findings_tbl, str(lbl), str(val)[:400], shade=(i % 2 == 0))
+        if inv.kind == "social":
+            profiles = _social_profile_rows(inv.result_json)
+            if profiles:
+                add_heading("Profiles Found", level=3)
+                for p in profiles:
+                    tbl = doc.add_table(rows=1, cols=2)
+                    tbl.style = "Table Grid"
+                    img_cell = tbl.rows[0].cells[0]
+                    text_cell = tbl.rows[0].cells[1]
+                    img_cell.width = Cm(2.5)
+                    img_bytes, _ = _fetch_image_bytes(p["profile_image_url"])
+                    if img_bytes:
+                        try:
+                            img_cell.paragraphs[0].add_run().add_picture(
+                                io.BytesIO(img_bytes), width=Cm(2)
+                            )
+                        except Exception:
+                            img_cell.text = p["platform"][:2]
+                    else:
+                        img_cell.text = p["platform"][:2]
+                    tp = text_cell.paragraphs[0]
+                    r1 = tp.add_run(f"{p['platform']}  ")
+                    r1.bold = True
+                    r1.font.size = Pt(10)
+                    r2 = tp.add_run(f"[{p['confidence'].upper()}]")
+                    r2.font.size = Pt(8)
+                    if p["confidence"] == "Confirmed":
+                        r2.font.color.rgb = RGBColor(22, 101, 52)
+                    else:
+                        r2.font.color.rgb = RGBColor(146, 64, 14)
+                    for text, size, italic in [
+                        (p["display_name"], 9, False),
+                        (p["bio"][:200] if p["bio"] else "", 8, True),
+                        (p["profile_url"], 8, False),
+                    ]:
+                        if text:
+                            pp = text_cell.add_paragraph(text)
+                            pp.runs[0].font.size = Pt(size)
+                            pp.runs[0].italic = italic
+                            if text == p["profile_url"]:
+                                pp.runs[0].font.color.rgb = RGBColor(79, 70, 229)
+                    doc.add_paragraph()
+            else:
+                p_no = doc.add_paragraph("No profiles found.")
+                p_no.runs[0].italic = True
+                p_no.runs[0].font.color.rgb = RGBColor(107, 114, 128)
         else:
-            p = doc.add_paragraph("No structured findings extracted.")
-            p.runs[0].italic = True
-            p.runs[0].font.color.rgb = RGBColor(107, 114, 128)
+            findings = _extract_findings(inv.kind, inv.result_json)
+            if findings:
+                findings_tbl = doc.add_table(rows=0, cols=2)
+                findings_tbl.style = "Table Grid"
+                for i, (lbl, val) in enumerate(findings):
+                    add_table_row(findings_tbl, str(lbl), str(val)[:400], shade=(i % 2 == 0))
+            else:
+                p = doc.add_paragraph("No structured findings extracted.")
+                p.runs[0].italic = True
+                p.runs[0].font.color.rgb = RGBColor(107, 114, 128)
 
     buf = io.BytesIO()
     doc.save(buf)
