@@ -26,16 +26,42 @@ pkg upgrade -y
 
 # Install required system packages (native libs needed by Pillow, etc.)
 echo "Installing system dependencies..."
+
+# Build toolchain
+pkg install -y \
+    clang \
+    binutils \
+    make \
+    patchelf \
+    rust
+
+# Python runtime
 pkg install -y \
     python \
-    python-pip \
-    clang \
-    libffi \
+    python-pip
+
+# Image libraries — required by Pillow for JPEG/PNG/TIFF/WebP/GIF forensics
+pkg install -y \
     libjpeg-turbo \
-    zlib \
+    libpng \
+    libtiff \
+    libwebp \
     freetype \
+    zlib \
+    openjpeg
+
+# XML/HTML parsing — required by python-docx and beautifulsoup4
+pkg install -y \
     libxml2 \
-    libxslt \
+    libxslt
+
+# Crypto — libffi required by argon2-cffi (password hashing)
+pkg install -y \
+    libffi \
+    openssl
+
+# Utilities
+pkg install -y \
     git \
     tmux
 
