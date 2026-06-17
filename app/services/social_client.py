@@ -6,9 +6,120 @@ For each site we define:
   - error_code: HTTP status that means NOT FOUND (for error_type=status_code)
   - error_msg: substring in body that means NOT FOUND (for error_type=message)
   - error_url: redirect URL that means NOT FOUND (for error_type=response_url)
+  - url_probe: optional separate URL to probe (Sherlock urlProbe)
+  - error_msg_list: list of strings, any of which means NOT FOUND (Sherlock list errorMsg)
 """
+import json
+import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.proxy_config import get_http_client
+
+# ---------------------------------------------------------------------------
+# Sherlock site-list integration
+# ---------------------------------------------------------------------------
+
+_SHERLOCK_URL = (
+    "https://raw.githubusercontent.com/sherlock-project/sherlock/"
+    "master/sherlock_project/resources/data.json"
+)
+_SHERLOCK_CACHE = Path(__file__).parent.parent / "data" / "sherlock_sites.json"
+_SHERLOCK_CACHE_TTL = 86_400  # 24 hours
+_sherlock_memory: dict | None = None
+_sherlock_loaded_at: float = 0.0
+
+
+def _load_sherlock_sites() -> dict:
+    """Return Sherlock's site dict: in-memory → disk cache → HTTP download."""
+    global _sherlock_memory, _sherlock_loaded_at
+    now = time.monotonic()
+    if _sherlock_memory is not None and (now - _sherlock_loaded_at) < _SHERLOCK_CACHE_TTL:
+        return _sherlock_memory
+
+    # Try disk cache first
+    if _SHERLOCK_CACHE.exists():
+        try:
+            age = now - _SHERLOCK_CACHE.stat().st_mtime
+            if age < _SHERLOCK_CACHE_TTL:
+                data = json.loads(_SHERLOCK_CACHE.read_text("utf-8"))
+                _sherlock_memory = data
+                _sherlock_loaded_at = now
+                return data
+        except Exception:
+            pass
+
+    # Download fresh copy
+    try:
+        import httpx
+        r = httpx.get(_SHERLOCK_URL, timeout=10, follow_redirects=True)
+        if r.status_code == 200:
+            data = r.json()
+            _SHERLOCK_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _SHERLOCK_CACHE.write_text(json.dumps(data), encoding="utf-8")
+            _sherlock_memory = data
+            _sherlock_loaded_at = now
+            return data
+    except Exception:
+        pass
+
+    # Fall back to stale disk cache if available
+    if _SHERLOCK_CACHE.exists():
+        try:
+            data = json.loads(_SHERLOCK_CACHE.read_text("utf-8"))
+            _sherlock_memory = data
+            _sherlock_loaded_at = now
+            return data
+        except Exception:
+            pass
+
+    return {}
+
+
+def _sherlock_to_defn(entry: dict) -> dict | None:
+    """Convert a Sherlock data.json entry to our internal site definition."""
+    if entry.get("isNSFW") or entry.get("disabled"):
+        return None
+    url = entry.get("url", "")
+    if not url:
+        return None
+    # Sherlock uses {} as placeholder; normalise to {username}
+    url = url.replace("{}", "{username}")
+    defn: dict = {"url": url}
+
+    error_type = entry.get("errorType", "status_code")
+    defn["error_type"] = error_type
+
+    if error_type == "status_code":
+        defn["error_code"] = 404
+
+    elif error_type == "message":
+        err = entry.get("errorMsg", "")
+        if isinstance(err, list):
+            defn["error_msg_list"] = [str(m) for m in err]
+        else:
+            defn["error_msg"] = str(err)
+
+    elif error_type == "response_url":
+        defn["error_url"] = str(entry.get("errorUrl", ""))
+
+    url_probe = entry.get("urlProbe")
+    if url_probe:
+        defn["url_probe"] = url_probe.replace("{}", "{username}")
+
+    return defn
+
+
+def _get_all_sites() -> dict[str, dict]:
+    """Return merged site dict: local SITES take priority over Sherlock entries."""
+    merged: dict[str, dict] = dict(SITES)
+    sherlock_lower = {k.lower(): k for k in merged}
+    for name, entry in _load_sherlock_sites().items():
+        if name.lower() in sherlock_lower:
+            continue  # our definition takes priority
+        defn = _sherlock_to_defn(entry)
+        if defn:
+            merged[name] = defn
+    return merged
 
 _UA = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
 _HEADERS = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.5"}
@@ -1457,10 +1568,11 @@ def _extract_profile_meta(html: str) -> dict:
 
 def _check_site(name: str, defn: dict, username: str) -> dict:
     url_template = defn["url"]
-    if "{username}" in url_template:
-        url = url_template.replace("{username}", username)
-    else:
-        url = url_template.format(username=username)
+    url = url_template.replace("{username}", username)
+
+    # Sherlock urlProbe: a separate URL used for the HTTP check
+    probe_template = defn.get("url_probe", url_template)
+    probe_url = probe_template.replace("{username}", username)
 
     result = {
         "site": name, "url": url, "found": False,
@@ -1469,7 +1581,7 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
 
     try:
         with get_http_client(timeout=10) as client:
-            r = client.get(url, headers=_HEADERS, follow_redirects=True)
+            r = client.get(probe_url, headers=_HEADERS, follow_redirects=True)
         result["status_code"] = r.status_code
 
         error_type = defn.get("error_type", "status_code")
@@ -1493,10 +1605,19 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
 
         elif error_type == "message":
             error_msg = defn.get("error_msg", "")
-            if r.status_code == 200 and error_msg not in r.text:
-                result["found"] = True
-                result["status"] = "found"
-                result["confidence"] = "high"
+            error_msg_list = defn.get("error_msg_list", [])
+            if r.status_code == 200:
+                body = r.text
+                not_found = (
+                    (error_msg and error_msg in body) or
+                    (error_msg_list and any(m in body for m in error_msg_list))
+                )
+                if not_found:
+                    result["status"] = "not_found"
+                else:
+                    result["found"] = True
+                    result["status"] = "found"
+                    result["confidence"] = "high"
             else:
                 result["status"] = "not_found"
 
@@ -1521,10 +1642,11 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
 
 
 def search_username(username: str) -> dict:
-    """Search for a username across all configured sites concurrently."""
+    """Search for a username across all configured sites (local + Sherlock) concurrently."""
+    all_sites = _get_all_sites()
     results = []
-    with ThreadPoolExecutor(max_workers=12) as pool:
-        futures = {pool.submit(_check_site, name, defn, username): name for name, defn in SITES.items()}
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        futures = {pool.submit(_check_site, name, defn, username): name for name, defn in all_sites.items()}
         for future in as_completed(futures):
             try:
                 results.append(future.result())
