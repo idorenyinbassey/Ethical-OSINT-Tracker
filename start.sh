@@ -1,40 +1,48 @@
 #!/bin/bash
-# Flask startup script
+# Flask startup script for Ethical OSINT Tracker
 
 set -e
 
+VENV_DIR=".venv"
+PYTHON="$VENV_DIR/bin/python"
+PIP="$VENV_DIR/bin/pip"
+
 echo "Starting Ethical OSINT Tracker (Flask)..."
 
-# Create virtual environment if needed
-if [ ! -d ".venv" ]; then
+# Create virtual environment if it does not exist
+if [ ! -d "$VENV_DIR" ]; then
     echo "Creating virtual environment..."
-    python -m venv .venv
+    python3 -m venv "$VENV_DIR"
+    echo "Virtual environment created at $VENV_DIR"
 fi
 
-source .venv/bin/activate
+# Use the venv pip directly — no need to source activate just for installation
+echo "Installing/updating dependencies in venv..."
+"$PIP" install -q --upgrade pip
+"$PIP" install -q -r requirements.txt
 
-echo "Installing dependencies..."
-pip install -q -r requirements.txt
+# Activate for the rest of the session (DB init + app launch inherit the env)
+# shellcheck source=.venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
-# Default DB
+# Default database
 if [ -z "$DB_URL" ]; then
     export DB_URL="sqlite:///./dev.db"
 fi
 
 echo "Using database: $DB_URL"
 
-# Only initialise the database on first run (when dev.db does not exist yet)
-# Pass --reset flag explicitly to recreate the admin account
+# Initialise database / admin on first run, or on --reset-admin request
 if [ "${1}" = "--reset-admin" ]; then
     echo "Resetting admin account..."
-    python reset_admin.py
-elif [ ! -f "dev.db" ] && [ -z "$DB_URL" -o "$DB_URL" = "sqlite:///./dev.db" ]; then
+    "$PYTHON" reset_admin.py
+elif [ ! -f "dev.db" ] && { [ -z "$DB_URL" ] || [ "$DB_URL" = "sqlite:///./dev.db" ]; }; then
     echo "First run — initialising database and creating admin account..."
-    python reset_admin.py
+    "$PYTHON" reset_admin.py
     echo "Admin account created. Change the password on first login."
 else
-    # Just initialise tables without resetting credentials
-    python -c "from app import create_app; app = create_app()"
+    # Just ensure tables are created without resetting credentials
+    "$PYTHON" -c "from app import create_app; app = create_app()"
 fi
 
 echo ""
@@ -42,7 +50,7 @@ echo "Starting Flask application on http://0.0.0.0:3000"
 echo ""
 
 if [ "${FLASK_ENV:-development}" = "production" ]; then
-    python -m gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
+    "$PYTHON" -m gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
 else
-    python run.py
+    "$PYTHON" run.py
 fi

@@ -56,6 +56,7 @@ pytest>=7.0
 # Tools using only stdlib + httpx (no extra packages needed):
 #
 #   Company Registry Search  — httpx + html.parser + concurrent.futures
+#   DuckDuckGo Instant Answer — httpx (free API, no key — used by company search)
 #   Person Search            — urllib.parse
 #   Vehicle / VIN Lookup     — httpx (NHTSA vPIC free API)
 #   Social Search (273 sites)— httpx + concurrent.futures
