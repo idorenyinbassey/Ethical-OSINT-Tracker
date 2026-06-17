@@ -49,6 +49,9 @@ fpdf2>=2.7.0            # PDF case report export
 # ── HTML Parsing ──────────────────────────────────────────────────────────────
 beautifulsoup4>=4.12.0  # Dark web (Ahmia.fi) search result extraction
 
+# ── Database migrations ───────────────────────────────────────────────────────
+alembic>=1.13.0         # Schema migrations; run: alembic upgrade head
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest>=7.0
 

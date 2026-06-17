@@ -11,16 +11,28 @@
     <p class="text-3xl font-bold text-indigo-400 mt-1">{{ total_investigations }}</p>
   </div>
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p class="text-xs text-gray-400 uppercase tracking-wider">Open Cases</p>
-    <p class="text-3xl font-bold text-yellow-400 mt-1">{{ open_cases }}</p>
-  </div>
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p class="text-xs text-gray-400 uppercase tracking-wider">Total Cases</p>
-    <p class="text-3xl font-bold text-green-400 mt-1">{{ total_cases }}</p>
-  </div>
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
     <p class="text-xs text-gray-400 uppercase tracking-wider">Tool Types Used</p>
     <p class="text-3xl font-bold text-purple-400 mt-1">{{ by_kind|length }}</p>
+  </div>
+</div>
+
+<!-- Case stats row -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-400 uppercase tracking-wider">Total Cases</p>
+    <p class="text-3xl font-bold text-green-400 mt-1">{{ case_stats.total }}</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-400 uppercase tracking-wider">Open Cases</p>
+    <p class="text-3xl font-bold text-yellow-400 mt-1">{{ case_stats.open }}</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-400 uppercase tracking-wider">In Progress</p>
+    <p class="text-3xl font-bold text-blue-400 mt-1">{{ case_stats.in_progress }}</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-400 uppercase tracking-wider">Closed Cases</p>
+    <p class="text-3xl font-bold text-gray-400 mt-1">{{ case_stats.closed }}</p>
   </div>
 </div>
 
