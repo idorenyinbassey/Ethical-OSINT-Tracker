@@ -1429,6 +1429,32 @@ SITES: dict[str, dict] = {
 }
 
 
+def _extract_profile_meta(html: str) -> dict:
+    """Parse Open Graph and Twitter Card tags to get profile picture, name and bio."""
+    meta: dict = {}
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html[:60000], "html.parser")
+        for tag in soup.find_all("meta"):
+            prop = tag.get("property") or tag.get("name") or ""
+            content = (tag.get("content") or "").strip()
+            if not content:
+                continue
+            prop = prop.lower()
+            if prop in ("og:title", "twitter:title") and "display_name" not in meta:
+                meta["display_name"] = content[:120]
+            elif prop in ("og:description", "twitter:description", "description") and "bio" not in meta:
+                meta["bio"] = content[:300]
+            elif prop in ("og:image", "twitter:image", "twitter:image:src") and "profile_image" not in meta:
+                if content.startswith("http"):
+                    meta["profile_image"] = content
+            elif prop == "og:url" and "canonical_url" not in meta:
+                meta["canonical_url"] = content
+    except Exception:
+        pass
+    return meta
+
+
 def _check_site(name: str, defn: dict, username: str) -> dict:
     url_template = defn["url"]
     if "{username}" in url_template:
@@ -1453,15 +1479,11 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             not_found_string = defn.get("not_found_string", "")
 
             if r.status_code == 200:
-                # Secondary check: optional body string that signals "not found"
                 if not_found_string and not_found_string.lower() in r.text[:4000].lower():
                     result["status"] = "not_found"
                 else:
                     result["found"] = True
                     result["status"] = "found"
-                    # URL-drift heuristic: if the username vanished from the final
-                    # URL after following redirects, the site probably redirected to
-                    # its homepage — mark as low confidence (possible false positive).
                     final_url = str(r.url).lower()
                     result["confidence"] = "high" if username.lower() in final_url else "low"
             elif r.status_code == error_code:
@@ -1474,7 +1496,7 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             if r.status_code == 200 and error_msg not in r.text:
                 result["found"] = True
                 result["status"] = "found"
-                result["confidence"] = "high"  # content-verified
+                result["confidence"] = "high"
             else:
                 result["status"] = "not_found"
 
@@ -1483,9 +1505,13 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             if r.status_code == 200 and str(r.url) != error_url:
                 result["found"] = True
                 result["status"] = "found"
-                result["confidence"] = "high"  # redirect-verified
+                result["confidence"] = "high"
             else:
                 result["status"] = "not_found"
+
+        # For any found result, scrape Open Graph / Twitter Card metadata
+        if result["found"]:
+            result.update(_extract_profile_meta(r.text))
 
     except Exception as exc:
         result["status"] = "error"
