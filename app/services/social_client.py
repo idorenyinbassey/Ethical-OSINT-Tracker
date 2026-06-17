@@ -77,6 +77,8 @@ def _load_sherlock_sites() -> dict:
 
 def _sherlock_to_defn(entry: dict) -> dict | None:
     """Convert a Sherlock data.json entry to our internal site definition."""
+    if not isinstance(entry, dict):
+        return None
     if entry.get("isNSFW") or entry.get("disabled"):
         return None
     url = entry.get("url", "")
