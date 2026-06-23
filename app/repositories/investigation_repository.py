@@ -15,6 +15,7 @@ def _detach(inv: Investigation) -> Investigation:
         id=inv.id, kind=inv.kind, query=inv.query,
         created_at=inv.created_at, updated_at=inv.updated_at,
         result_json=inv.result_json, confidence=inv.confidence,
+        tags=inv.tags or "",
         user_id=inv.user_id, case_id=inv.case_id,
     )
 
@@ -61,21 +62,19 @@ def find_or_update_recent(kind: str, query: str, result_json: str,
         return _detach(inv)
 
 
+def update_tags(inv_id: int, tags: str) -> None:
+    with session_scope() as session:
+        inv = session.get(Investigation, inv_id)
+        if inv:
+            inv.tags = tags
+            session.add(inv)
+
+
 def list_recent(limit: int = 25) -> List[Investigation]:
     with session_scope() as session:
         stmt = select(Investigation).order_by(Investigation.id.desc()).limit(limit)
         results = session.exec(stmt).all()
-        # Eagerly load all attributes before session closes
-        return [Investigation(
-            id=inv.id,
-            kind=inv.kind,
-            query=inv.query,
-            result_json=inv.result_json,
-            user_id=inv.user_id,
-            created_at=inv.created_at,
-            updated_at=inv.updated_at,
-            confidence=inv.confidence,
-        ) for inv in results]
+        return [_detach(inv) for inv in results]
 
 
 def count_all() -> int:
@@ -111,11 +110,7 @@ def list_by_case(case_id: int) -> List[Investigation]:
     with session_scope() as session:
         stmt = select(Investigation).where(Investigation.case_id == case_id).order_by(Investigation.id.desc())
         results = session.exec(stmt).all()
-        return [Investigation(
-            id=inv.id, kind=inv.kind, query=inv.query,
-            result_json=inv.result_json, user_id=inv.user_id, created_at=inv.created_at,
-            confidence=inv.confidence, updated_at=inv.updated_at,
-        ) for inv in results]
+        return [_detach(inv) for inv in results]
 
 
 def list_all(user_id: int | None = None) -> List[Investigation]:
@@ -125,12 +120,7 @@ def list_all(user_id: int | None = None) -> List[Investigation]:
         if user_id is not None:
             stmt = stmt.where(Investigation.user_id == user_id)
         results = session.exec(stmt).all()
-        return [Investigation(
-            id=inv.id, kind=inv.kind, query=inv.query,
-            result_json=inv.result_json, user_id=inv.user_id,
-            created_at=inv.created_at, case_id=inv.case_id,
-            confidence=inv.confidence, updated_at=inv.updated_at,
-        ) for inv in results]
+        return [_detach(inv) for inv in results]
 
 
 def find_related_cases(case_id: int) -> List[Dict]:
