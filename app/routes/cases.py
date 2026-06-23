@@ -1,10 +1,14 @@
 import io
+import csv
+import json
+import hashlib
 import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session
 from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
-from app.repositories.investigation_repository import list_by_case, find_related_cases
+from app.repositories.case_note_repository import add_note, list_notes, delete_note
+from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation
 from app.services import report_exporter
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
@@ -14,7 +18,11 @@ cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 @login_required
 def index():
     cases = list_cases(owner_user_id=current_user.id)
-    return render_template("cases/index.html", cases=cases)
+    threat_scores = {}
+    for case in cases:
+        invs = list_by_case(case.id)
+        threat_scores[case.id] = _compute_threat_score(invs)
+    return render_template("cases/index.html", cases=cases, threat_scores=threat_scores)
 
 
 @cases_bp.route("/new", methods=["GET", "POST"])
@@ -55,14 +63,17 @@ def detail(case_id):
     session['active_case_id'] = case_id
     investigations = list_by_case(case_id)
     comments = list_comments(case_id)
+    notes = list_notes(case_id)
     correlations = find_related_cases(case_id)
     related_cases = []
     for corr in correlations:
         related_case = get_case(corr["case_id"])
         if related_case:
             related_cases.append({"case": related_case, "shared": corr["shared"]})
+    threat_score = _compute_threat_score(investigations)
     return render_template("cases/detail.html", case=case,
                            investigations=investigations, comments=comments,
+                           notes=notes, threat_score=threat_score,
                            related_cases=related_cases)
 
 
@@ -238,4 +249,125 @@ def reopen_case(case_id):
         abort(403)
     update_case(case_id, status="open", updated_at=datetime.datetime.utcnow())
     flash(f"Case '{case.title}' has been reopened.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+# ── Threat Score ──────────────────────────────────────────────────────────────
+
+def _compute_threat_score(investigations) -> int:
+    """Return 0-100 threat score from case investigations."""
+    score = 0
+    for inv in investigations:
+        try:
+            d = json.loads(inv.result_json or "{}")
+        except Exception:
+            continue
+        if inv.kind == "ip":
+            vt = d.get("virustotal") or {}
+            stats = (vt.get("data") or {}).get("attributes", {}).get("last_analysis_stats") or vt.get("last_analysis_stats") or {}
+            mal = int(stats.get("malicious", 0))
+            score += min(mal * 10, 30)
+        elif inv.kind == "email":
+            breaches = d.get("breaches") or []
+            if isinstance(breaches, list):
+                score += min(len(breaches) * 5, 25)
+        elif inv.kind == "darkweb":
+            results = d.get("results") or d.get("data") or []
+            if results:
+                score += min(len(results) * 3, 20)
+        elif inv.kind == "social":
+            confirmed = int(d.get("confirmed_count") or 0)
+            if confirmed > 10:
+                score += 10
+            elif confirmed > 5:
+                score += 5
+        if inv.confidence == "CONFIRMED":
+            score += 2
+    return min(score, 100)
+
+
+# ── Case Notes ────────────────────────────────────────────────────────────────
+
+@cases_bp.route("/<int:case_id>/notes", methods=["POST"])
+@login_required
+def add_case_note(case_id):
+    case = get_case(case_id)
+    if not case:
+        abort(404)
+    body = request.form.get("body", "").strip()
+    kind = request.form.get("kind", "observation")
+    valid_kinds = {"observation", "lead", "key_evidence", "follow_up"}
+    if kind not in valid_kinds:
+        kind = "observation"
+    if body:
+        add_note(case_id=case_id, user_id=current_user.id,
+                 username=current_user.username, kind=kind, body=body)
+        flash("Journal entry added.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@cases_bp.route("/<int:case_id>/notes/<int:note_id>/delete", methods=["POST"])
+@login_required
+def delete_case_note(case_id, note_id):
+    delete_note(note_id, user_id=current_user.id)
+    flash("Entry deleted.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+# ── Evidence Tagging ──────────────────────────────────────────────────────────
+
+@cases_bp.route("/<int:case_id>/investigations/<int:inv_id>/tag", methods=["POST"])
+@login_required
+def tag_investigation(case_id, inv_id):
+    tags_raw = request.form.get("tags", "")
+    allowed = {"key_evidence", "follow_up", "disputed", "verified", "archived"}
+    tags = ",".join(t.strip() for t in tags_raw.split(",") if t.strip() in allowed)
+    update_tags(inv_id, tags)
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+# ── Bulk Target Import ────────────────────────────────────────────────────────
+
+_VALID_IMPORT_KINDS = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb", "mac", "vehicle", "person"}
+
+@cases_bp.route("/<int:case_id>/import", methods=["POST"])
+@login_required
+def bulk_import(case_id):
+    case = get_case(case_id)
+    if not case:
+        abort(404)
+    if case.owner_user_id and case.owner_user_id != current_user.id:
+        abort(403)
+
+    f = request.files.get("csv_file")
+    if not f or not f.filename.endswith(".csv"):
+        flash("Please upload a .csv file.", "error")
+        return redirect(url_for("cases.detail", case_id=case_id))
+
+    content = f.read().decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(content))
+
+    added = 0
+    skipped = 0
+    for i, row in enumerate(reader):
+        if i >= 50:
+            flash("Import capped at 50 rows.", "info")
+            break
+        kind = (row.get("kind") or row.get("Kind") or "").strip().lower()
+        query = (row.get("query") or row.get("Query") or row.get("target") or "").strip()
+        if not kind or kind not in _VALID_IMPORT_KINDS or not query:
+            skipped += 1
+            continue
+        create_investigation(
+            kind=kind, query=query,
+            result_json=json.dumps({"imported": True, "query": query}),
+            user_id=current_user.id, case_id=case_id,
+            confidence="UNVERIFIED",
+        )
+        added += 1
+
+    if added:
+        flash(f"Imported {added} target(s) as unverified investigations. Run each one to fetch data.", "success")
+    if skipped:
+        flash(f"{skipped} row(s) skipped (missing/invalid kind or query).", "info")
     return redirect(url_for("cases.detail", case_id=case_id))
