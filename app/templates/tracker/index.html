@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Link Tracker{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Link Tracker</h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Generate tracking links and email pixels to capture IP, device fingerprint, and GPS from targets.</p>
+    </div>
+    <a href="{{ url_for('tracker.new_link') }}"
+       class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      New Tracking Link
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="mb-4 px-4 py-3 rounded-lg text-sm {% if cat == 'error' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300{% endif %}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if links %}
+  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 dark:bg-gray-700/50">
+        <tr>
+          <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Label</th>
+          <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Token</th>
+          <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Decoy</th>
+          <th class="px-4 py-3 text-center font-medium text-gray-500 dark:text-gray-400">Hits</th>
+          <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+        {% for link in links %}
+        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+          <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ link.label }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{{ link.token }}</td>
+          <td class="px-4 py-3">
+            <span class="px-2 py-0.5 rounded text-xs font-medium
+              {% if link.decoy_mode == '404' %}bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+              {% elif link.decoy_mode == 'blank' %}bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300
+              {% else %}bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300{% endif %}">
+              {{ link.decoy_mode }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-center">
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold
+              {% if hit_counts[link.id] > 0 %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300
+              {% else %}bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400{% endif %}">
+              {{ hit_counts[link.id] }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{{ link.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="px-4 py-3 text-right">
+            <a href="{{ url_for('tracker.detail', token=link.token) }}"
+               class="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium">View hits</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center py-20 text-gray-400 dark:text-gray-600">
+    <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+    </svg>
+    <p class="font-medium">No tracking links yet</p>
+    <p class="text-sm mt-1">Create your first link to start capturing target data.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
