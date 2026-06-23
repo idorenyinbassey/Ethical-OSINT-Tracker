@@ -74,6 +74,43 @@ def _fetch_image_bytes(url: str, max_bytes: int = 2_097_152):
         return None, None
 
 
+def _prefetch_images(investigations) -> dict:
+    """Concurrently fetch all profile images. Returns {url: (bytes, mime)}."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    urls = set()
+    for inv in investigations:
+        if inv.kind != "social" or not inv.result_json:
+            continue
+        try:
+            d = json.loads(inv.result_json)
+        except Exception:
+            continue
+        for r in d.get("results", []):
+            url = r.get("profile_image") or r.get("image", "")
+            if url:
+                urls.add(url)
+    if not urls:
+        return {}
+    cache = {}
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        future_to_url = {pool.submit(_fetch_image_bytes, url): url for url in urls}
+        for future in as_completed(future_to_url, timeout=20):
+            url = future_to_url[future]
+            try:
+                cache[url] = future.result()
+            except Exception:
+                cache[url] = (None, None)
+    return cache
+
+
+def _report_fingerprint(case, investigations) -> str:
+    """Stable SHA-256 fingerprint of the source data for chain-of-custody."""
+    parts = [f"case:{case.id}", f"title:{case.title}"]
+    for inv in sorted(investigations, key=lambda i: i.id or 0):
+        parts.append(f"{inv.id}:{inv.kind}:{inv.query}:{hashlib.sha256((inv.result_json or '').encode()).hexdigest()[:8]}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
 _IMG_FMT = {
     "image/jpeg": "JPEG", "image/jpg": "JPEG",
     "image/png": "PNG", "image/gif": "GIF",
@@ -610,6 +647,8 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
         pdf.multi_cell(remaining, 6, _pdf_safe(str(value)[:300]), fill=True, new_x="LMARGIN", new_y="NEXT")
 
     summary = _build_executive_summary(case, investigations)
+    img_cache = _prefetch_images(investigations)
+    fingerprint = _report_fingerprint(case, investigations)
 
     # ------------------------------------------------------------------ COVER
     pdf.add_page()
@@ -787,7 +826,7 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
                 pdf.cell(w(), 5, "PROFILES FOUND", new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(2)
                 for p in profiles:
-                    img_bytes, mime = _fetch_image_bytes(p["profile_image_url"])
+                    img_bytes, mime = img_cache.get(p["profile_image_url"]) or _fetch_image_bytes(p["profile_image_url"])
                     thumb_size = 18  # mm
                     x0, y0 = pdf.get_x(), pdf.get_y()
                     if img_bytes:
@@ -829,6 +868,15 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
                     pdf.set_xy(x0, y0 + thumb_size + 3)
                     divider()
 
+    # Integrity footer on last page
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_text_color(*GRAY)
+    pdf.ln(6)
+    pdf.cell(w(), 4, _pdf_safe(f"Report integrity fingerprint (SHA-256): {fingerprint}"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(w(), 4, _pdf_safe(f"Generated: {_generated_now()} | Investigations: {len(investigations)}"),
+             new_x="LMARGIN", new_y="NEXT")
+
     return pdf.output()
 
 
@@ -843,6 +891,8 @@ def export_html(case, investigations, investigator: str = "Unknown") -> str:
 
     summary = _build_executive_summary(case, investigations)
     risk_notes = _risk_notes(investigations)
+    img_cache = _prefetch_images(investigations)
+    fingerprint = _report_fingerprint(case, investigations)
 
     # ---- Cover / header metadata table
     meta_rows_html = ""
@@ -900,7 +950,13 @@ def export_html(case, investigations, investigator: str = "Unknown") -> str:
             for p in profiles:
                 img_onerror = "this.style.display='none'"
                 if p["profile_image_url"]:
-                    data_uri = _img_data_uri(p["profile_image_url"])
+                    cached = img_cache.get(p["profile_image_url"])
+                    if cached and cached[0]:
+                        import base64 as _b64
+                        b64 = _b64.b64encode(cached[0]).decode("ascii")
+                        data_uri = f"data:{cached[1]};base64,{b64}"
+                    else:
+                        data_uri = _img_data_uri(p["profile_image_url"])
                     src = data_uri if data_uri else esc(p["profile_image_url"])
                     img_tag = (
                         f'<img src="{src}" '
@@ -1181,6 +1237,11 @@ code {{ font-family: 'Courier New', monospace; font-size: 0.85em; }}
 <div class="section-hdr" style="border-radius:8px 8px 0 0;margin-bottom:0">Per-Investigation Findings</div>
 {inv_cards}
 
+<div style="margin-top:2rem;padding:1rem;background:#f1f5f9;border-radius:6px;font-size:0.7rem;color:#64748b;font-family:monospace">
+  <strong>Report integrity fingerprint (SHA-256):</strong> {fingerprint}<br>
+  Generated: {_generated_now()} | Investigations: {len(investigations)}
+</div>
+
 </div><!-- /report-wrapper -->
 </body>
 </html>"""
@@ -1197,6 +1258,9 @@ def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+
+    img_cache = _prefetch_images(investigations)
+    fingerprint = _report_fingerprint(case, investigations)
 
     doc = Document()
 
@@ -1402,7 +1466,7 @@ def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
                     img_cell = tbl.rows[0].cells[0]
                     text_cell = tbl.rows[0].cells[1]
                     img_cell.width = Cm(2.5)
-                    img_bytes, _ = _fetch_image_bytes(p["profile_image_url"])
+                    img_bytes, _ = img_cache.get(p["profile_image_url"]) or _fetch_image_bytes(p["profile_image_url"])
                     if img_bytes:
                         try:
                             img_cell.paragraphs[0].add_run().add_picture(
@@ -1449,6 +1513,12 @@ def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
                 p = doc.add_paragraph("No structured findings extracted.")
                 p.runs[0].italic = True
                 p.runs[0].font.color.rgb = RGBColor(107, 114, 128)
+
+    doc.add_paragraph()
+    fp_para = doc.add_paragraph()
+    fp_run = fp_para.add_run(f"Integrity fingerprint (SHA-256): {fingerprint}\nGenerated: {_generated_now()}")
+    fp_run.font.size = Pt(7)
+    fp_run.font.color.rgb = RGBColor(107, 114, 128)
 
     buf = io.BytesIO()
     doc.save(buf)

@@ -2,208 +2,329 @@
 {% block title %}{{ case.title }} – OSINT Tracker{% endblock %}
 
 {% block content %}
-<!-- Page header — stacks on mobile -->
 <div class="mb-5">
   <a href="{{ url_for('cases.index') }}" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm mb-2 inline-block">← Back to Cases</a>
   <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ case.title }}</h1>
-    <!-- Edit / Delete row — always visible -->
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ case.title }}</h1>
+      <!-- Threat Score Badge -->
+      {% set ts = threat_score %}
+      <span class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full
+        {% if ts >= 70 %}bg-red-900/60 text-red-300 border border-red-700
+        {% elif ts >= 40 %}bg-orange-900/60 text-orange-300 border border-orange-700
+        {% elif ts >= 15 %}bg-yellow-900/60 text-yellow-300 border border-yellow-700
+        {% else %}bg-gray-700 text-gray-400 border border-gray-600{% endif %}"
+        title="Threat score: {{ ts }}/100">
+        Threat {{ ts }}/100
+      </span>
+    </div>
     <div class="flex gap-2 flex-shrink-0">
       <a href="{{ url_for('cases.edit', case_id=case.id) }}"
          class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-        ✏️ Edit
+        Edit
       </a>
       <form method="post" action="{{ url_for('cases.delete', case_id=case.id) }}"
             onsubmit="return confirm('Delete this case and all linked data?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit"
           class="bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          🗑 Delete
+          Delete
         </button>
       </form>
     </div>
   </div>
 
-  <!-- Active case toggle -->
-  {% if not active_case or active_case.id != case.id %}
-  <form method="post" action="{{ url_for('cases.set_active', case_id=case.id) }}" class="mt-3">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-      Set as Active Case
-    </button>
-  </form>
-  {% else %}
-  <div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm text-indigo-700 dark:text-indigo-300">
-    ✓ Active investigation case
-  </div>
-  {% endif %}
+  <div class="mt-3 flex flex-wrap gap-2">
+    {% if not active_case or active_case.id != case.id %}
+    <form method="post" action="{{ url_for('cases.set_active', case_id=case.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        Set Active
+      </button>
+    </form>
+    {% else %}
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm text-indigo-700 dark:text-indigo-300">
+      ✓ Active case
+    </div>
+    {% endif %}
 
-  <!-- Close / Reopen case -->
-  <div class="mt-3">
     {% if case.status != 'closed' %}
     <form method="post" action="{{ url_for('cases.close_case', case_id=case.id) }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit"
-        class="bg-gray-700 hover:bg-red-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
-        onclick="return confirm('Close this case?')">
-        Close Case
-      </button>
+      <button type="submit" class="bg-gray-700 hover:bg-red-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+        onclick="return confirm('Close this case?')">Close</button>
     </form>
     {% else %}
     <form method="post" action="{{ url_for('cases.reopen_case', case_id=case.id) }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit"
-        class="bg-gray-700 hover:bg-green-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">
-        Reopen Case
-      </button>
+      <button type="submit" class="bg-gray-700 hover:bg-green-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">Reopen</button>
     </form>
     {% endif %}
   </div>
 
-  <!-- Export buttons — horizontal scroll on mobile -->
   <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
     <a href="{{ url_for('cases.export_pdf', case_id=case.id) }}"
-       class="flex-shrink-0 bg-red-900/40 hover:bg-red-900/60 text-red-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-red-800">
-      ↓ PDF
-    </a>
+       class="flex-shrink-0 bg-red-900/40 hover:bg-red-900/60 text-red-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-red-800">↓ PDF</a>
     <a href="{{ url_for('cases.export_docx', case_id=case.id) }}"
-       class="flex-shrink-0 bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-blue-800">
-      ↓ DOCX
-    </a>
+       class="flex-shrink-0 bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-blue-800">↓ DOCX</a>
     <a href="{{ url_for('cases.export_html', case_id=case.id) }}"
-       class="flex-shrink-0 bg-green-900/40 hover:bg-green-900/60 text-green-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-green-800">
-      ↓ HTML
-    </a>
+       class="flex-shrink-0 bg-green-900/40 hover:bg-green-900/60 text-green-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-green-800">↓ HTML</a>
     <a href="{{ url_for('cases.export_csv', case_id=case.id) }}"
-       class="flex-shrink-0 bg-yellow-900/40 hover:bg-yellow-900/60 text-yellow-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-yellow-800">
-      ↓ CSV
-    </a>
+       class="flex-shrink-0 bg-yellow-900/40 hover:bg-yellow-900/60 text-yellow-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-yellow-800">↓ CSV</a>
     <a href="{{ url_for('cases.export_xlsx', case_id=case.id) }}"
-       class="flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-emerald-800">
-      ↓ XLSX
-    </a>
+       class="flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-emerald-800">↓ XLSX</a>
   </div>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  <!-- Case details -->
   <div class="lg:col-span-2 space-y-6">
+
+    <!-- Case Details -->
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Details</h2>
       <dl class="space-y-3 text-sm">
         <div class="flex gap-4">
           <dt class="text-gray-500 dark:text-gray-400 w-28">Status</dt>
-          <dd>
-            <span class="px-2 py-0.5 rounded text-xs font-medium
-              {% if case.status == 'open' %}bg-green-900/50 text-green-300
-              {% elif case.status == 'in_progress' %}bg-blue-900/50 text-blue-300
-              {% else %}bg-gray-700 text-gray-400{% endif %}">
-              {{ case.status.replace('_', ' ').title() }}
-            </span>
-          </dd>
+          <dd><span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if case.status == 'open' %}bg-green-900/50 text-green-300
+            {% elif case.status == 'in_progress' %}bg-blue-900/50 text-blue-300
+            {% else %}bg-gray-700 text-gray-400{% endif %}">
+            {{ case.status.replace('_', ' ').title() }}</span></dd>
         </div>
         <div class="flex gap-4">
           <dt class="text-gray-500 dark:text-gray-400 w-28">Priority</dt>
-          <dd>
-            <span class="px-2 py-0.5 rounded text-xs font-medium
-              {% if case.priority == 'critical' %}bg-red-900/50 text-red-300
-              {% elif case.priority == 'high' %}bg-orange-900/50 text-orange-300
-              {% elif case.priority == 'medium' %}bg-yellow-900/50 text-yellow-300
-              {% else %}bg-gray-700 text-gray-400{% endif %}">
-              {{ case.priority.title() }}
-            </span>
-          </dd>
+          <dd><span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if case.priority == 'critical' %}bg-red-900/50 text-red-300
+            {% elif case.priority == 'high' %}bg-orange-900/50 text-orange-300
+            {% elif case.priority == 'medium' %}bg-yellow-900/50 text-yellow-300
+            {% else %}bg-gray-700 text-gray-400{% endif %}">
+            {{ case.priority.title() }}</span></dd>
         </div>
         <div class="flex gap-4">
           <dt class="text-gray-500 dark:text-gray-400 w-28">Created</dt>
           <dd class="text-gray-900 dark:text-white">{{ case.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
         </div>
         {% if case.description %}
-          <div class="flex gap-4">
-            <dt class="text-gray-500 dark:text-gray-400 w-28">Description</dt>
-            <dd class="text-gray-700 dark:text-gray-200">{{ case.description }}</dd>
-          </div>
+        <div class="flex gap-4">
+          <dt class="text-gray-500 dark:text-gray-400 w-28">Description</dt>
+          <dd class="text-gray-700 dark:text-gray-200">{{ case.description }}</dd>
+        </div>
         {% endif %}
       </dl>
     </div>
 
-    <!-- Linked investigations -->
+    <!-- Linked Investigations with tagging -->
     {% if investigations %}
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Linked Investigations ({{ investigations|length }})</h2>
-        <div class="space-y-2">
-          {% for inv in investigations %}
-            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 flex items-center justify-between">
-              <div>
-                <span class="text-xs px-2 py-0.5 bg-indigo-900/50 text-indigo-300 rounded mr-2">{{ inv.kind.replace('_', ' ') }}</span>
-                <span class="text-sm text-gray-700 dark:text-gray-200 font-mono">{{ inv.query }}</span>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">
+        Linked Investigations ({{ investigations|length }})
+      </h2>
+      <div class="space-y-2">
+        {% for inv in investigations %}
+        {% set inv_tags = inv.tags.split(',') if inv.tags else [] %}
+        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <span class="text-xs px-2 py-0.5 bg-indigo-900/50 text-indigo-300 rounded">{{ inv.kind.replace('_', ' ') }}</span>
+                <span class="text-sm text-gray-700 dark:text-gray-200 font-mono truncate">{{ inv.query }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded
+                  {% if inv.confidence == 'CONFIRMED' %}bg-green-900/50 text-green-300
+                  {% elif inv.confidence == 'POSSIBLE' %}bg-amber-900/50 text-amber-300
+                  {% else %}bg-gray-700 text-gray-400{% endif %}">
+                  {{ inv.confidence or 'UNVERIFIED' }}
+                </span>
               </div>
-              <span class="text-xs text-gray-500 dark:text-gray-500">{{ inv.created_at.strftime('%Y-%m-%d') }}</span>
+              <!-- Tag chips -->
+              <div class="flex flex-wrap gap-1 mt-1">
+                {% for tag in inv_tags %}
+                  {% if tag %}
+                  <span class="text-xs px-1.5 py-0.5 rounded font-medium
+                    {% if tag == 'key_evidence' %}bg-yellow-900/50 text-yellow-300
+                    {% elif tag == 'follow_up' %}bg-blue-900/50 text-blue-300
+                    {% elif tag == 'disputed' %}bg-red-900/50 text-red-300
+                    {% elif tag == 'verified' %}bg-green-900/50 text-green-300
+                    {% else %}bg-gray-700 text-gray-400{% endif %}">
+                    {{ tag.replace('_', ' ') }}
+                  </span>
+                  {% endif %}
+                {% endfor %}
+              </div>
             </div>
-          {% endfor %}
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="text-xs text-gray-500 dark:text-gray-500">{{ inv.created_at.strftime('%Y-%m-%d') }}</span>
+              <!-- Tag dropdown (vanilla JS, no Alpine) -->
+              <div class="relative">
+                <button type="button"
+                        onclick="toggleTagMenu('tag-menu-{{ inv.id }}')"
+                        class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700 hover:bg-gray-600">Tag</button>
+                <div id="tag-menu-{{ inv.id }}"
+                     class="hidden absolute right-0 z-20 mt-1 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-3">
+                  <form method="post" action="{{ url_for('cases.tag_investigation', case_id=case.id, inv_id=inv.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <p class="text-xs text-gray-400 mb-2">Tags (current: {{ inv.tags or 'none' }})</p>
+                    {% for t in ['key_evidence', 'follow_up', 'disputed', 'verified', 'archived'] %}
+                    <label class="flex items-center gap-2 text-xs text-gray-300 mb-1 cursor-pointer">
+                      <input type="checkbox" name="tags_check" value="{{ t }}"
+                             {% if t in inv_tags %}checked{% endif %}
+                             class="rounded"> {{ t.replace('_', ' ').title() }}
+                    </label>
+                    {% endfor %}
+                    <input type="hidden" name="tags" id="tags_hidden_{{ inv.id }}">
+                    <button type="submit" onclick="buildTags({{ inv.id }})" class="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1.5 rounded">Save</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+        {% endfor %}
       </div>
+
+      <!-- Bulk import CSV -->
+      <details class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <summary class="text-sm text-indigo-400 cursor-pointer hover:text-indigo-300 select-none">
+          + Import targets from CSV
+        </summary>
+        <div class="mt-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            CSV must have columns: <code>kind</code>, <code>query</code>. Valid kinds:
+            ip, domain, email, social, crypto, phone, darkweb, mac, vehicle, person. Max 50 rows.
+          </p>
+          <form method="post" action="{{ url_for('cases.bulk_import', case_id=case.id) }}" enctype="multipart/form-data" class="flex gap-2 items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="csv_file" accept=".csv" required
+                   class="flex-1 text-xs text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:bg-indigo-600 file:text-white file:text-xs file:border-0 file:cursor-pointer">
+            <button type="submit" class="flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded">Import</button>
+          </form>
+        </div>
+      </details>
+    </div>
+    {% else %}
+    <!-- Empty investigations + import -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Linked Investigations</h2>
+      <p class="text-sm text-gray-500 mb-4">No investigations linked yet.</p>
+      <details class="border-t border-gray-200 dark:border-gray-700 pt-4">
+        <summary class="text-sm text-indigo-400 cursor-pointer hover:text-indigo-300 select-none">
+          + Import targets from CSV
+        </summary>
+        <div class="mt-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+          <p class="text-xs text-gray-500 mb-2">CSV: <code>kind</code>, <code>query</code> columns. Max 50 rows.</p>
+          <form method="post" action="{{ url_for('cases.bulk_import', case_id=case.id) }}" enctype="multipart/form-data" class="flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="csv_file" accept=".csv" required class="flex-1 text-xs text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:bg-indigo-600 file:text-white file:text-xs file:border-0">
+            <button type="submit" class="flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded">Import</button>
+          </form>
+        </div>
+      </details>
+    </div>
     {% endif %}
 
-    <!-- Comments -->
+    <!-- Investigator Journal (Case Notes) -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Investigator Journal ({{ notes|length }})</h2>
+      {% if notes %}
+      <div class="space-y-3 mb-4">
+        {% for note in notes %}
+        <div class="rounded-lg p-3 border
+          {% if note.kind == 'key_evidence' %}bg-yellow-900/20 border-yellow-800
+          {% elif note.kind == 'lead' %}bg-blue-900/20 border-blue-800
+          {% elif note.kind == 'follow_up' %}bg-purple-900/20 border-purple-800
+          {% else %}bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700{% endif %}">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">{{ note.username[0].upper() if note.username else '?' }}</span>
+              <span class="text-sm font-medium text-indigo-300">{{ note.username }}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded font-medium
+                {% if note.kind == 'key_evidence' %}bg-yellow-800 text-yellow-200
+                {% elif note.kind == 'lead' %}bg-blue-800 text-blue-200
+                {% elif note.kind == 'follow_up' %}bg-purple-800 text-purple-200
+                {% else %}bg-gray-700 text-gray-300{% endif %}">
+                {{ note.kind.replace('_', ' ').title() }}
+              </span>
+              <span class="text-xs text-gray-500">{{ note.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            </div>
+            <form method="post" action="{{ url_for('cases.delete_case_note', case_id=case.id, note_id=note.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="text-xs text-red-400 hover:text-red-300" onclick="return confirm('Delete this entry?')">×</button>
+            </form>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-200 ml-8 whitespace-pre-wrap">{{ note.body }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-gray-500 mb-4">No journal entries yet.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('cases.add_case_note', case_id=case.id) }}" class="space-y-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="flex gap-2">
+          <select name="kind" class="bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500 flex-shrink-0">
+            <option value="observation">Observation</option>
+            <option value="lead">Lead</option>
+            <option value="key_evidence">Key Evidence</option>
+            <option value="follow_up">Follow-up</option>
+          </select>
+          <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0">Add</button>
+        </div>
+        <textarea name="body" rows="3" required placeholder="Add a journal entry, lead, or key finding..."
+          class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm resize-y"></textarea>
+      </form>
+    </div>
+
+    <!-- Team Comments -->
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Team Notes ({{ comments|length }})</h2>
       {% if comments %}
-        <div class="space-y-3 mb-4">
-          {% for c in comments %}
-            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">{{ c.username[0].upper() if c.username else '?' }}</span>
-                <span class="text-sm font-medium text-indigo-300">{{ c.username }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-500">{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
-              </div>
-              <p class="text-sm text-gray-700 dark:text-gray-200 ml-8">{{ c.body }}</p>
-            </div>
-          {% endfor %}
+      <div class="space-y-3 mb-4">
+        {% for c in comments %}
+        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">{{ c.username[0].upper() if c.username else '?' }}</span>
+            <span class="text-sm font-medium text-indigo-300">{{ c.username }}</span>
+            <span class="text-xs text-gray-500">{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-200 ml-8">{{ c.body }}</p>
         </div>
+        {% endfor %}
+      </div>
       {% else %}
-        <p class="text-sm text-gray-500 mb-4">No notes yet. Add the first team note below.</p>
+      <p class="text-sm text-gray-500 mb-4">No team notes yet.</p>
       {% endif %}
 
       <form method="post" class="space-y-2">
-        <textarea name="body" rows="3" required placeholder="Add a note or observation..."
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="body" rows="2" placeholder="Add a team note..."
           class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm resize-y"></textarea>
-        <button type="submit"
-          class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          Add Note
-        </button>
+        <button type="submit" class="bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Add Note</button>
       </form>
     </div>
-  </div>
 
-  <!-- Actions sidebar -->
+  </div><!-- /main col -->
+
+  <!-- Sidebar -->
   <div class="space-y-4">
+
+    <!-- Quick Investigate -->
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Quick Investigate</h2>
       <div class="space-y-2">
-        <a href="{{ url_for('investigation.ip') }}"
-           class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg transition-colors">
-          IP Lookup
-        </a>
-        <a href="{{ url_for('investigation.domain') }}"
-           class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg transition-colors">
-          Domain WHOIS
-        </a>
-        <a href="{{ url_for('investigation.social') }}"
-           class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg transition-colors">
-          Social Search
-        </a>
-        <a href="{{ url_for('investigation.crypto') }}"
-           class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg transition-colors">
-          Crypto Lookup
-        </a>
+        <a href="{{ url_for('investigation.ip') }}" class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg">IP Lookup</a>
+        <a href="{{ url_for('investigation.domain') }}" class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg">Domain WHOIS</a>
+        <a href="{{ url_for('investigation.social') }}" class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg">Social Search</a>
+        <a href="{{ url_for('investigation.email') }}" class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg">Email Lookup</a>
+        <a href="{{ url_for('investigation.crypto') }}" class="block w-full text-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm py-2 rounded-lg">Crypto Lookup</a>
+        <a href="{{ url_for('investigation.watchlist') }}" class="block w-full text-center bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-300 text-sm py-2 rounded-lg border border-indigo-800">Watchlist</a>
       </div>
     </div>
 
+    <!-- Related Cases -->
     {% if related_cases %}
     <div class="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-amber-700 dark:text-amber-300 mb-3">Related Cases ({{ related_cases|length }})</h2>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Cases sharing investigation targets with this one.</p>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Cases sharing investigation targets.</p>
       <div class="space-y-3">
         {% for rel in related_cases %}
         <div class="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
@@ -227,33 +348,46 @@
     </div>
     {% endif %}
 
+    <!-- Export Report -->
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Export Report</h2>
       <div class="space-y-2">
         <a href="{{ url_for('cases.export_pdf', case_id=case.id) }}"
-           class="block w-full text-center bg-red-900/30 hover:bg-red-900/50 text-red-300 text-sm py-2 rounded-lg transition-colors border border-red-900">
-          Download PDF Report
-        </a>
+           class="block w-full text-center bg-red-900/30 hover:bg-red-900/50 text-red-300 text-sm py-2 rounded-lg border border-red-900">PDF Report</a>
         <a href="{{ url_for('cases.export_docx', case_id=case.id) }}"
-           class="block w-full text-center bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-sm py-2 rounded-lg transition-colors border border-blue-900">
-          Download DOCX Report
-        </a>
+           class="block w-full text-center bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-sm py-2 rounded-lg border border-blue-900">DOCX Report</a>
         <a href="{{ url_for('cases.export_html', case_id=case.id) }}"
-           class="block w-full text-center bg-green-900/30 hover:bg-green-900/50 text-green-300 text-sm py-2 rounded-lg transition-colors border border-green-900">
-          Download HTML Report
-        </a>
+           class="block w-full text-center bg-green-900/30 hover:bg-green-900/50 text-green-300 text-sm py-2 rounded-lg border border-green-900">HTML Report</a>
         <a href="{{ url_for('cases.export_csv', case_id=case.id) }}"
-           class="block w-full text-center bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-300 text-sm py-2 rounded-lg transition-colors border border-yellow-900">
-          Download CSV
-        </a>
+           class="block w-full text-center bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-300 text-sm py-2 rounded-lg border border-yellow-900">CSV</a>
         <a href="{{ url_for('cases.export_xlsx', case_id=case.id) }}"
-           class="block w-full text-center bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 text-sm py-2 rounded-lg transition-colors border border-emerald-900">
-          Download Spreadsheet (XLSX)
-        </a>
+           class="block w-full text-center bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 text-sm py-2 rounded-lg border border-emerald-900">XLSX</a>
       </div>
-      <p class="text-xs text-gray-500 mt-2">Includes all {{ investigations|length }} linked investigations.</p>
+      <p class="text-xs text-gray-500 mt-2">{{ investigations|length }} investigations linked.</p>
     </div>
 
   </div>
 </div>
+
+<script>
+function toggleTagMenu(menuId) {
+  const all = document.querySelectorAll('[id^="tag-menu-"]');
+  all.forEach(m => { if (m.id !== menuId) m.classList.add('hidden'); });
+  document.getElementById(menuId).classList.toggle('hidden');
+}
+
+function buildTags(invId) {
+  const form = event.target.closest('form');
+  const checks = form.querySelectorAll('input[name="tags_check"]:checked');
+  const tags = Array.from(checks).map(c => c.value).join(',');
+  form.querySelector('#tags_hidden_' + invId).value = tags;
+}
+
+// Close any open tag menu when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('[id^="tag-menu-"]') && !e.target.closest('button[onclick^="toggleTagMenu"]')) {
+    document.querySelectorAll('[id^="tag-menu-"]').forEach(m => m.classList.add('hidden'));
+  }
+});
+</script>
 {% endblock %}

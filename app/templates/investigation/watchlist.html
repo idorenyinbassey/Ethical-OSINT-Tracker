@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Watchlist – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Watchlist</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Save targets to monitor and re-scan for changes.</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- Add to Watchlist -->
+  <div class="lg:col-span-1">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Add Target</h2>
+      <form method="post" action="{{ url_for('investigation.watchlist_add') }}" class="space-y-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Target (IP / domain / email / username…)</label>
+          <input type="text" name="query" required placeholder="e.g. 8.8.8.8"
+                 class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Kind</label>
+          <select name="kind" class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+            <option value="ip">IP</option>
+            <option value="domain">Domain</option>
+            <option value="email">Email</option>
+            <option value="social">Social / Username</option>
+            <option value="crypto">Crypto Address</option>
+            <option value="phone">Phone</option>
+            <option value="darkweb">Dark Web Query</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id" class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+            <option value="">-- No case --</option>
+            {% for case in cases %}
+            <option value="{{ case.id }}">{{ case.title[:40] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Notes (optional)</label>
+          <input type="text" name="notes" placeholder="Why you're watching this..."
+                 class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+        </div>
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2 rounded-lg transition-colors">
+          Add to Watchlist
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Watchlist Table -->
+  <div class="lg:col-span-2">
+    {% if targets %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white">Monitored Targets ({{ targets|length }})</h2>
+      </div>
+      <div class="divide-y divide-gray-100 dark:divide-gray-800">
+        {% for t in targets %}
+        <div class="px-5 py-4 flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+              <span class="text-xs px-2 py-0.5 bg-indigo-900/50 text-indigo-300 rounded">{{ t.kind }}</span>
+              <span class="font-mono text-sm text-gray-900 dark:text-white font-medium truncate">{{ t.query }}</span>
+              {% if t.case_id and case_map.get(t.case_id) %}
+              <span class="text-xs text-gray-500">→ {{ case_map[t.case_id][:25] }}</span>
+              {% endif %}
+            </div>
+            {% if t.notes %}
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t.notes }}</p>
+            {% endif %}
+            <div class="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <span>Added {{ t.created_at.strftime('%Y-%m-%d') }}</span>
+              {% if t.last_checked %}
+              <span class="{% if t.last_result_hash %}text-green-400{% else %}text-gray-400{% endif %}">
+                Last scanned {{ t.last_checked.strftime('%Y-%m-%d %H:%M') }}
+              </span>
+              {% else %}
+              <span class="text-amber-400">Not yet scanned</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="flex flex-shrink-0 gap-2">
+            <form method="post" action="{{ url_for('investigation.watchlist_rescan', target_id=t.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg">Rescan</button>
+            </form>
+            <form method="post" action="{{ url_for('investigation.watchlist_remove', target_id=t.id) }}"
+                  onsubmit="return confirm('Remove from watchlist?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="text-xs bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 rounded-lg border border-red-800">Remove</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-12 text-center">
+      <p class="text-gray-500 mb-2">No watchlist targets yet.</p>
+      <p class="text-sm text-gray-400">Add a target on the left to start monitoring it for changes.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

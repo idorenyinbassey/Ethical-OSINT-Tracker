@@ -3,7 +3,7 @@
 
 {% block content %}
 <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Network Graph</h1>
-<p class="text-sm text-yellow-600 dark:text-yellow-500 mb-4">Visual relationship map of cases and investigations. Gray arrows radiate from each case to its investigations; amber dashed lines link cases that share the same data points.</p>
+<p class="text-sm text-yellow-600 dark:text-yellow-500 mb-4">Visual relationship map of cases, investigations, and shared entities. Diamond nodes are cases; circles are investigations; stars are shared entity hubs (same IP/email/domain across investigations).</p>
 
 <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden" style="height:600px;position:relative;">
   <div id="graph-container" style="width: 100%; height: 100%;"></div>
@@ -32,6 +32,15 @@
   <span class="flex items-center gap-1.5"><span class="inline-block w-6 h-0.5 bg-slate-400"></span> Case → Investigation</span>
   <span class="flex items-center gap-1.5"><span class="inline-block w-6 h-0.5 bg-amber-400" style="border-top:2px dashed #f59e0b;background:none"></span> Case ↔ Case (shared data)</span>
   <span class="flex items-center gap-1.5"><span class="inline-block w-6 h-0.5 bg-emerald-400"></span> Subdomain child</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-6 h-0.5" style="border-top:2px dashed #c084fc;background:none"></span> Shared entity hub</span>
+</div>
+<div class="mt-2 flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-300">
+  <span class="font-semibold text-gray-700 dark:text-gray-200">Entity hubs (stars):</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-sky-500 inline-block"></span> IP hub</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-orange-500 inline-block"></span> Email hub</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Domain hub</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500 inline-block"></span> Username hub</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-pink-500 inline-block"></span> Crypto hub</span>
 </div>
 
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -50,6 +59,13 @@ const COLOR_MAP = {
   company:      { background: "#f59e0b", border: "#d97706", font: { color: "#111" } },
   person:       { background: "#14b8a6", border: "#0d9488", font: { color: "#fff" } },
   vehicle:      { background: "#ef4444", border: "#dc2626", font: { color: "#fff" } },
+  entity_ip:      { background: "#0ea5e9", border: "#0284c7", font: { color: "#fff" } },
+  entity_email:   { background: "#f97316", border: "#ea580c", font: { color: "#fff" } },
+  entity_domain:  { background: "#22c55e", border: "#16a34a", font: { color: "#fff" } },
+  entity_username:{ background: "#a855f7", border: "#9333ea", font: { color: "#fff" } },
+  entity_crypto:  { background: "#ec4899", border: "#db2777", font: { color: "#fff" } },
+  entity_org:     { background: "#64748b", border: "#475569", font: { color: "#fff" } },
+  entity_phone:   { background: "#10b981", border: "#059669", font: { color: "#fff" } },
 };
 
 function makeEdge(e) {
@@ -69,6 +85,16 @@ function makeEdge(e) {
       color: { color: "#6ee7b7", opacity: 0.9 },
       width: 1,
       arrows: { to: { enabled: true, scaleFactor: 0.4 } },
+    };
+  }
+  if (e.edge_type === "entity") {
+    return {
+      from: e.from, to: e.to, title: e.title || "Shared entity",
+      color: { color: "#c084fc", opacity: 0.85 },
+      width: 2,
+      dashes: [4, 3],
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      smooth: { type: "curvedCCW", roundness: 0.15 },
     };
   }
   // default: case → investigation
@@ -92,11 +118,12 @@ fetch("{{ url_for('investigation.graph_data') }}")
 
     const nodes = data.nodes.map(n => {
       const colors = COLOR_MAP[n.group] || { background: "#6b7280", border: "#4b5563", font: { color: "#fff" } };
+      const isEntity = n.is_entity;
       return {
         id: n.id, label: n.label, title: n.title,
         color: colors, font: colors.font,
-        shape: n.group === "case" ? "diamond" : "dot",
-        size: n.group === "case" ? 22 : 12,
+        shape: n.group === "case" ? "diamond" : isEntity ? "star" : "dot",
+        size: n.group === "case" ? 22 : isEntity ? 18 : 12,
       };
     });
 

@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from app.repositories.investigation_repository import create_investigation, list_recent, find_or_update_recent
+from app.repositories.investigation_repository import create_investigation, list_recent, find_or_update_recent, update_tags
 from app.repositories.case_repository import list_cases
 from app.services import (
     ip_client, rdap_client, hibp_client, hunter_client,
@@ -51,7 +51,10 @@ def _investigation_before():
         return
     # JSON data endpoints are consumed by fetch() — skip case enforcement
     # so they return proper JSON instead of an HTML redirect.
-    if request.endpoint in ("investigation.graph_data", "investigation.map_data"):
+    if request.endpoint in ("investigation.graph_data", "investigation.map_data",
+                            "investigation.watchlist", "investigation.watchlist_add",
+                            "investigation.watchlist_remove", "investigation.watchlist_rescan",
+                            "investigation.tag_investigation"):
         return
     # Require at least one case to exist
     cases = _cases_for_select()
@@ -450,6 +453,52 @@ def graph():
     return render_template("investigation/graph.html")
 
 
+def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> None:
+    """Extract entity values from result data and register them in the hub map."""
+    def _reg(etype, val):
+        val = str(val).strip().lower()
+        if val and val != "n/a" and len(val) > 2:
+            key = (etype, val)
+            entity_map.setdefault(key, [])
+            if inv_node_id not in entity_map[key]:
+                entity_map[key].append(inv_node_id)
+
+    kind = inv.kind
+    if kind == "ip":
+        geo = data.get("geo") or data
+        ip_val = data.get("ip") or data.get("query") or inv.query
+        _reg("ip", ip_val)
+        org = geo.get("org") or geo.get("as") or ""
+        if org:
+            _reg("org", org[:40])
+    elif kind == "domain":
+        domain = data.get("domain") or data.get("ldhName") or inv.query
+        _reg("domain", domain)
+        reg_email = data.get("registrantEmail") or (
+            data.get("registrant", {}).get("email") if isinstance(data.get("registrant"), dict) else None)
+        if reg_email:
+            _reg("email", reg_email)
+    elif kind == "email":
+        email = data.get("email") or data.get("address") or inv.query
+        _reg("email", email)
+    elif kind == "social":
+        username = data.get("username") or inv.query
+        _reg("username", username)
+    elif kind == "crypto":
+        addr = data.get("address") or inv.query
+        _reg("crypto", addr)
+    elif kind == "phone":
+        phone = data.get("phone_number") or inv.query
+        _reg("phone", phone)
+    elif kind == "email_header":
+        orig_ip = data.get("received_from") or data.get("x_originating_ip") or data.get("originating_ip")
+        if orig_ip:
+            _reg("ip", str(orig_ip))
+        sender = data.get("from") or data.get("From") or ""
+        if "@" in sender:
+            _reg("email", sender)
+
+
 @investigation_bp.route("/graph/data")
 @login_required
 def graph_data():
@@ -477,6 +526,8 @@ def graph_data():
     # Including kind prevents spurious edges when two different tools happen
     # to share the same query string (e.g. "john" as username vs. IP query).
     case_queries: dict = {}
+    # entity_inv_map: {(etype, evalue) -> [inv_node_id, ...]} for hub detection
+    entity_inv_map: dict = {}
 
     for inv in invs:
         inv_node_id = f"inv-{inv.id}"
@@ -519,6 +570,35 @@ def graph_data():
                         })
             except Exception:
                 pass
+
+        # Extract entity values for hub detection
+        if inv.result_json:
+            try:
+                d = json.loads(inv.result_json)
+                _extract_entities(inv, d, inv_node_id, entity_inv_map)
+            except Exception:
+                pass
+
+    # Build entity hub nodes for entities shared across 2+ investigations
+    for entity_key, inv_ids in entity_inv_map.items():
+        if len(inv_ids) < 2:
+            continue
+        etype, evalue = entity_key
+        entity_node_id = f"entity-{etype}-{evalue}"
+        nodes.append({
+            "id": entity_node_id,
+            "label": evalue[:24],
+            "group": f"entity_{etype}",
+            "title": f"Shared {etype}: {evalue}\nLinked to {len(inv_ids)} investigations",
+            "is_entity": True,
+        })
+        for inv_node_id in inv_ids:
+            edges.append({
+                "from": inv_node_id,
+                "to": entity_node_id,
+                "edge_type": "entity",
+                "title": f"Shares {etype}: {evalue}",
+            })
 
     # Case↔case edges for shared (query, kind) pairs
     cid_list = list(case_queries.keys())
@@ -713,6 +793,117 @@ def map_data():
             })
 
     return jsonify({"markers": markers})
+
+
+# ── Evidence Tag Update ────────────────────────────────────────────────────────
+
+@investigation_bp.route("/tag/<int:inv_id>", methods=["POST"])
+@login_required
+def tag_investigation(inv_id):
+    tags_raw = request.form.get("tags", "")
+    allowed = {"key_evidence", "follow_up", "disputed", "verified", "archived"}
+    tags = ",".join(t.strip() for t in tags_raw.split(",") if t.strip() in allowed)
+    update_tags(inv_id, tags)
+    return ("", 204)
+
+
+# ── Watchlist ──────────────────────────────────────────────────────────────────
+
+@investigation_bp.route("/watchlist")
+@login_required
+def watchlist():
+    from app.repositories.watchlist_repository import list_targets
+    from app.repositories.case_repository import list_cases
+    targets = list_targets(user_id=current_user.id)
+    cases = list_cases(owner_user_id=current_user.id)
+    case_map = {c.id: c.title for c in cases}
+    return render_template("investigation/watchlist.html", targets=targets, case_map=case_map, cases=cases)
+
+
+@investigation_bp.route("/watchlist/add", methods=["POST"])
+@login_required
+def watchlist_add():
+    from app.repositories.watchlist_repository import add_target
+    query = request.form.get("query", "").strip()
+    kind = request.form.get("kind", "ip").strip()
+    case_id = _safe_case_id(request.form.get("case_id"))
+    notes = request.form.get("notes", "").strip()
+    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb"}
+    if not query or kind not in valid_kinds:
+        flash("Query and a valid kind are required.", "error")
+        return redirect(url_for("investigation.watchlist"))
+    add_target(query=query, kind=kind, user_id=current_user.id, case_id=case_id, notes=notes)
+    flash(f"'{query}' added to watchlist.", "success")
+    return redirect(url_for("investigation.watchlist"))
+
+
+@investigation_bp.route("/watchlist/<int:target_id>/remove", methods=["POST"])
+@login_required
+def watchlist_remove(target_id):
+    from app.repositories.watchlist_repository import remove_target
+    remove_target(target_id, user_id=current_user.id)
+    flash("Target removed from watchlist.", "success")
+    return redirect(url_for("investigation.watchlist"))
+
+
+@investigation_bp.route("/watchlist/<int:target_id>/rescan", methods=["POST"])
+@login_required
+def watchlist_rescan(target_id):
+    import hashlib
+    from app.repositories.watchlist_repository import get_target, update_checked
+    target = get_target(target_id)
+    if not target or target.user_id != current_user.id:
+        flash("Target not found.", "error")
+        return redirect(url_for("investigation.watchlist"))
+
+    result = {}
+    changed = False
+    try:
+        if target.kind == "ip":
+            from app.services import ip_client, virustotal_client, shodan_client
+            geo = ip_client.fetch_ip(target.query)
+            vt = virustotal_client.fetch_virustotal(target.query)
+            shodan = shodan_client.fetch_shodan(target.query)
+            result = {"geo": geo, "virustotal": vt, "shodan": shodan}
+        elif target.kind == "domain":
+            from app.services import rdap_client
+            result = rdap_client.fetch_domain(target.query)
+        elif target.kind == "email":
+            from app.services import hibp_client, hunter_client
+            from app.repositories.api_config_repository import get_by_service
+            hibp_cfg = get_by_service("hibp")
+            hibp_key = hibp_cfg.api_key if hibp_cfg and hibp_cfg.is_enabled else None
+            hunter_cfg = get_by_service("hunter")
+            hunter_key = hunter_cfg.api_key if hunter_cfg and hunter_cfg.is_enabled else None
+            breaches = hibp_client.check_email(target.query, api_key=hibp_key) if hibp_key else {}
+            verification = hunter_client.verify_email(target.query, api_key=hunter_key) if hunter_key else {}
+            result = {"email": target.query, "breaches": breaches, "verification": verification}
+        elif target.kind == "social":
+            from app.services import social_client
+            result = social_client.search_username(target.query)
+        elif target.kind == "crypto":
+            from app.services import crypto_client
+            result = crypto_client.lookup(target.query)
+        else:
+            result = {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
+    except Exception as exc:
+        result = {"error": str(exc)}
+
+    result_json = json.dumps(result)
+    new_hash = hashlib.sha256(result_json.encode()).hexdigest()[:16]
+    changed = new_hash != target.last_result_hash
+    update_checked(target_id, new_hash)
+
+    conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
+    case_id = target.case_id
+    find_or_update_recent(kind=target.kind, query=target.query, result_json=result_json,
+                          user_id=current_user.id, case_id=case_id, confidence=conf)
+
+    if changed:
+        flash(f"Rescan complete — data changed since last check.", "success")
+    else:
+        flash(f"Rescan complete — no changes detected.", "info")
+    return redirect(url_for("investigation.watchlist"))
 
 
 # ── Plugins ───────────────────────────────────────────────────────────────────
