@@ -28,12 +28,19 @@ def create_app():
     from app.routes.investigation import investigation_bp
     from app.routes.cases import cases_bp
     from app.routes.settings import settings_bp
+    from app.routes.tracker import tracker_bp, land, pixel, collect_fingerprint
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(investigation_bp)
     app.register_blueprint(cases_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(tracker_bp)
+
+    # Public tracking endpoints have no session — exempt from CSRF
+    csrf.exempt(land)
+    csrf.exempt(pixel)
+    csrf.exempt(collect_fingerprint)
 
     @app.context_processor
     def inject_active_case():

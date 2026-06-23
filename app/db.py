@@ -16,6 +16,8 @@ def init_db():
     from app.models.case_comment import CaseComment  # noqa: F401
     from app.models.case_note import CaseNote  # noqa: F401
     from app.models.watchlist import WatchlistTarget  # noqa: F401
+    from app.models.tracking_link import TrackingLink  # noqa: F401
+    from app.models.tracking_hit import TrackingHit  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
 def get_session():
