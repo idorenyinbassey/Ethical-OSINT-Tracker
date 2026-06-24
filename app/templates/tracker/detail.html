@@ -22,8 +22,8 @@
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Tracking Link</p>
       <div class="flex items-center gap-2">
-        <code class="text-xs text-indigo-600 dark:text-indigo-400 break-all flex-1">{{ tracking_url }}</code>
-        <button onclick="navigator.clipboard.writeText('{{ tracking_url }}')"
+        <code id="tracking-url" class="text-xs text-indigo-600 dark:text-indigo-400 break-all flex-1">{{ tracking_url }}</code>
+        <button onclick="copyText('tracking-url', this)"
                 class="shrink-0 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
           Copy
         </button>
@@ -33,113 +33,243 @@
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Email Tracking Pixel</p>
       <div class="flex items-center gap-2">
-        <code class="text-xs text-indigo-600 dark:text-indigo-400 break-all flex-1">{{ pixel_url }}</code>
-        <button onclick="navigator.clipboard.writeText('{{ pixel_url }}')"
+        <code id="pixel-url" class="text-xs text-indigo-600 dark:text-indigo-400 break-all flex-1">{{ pixel_url }}</code>
+        <button onclick="copyText('pixel-url', this)"
                 class="shrink-0 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
           Copy
         </button>
       </div>
       <p class="text-xs text-gray-400 mt-2">Embed as <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">&lt;img src="..."&gt;</code> in HTML email. Logs IP + email client on open.</p>
-      <button onclick="navigator.clipboard.writeText('<img src=&quot;{{ pixel_url }}&quot; width=&quot;1&quot; height=&quot;1&quot; />')"
+      <button id="copy-img-tag"
               class="mt-2 text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800/30">
         Copy as HTML img tag
       </button>
     </div>
   </div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}
-      <div class="mb-4 px-4 py-3 rounded-lg text-sm {% if cat == 'error' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300{% endif %}">{{ msg }}</div>
-    {% endfor %}
-  {% endwith %}
+  <!-- Live hit counter + status bar -->
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+      Hits <span id="hit-count" class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">({{ hits|length }})</span>
+    </h2>
+    <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+      <span id="live-dot" class="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+      <span id="live-label">Live — polling every 3s</span>
+    </div>
+  </div>
 
-  <!-- Hits table -->
-  <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-    Hits
-    <span class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">({{ hits|length }})</span>
-  </h2>
-
-  {% if hits %}
-  <div class="space-y-4">
+  <!-- Hits feed -->
+  <div id="hits-feed" class="space-y-4">
     {% for hit in hits %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 rounded text-xs font-semibold
-            {% if hit.hit_type == 'pixel' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300
-            {% else %}bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300{% endif %}">
-            {{ hit.hit_type }}
-          </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ hit.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
-        </div>
-      </div>
+    {{ self._hitcard(hit) }}
+    {% endfor %}
+    {% if not hits %}
+    <div id="empty-msg" class="text-center py-16 text-gray-400 dark:text-gray-600">
+      <p class="font-medium">No hits yet</p>
+      <p class="text-sm mt-1">Send the tracking link above and wait for the target to visit it.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-        <!-- Network -->
-        <div class="col-span-full mb-1">
-          <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Network</p>
-        </div>
-        <div><span class="text-gray-500 dark:text-gray-400">IP:</span> <span class="font-mono font-medium text-gray-900 dark:text-white">{{ hit.ip or '—' }}</span></div>
-        <div><span class="text-gray-500 dark:text-gray-400">ISP:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.isp or '—' }}</span></div>
-        <div><span class="text-gray-500 dark:text-gray-400">Location:</span>
-          <span class="text-gray-800 dark:text-gray-200">
-            {% if hit.city or hit.country %}{{ hit.city }}{% if hit.city and hit.country %}, {% endif %}{{ hit.country }}{% else %}—{% endif %}
-          </span>
-        </div>
-        {% if hit.lat and hit.lon %}
-        <div><span class="text-gray-500 dark:text-gray-400">Coords (IP):</span>
-          <a href="https://www.openstreetmap.org/?mlat={{ hit.lat }}&mlon={{ hit.lon }}&zoom=10" target="_blank"
-             class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ '%.4f'|format(hit.lat) }}, {{ '%.4f'|format(hit.lon) }}</a>
-        </div>
-        {% endif %}
+{# ── Hit card macro — rendered server-side for initial load ─────────────── #}
+{% macro _hitcard(hit) %}
+<div class="hit-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4" data-hit-id="{{ hit.id }}">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded text-xs font-semibold
+        {% if hit.hit_type == 'pixel' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300
+        {% else %}bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300{% endif %}">
+        {{ hit.hit_type }}
+      </span>
+      <span class="text-xs text-gray-500 dark:text-gray-400">{{ hit.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    <div class="col-span-full mb-1"><p class="text-xs font-semibold text-gray-400 uppercase mb-1">Network</p></div>
+    <div><span class="text-gray-500 dark:text-gray-400">IP:</span> <span class="font-mono font-medium text-gray-900 dark:text-white">{{ hit.ip or '—' }}</span></div>
+    <div><span class="text-gray-500 dark:text-gray-400">ISP:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.isp or '—' }}</span></div>
+    <div><span class="text-gray-500 dark:text-gray-400">Location:</span>
+      <span class="text-gray-800 dark:text-gray-200">{% if hit.city or hit.country %}{{ hit.city }}{% if hit.city and hit.country %}, {% endif %}{{ hit.country }}{% else %}—{% endif %}</span>
+    </div>
+    {% if hit.lat and hit.lon %}
+    <div><span class="text-gray-500 dark:text-gray-400">Coords (IP):</span>
+      <a href="https://www.openstreetmap.org/?mlat={{ hit.lat }}&mlon={{ hit.lon }}&zoom=10" target="_blank"
+         class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ '%.4f'|format(hit.lat) }}, {{ '%.4f'|format(hit.lon) }}</a>
+    </div>
+    {% endif %}
+    {% if hit.screen or hit.platform or hit.timezone %}
+    <div class="col-span-full mt-2 mb-1"><p class="text-xs font-semibold text-gray-400 uppercase mb-1">Device / Browser</p></div>
+    {% if hit.screen %}<div><span class="text-gray-500 dark:text-gray-400">Screen:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.screen }}</span></div>{% endif %}
+    {% if hit.platform %}<div><span class="text-gray-500 dark:text-gray-400">Platform:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.platform }}</span></div>{% endif %}
+    {% if hit.browser %}<div><span class="text-gray-500 dark:text-gray-400">Browser:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.browser }}</span></div>{% endif %}
+    {% if hit.timezone %}<div><span class="text-gray-500 dark:text-gray-400">Timezone:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.timezone }}</span></div>{% endif %}
+    {% if hit.language %}<div><span class="text-gray-500 dark:text-gray-400">Language:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.language }}</span></div>{% endif %}
+    {% if hit.plugins %}<div class="col-span-2"><span class="text-gray-500 dark:text-gray-400">Plugins:</span> <span class="text-gray-800 dark:text-gray-200 text-xs">{{ hit.plugins }}</span></div>{% endif %}
+    {% endif %}
+    {% if hit.gps_lat and hit.gps_lon %}
+    <div class="col-span-full mt-2 mb-1"><p class="text-xs font-semibold text-green-600 dark:text-green-400 uppercase mb-1">GPS (browser granted)</p></div>
+    <div><span class="text-gray-500 dark:text-gray-400">GPS Coords:</span>
+      <a href="https://www.openstreetmap.org/?mlat={{ hit.gps_lat }}&mlon={{ hit.gps_lon }}&zoom=15" target="_blank"
+         class="text-green-600 dark:text-green-400 hover:underline font-medium">{{ '%.6f'|format(hit.gps_lat) }}, {{ '%.6f'|format(hit.gps_lon) }}</a>
+    </div>
+    {% if hit.gps_accuracy %}<div><span class="text-gray-500 dark:text-gray-400">Accuracy:</span> <span class="text-gray-800 dark:text-gray-200">±{{ hit.gps_accuracy|int }}m</span></div>{% endif %}
+    {% endif %}
+    {% if hit.user_agent %}
+    <div class="col-span-full mt-2">
+      <span class="text-gray-500 dark:text-gray-400 text-xs">User-Agent:</span>
+      <p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">{{ hit.user_agent }}</p>
+    </div>
+    {% endif %}
+    {% if hit.referrer %}
+    <div class="col-span-full">
+      <span class="text-gray-500 dark:text-gray-400 text-xs">Referrer:</span>
+      <p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">{{ hit.referrer }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
 
-        {% if hit.screen or hit.platform or hit.timezone %}
-        <!-- Device -->
-        <div class="col-span-full mt-2 mb-1">
-          <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Device / Browser</p>
-        </div>
-        {% if hit.screen %}<div><span class="text-gray-500 dark:text-gray-400">Screen:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.screen }}</span></div>{% endif %}
-        {% if hit.platform %}<div><span class="text-gray-500 dark:text-gray-400">Platform:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.platform }}</span></div>{% endif %}
-        {% if hit.browser %}<div><span class="text-gray-500 dark:text-gray-400">Browser:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.browser }}</span></div>{% endif %}
-        {% if hit.timezone %}<div><span class="text-gray-500 dark:text-gray-400">Timezone:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.timezone }}</span></div>{% endif %}
-        {% if hit.language %}<div><span class="text-gray-500 dark:text-gray-400">Language:</span> <span class="text-gray-800 dark:text-gray-200">{{ hit.language }}</span></div>{% endif %}
-        {% if hit.plugins %}<div class="col-span-2"><span class="text-gray-500 dark:text-gray-400">Plugins:</span> <span class="text-gray-800 dark:text-gray-200 text-xs">{{ hit.plugins }}</span></div>{% endif %}
-        {% endif %}
+<script>
+const TOKEN = {{ link.token|tojson }};
+const HITS_URL = '/tracker/' + TOKEN + '/hits.json';
+const PIXEL_URL = {{ pixel_url|tojson }};
+const dark = document.documentElement.classList.contains('dark');
 
-        {% if hit.gps_lat and hit.gps_lon %}
-        <!-- GPS -->
-        <div class="col-span-full mt-2 mb-1">
-          <p class="text-xs font-semibold text-green-600 dark:text-green-400 uppercase mb-1">GPS (browser granted)</p>
-        </div>
-        <div><span class="text-gray-500 dark:text-gray-400">GPS Coords:</span>
-          <a href="https://www.openstreetmap.org/?mlat={{ hit.gps_lat }}&mlon={{ hit.gps_lon }}&zoom=15" target="_blank"
-             class="text-green-600 dark:text-green-400 hover:underline font-medium">{{ '%.6f'|format(hit.gps_lat) }}, {{ '%.6f'|format(hit.gps_lon) }}</a>
-        </div>
-        {% if hit.gps_accuracy %}<div><span class="text-gray-500 dark:text-gray-400">Accuracy:</span> <span class="text-gray-800 dark:text-gray-200">±{{ hit.gps_accuracy|int }}m</span></div>{% endif %}
-        {% endif %}
+// Copy helpers
+function copyText(id, btn) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent.trim());
+  const orig = btn.textContent; btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = orig, 1500);
+}
+document.getElementById('copy-img-tag').addEventListener('click', function() {
+  navigator.clipboard.writeText('<img src="' + PIXEL_URL + '" width="1" height="1" />');
+  const orig = this.textContent; this.textContent = 'Copied!';
+  setTimeout(() => this.textContent = orig, 1500);
+});
 
-        <!-- UA -->
-        {% if hit.user_agent %}
-        <div class="col-span-full mt-2">
-          <span class="text-gray-500 dark:text-gray-400 text-xs">User-Agent:</span>
-          <p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">{{ hit.user_agent }}</p>
-        </div>
-        {% endif %}
-        {% if hit.referrer %}
-        <div class="col-span-full">
-          <span class="text-gray-500 dark:text-gray-400 text-xs">Referrer:</span>
-          <p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">{{ hit.referrer }}</p>
-        </div>
-        {% endif %}
+// Build a hit card DOM node from JSON data
+function buildCard(h) {
+  const isDark = document.documentElement.classList.contains('dark');
+  const typeClass = h.hit_type === 'pixel'
+    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+    : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300';
+
+  let rows = `
+    <div class="col-span-full mb-1"><p class="text-xs font-semibold text-gray-400 uppercase mb-1">Network</p></div>
+    <div><span class="text-gray-500 dark:text-gray-400">IP:</span> <span class="font-mono font-medium text-gray-900 dark:text-white">${h.ip || '—'}</span></div>
+    <div><span class="text-gray-500 dark:text-gray-400">ISP:</span> <span class="text-gray-800 dark:text-gray-200">${h.isp || '—'}</span></div>
+    <div><span class="text-gray-500 dark:text-gray-400">Location:</span> <span class="text-gray-800 dark:text-gray-200">${[h.city, h.country].filter(Boolean).join(', ') || '—'}</span></div>`;
+
+  if (h.lat && h.lon) {
+    rows += `<div><span class="text-gray-500 dark:text-gray-400">Coords (IP):</span>
+      <a href="https://www.openstreetmap.org/?mlat=${h.lat}&mlon=${h.lon}&zoom=10" target="_blank"
+         class="text-indigo-600 dark:text-indigo-400 hover:underline">${h.lat.toFixed(4)}, ${h.lon.toFixed(4)}</a></div>`;
+  }
+
+  if (h.screen || h.platform || h.timezone) {
+    rows += `<div class="col-span-full mt-2 mb-1"><p class="text-xs font-semibold text-gray-400 uppercase mb-1">Device / Browser</p></div>`;
+    if (h.screen)   rows += `<div><span class="text-gray-500 dark:text-gray-400">Screen:</span> <span class="text-gray-800 dark:text-gray-200">${h.screen}</span></div>`;
+    if (h.platform) rows += `<div><span class="text-gray-500 dark:text-gray-400">Platform:</span> <span class="text-gray-800 dark:text-gray-200">${h.platform}</span></div>`;
+    if (h.browser)  rows += `<div><span class="text-gray-500 dark:text-gray-400">Browser:</span> <span class="text-gray-800 dark:text-gray-200">${h.browser}</span></div>`;
+    if (h.timezone) rows += `<div><span class="text-gray-500 dark:text-gray-400">Timezone:</span> <span class="text-gray-800 dark:text-gray-200">${h.timezone}</span></div>`;
+    if (h.language) rows += `<div><span class="text-gray-500 dark:text-gray-400">Language:</span> <span class="text-gray-800 dark:text-gray-200">${h.language}</span></div>`;
+    if (h.plugins)  rows += `<div class="col-span-2"><span class="text-gray-500 dark:text-gray-400">Plugins:</span> <span class="text-gray-800 dark:text-gray-200 text-xs">${h.plugins}</span></div>`;
+  }
+
+  if (h.gps_lat && h.gps_lon) {
+    rows += `<div class="col-span-full mt-2 mb-1"><p class="text-xs font-semibold text-green-600 dark:text-green-400 uppercase mb-1">GPS (browser granted)</p></div>
+      <div><span class="text-gray-500 dark:text-gray-400">GPS Coords:</span>
+        <a href="https://www.openstreetmap.org/?mlat=${h.gps_lat}&mlon=${h.gps_lon}&zoom=15" target="_blank"
+           class="text-green-600 dark:text-green-400 hover:underline font-medium">${h.gps_lat.toFixed(6)}, ${h.gps_lon.toFixed(6)}</a>
+      </div>`;
+    if (h.gps_accuracy) rows += `<div><span class="text-gray-500 dark:text-gray-400">Accuracy:</span> <span class="text-gray-800 dark:text-gray-200">±${Math.round(h.gps_accuracy)}m</span></div>`;
+  }
+
+  if (h.user_agent) rows += `<div class="col-span-full mt-2"><span class="text-gray-500 dark:text-gray-400 text-xs">User-Agent:</span><p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">${esc(h.user_agent)}</p></div>`;
+  if (h.referrer)   rows += `<div class="col-span-full"><span class="text-gray-500 dark:text-gray-400 text-xs">Referrer:</span><p class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all mt-0.5">${esc(h.referrer)}</p></div>`;
+
+  const div = document.createElement('div');
+  div.className = 'hit-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 ring-2 ring-indigo-400 dark:ring-indigo-500';
+  div.dataset.hitId = h.id;
+  div.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded text-xs font-semibold ${typeClass}">${h.hit_type}</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400">${h.created_at} UTC</span>
+        <span class="text-xs font-medium text-indigo-600 dark:text-indigo-400 animate-pulse">NEW</span>
       </div>
     </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="text-center py-16 text-gray-400 dark:text-gray-600">
-    <p class="font-medium">No hits yet</p>
-    <p class="text-sm mt-1">Send the tracking link above and wait for the target to visit it.</p>
-  </div>
-  {% endif %}
-</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">${rows}</div>`;
+
+  // Remove highlight ring after 6 s
+  setTimeout(() => {
+    div.classList.remove('ring-2', 'ring-indigo-400', 'dark:ring-indigo-500');
+    const badge = div.querySelector('.animate-pulse');
+    if (badge) badge.remove();
+  }, 6000);
+
+  return div;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Track which hit IDs we've already rendered
+const seen = new Set();
+document.querySelectorAll('.hit-card[data-hit-id]').forEach(el => seen.add(Number(el.dataset.hitId)));
+let hitCount = seen.size;
+
+async function poll() {
+  try {
+    const res = await fetch(HITS_URL);
+    if (!res.ok) return;
+    const hits = await res.json();
+
+    const feed = document.getElementById('hits-feed');
+    const empty = document.getElementById('empty-msg');
+    let newOnes = 0;
+
+    // hits are newest-first from the server; prepend truly new ones
+    for (const h of hits) {
+      if (!seen.has(h.id)) {
+        seen.add(h.id);
+        hitCount++;
+        newOnes++;
+        const card = buildCard(h);
+        feed.insertBefore(card, feed.firstChild);
+        if (empty) empty.remove();
+      } else {
+        // Update existing card in-place if fingerprint data just arrived
+        const existing = feed.querySelector('[data-hit-id="' + h.id + '"]');
+        if (existing) {
+          const hasGps = existing.querySelector('.text-green-600, .text-green-400');
+          const needsGps = h.gps_lat && h.gps_lon;
+          const hasScreen = existing.textContent.includes('Screen:');
+          const needsScreen = !!h.screen;
+          if ((!hasGps && needsGps) || (!hasScreen && needsScreen)) {
+            // Replace in-place with updated data
+            const updated = buildCard(h);
+            updated.classList.remove('ring-2','ring-indigo-400','dark:ring-indigo-500');
+            const badge = updated.querySelector('.animate-pulse');
+            if (badge) badge.remove();
+            feed.replaceChild(updated, existing);
+          }
+        }
+      }
+    }
+
+    document.getElementById('hit-count').textContent = '(' + hitCount + ')';
+    document.getElementById('live-label').textContent =
+      'Last updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('live-label').textContent = 'Polling error — retrying…';
+  }
+}
+
+// Start polling
+setInterval(poll, 3000);
+</script>
 {% endblock %}
