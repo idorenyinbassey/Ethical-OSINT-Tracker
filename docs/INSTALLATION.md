@@ -7,8 +7,10 @@ Complete installation instructions for Ethical OSINT Tracker.
 - **OS**: Linux, macOS, or Windows (WSL recommended)
 - **Python**: 3.11 or higher
 - **RAM**: 512 MB minimum
-- **Disk**: 200 MB for application and dependencies
+- **Disk**: 300 MB for application, dependencies, and database
 - **Browser**: Any modern browser (Chrome, Firefox, Safari, Edge)
+
+---
 
 ## Installation Steps
 
@@ -53,17 +55,21 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Core dependencies:
+Key dependencies:
 
 | Package | Version | Purpose |
 |---|---|---|
 | flask | ≥3.0 | Web framework |
 | flask-login | ≥0.6 | Session authentication |
+| flask-wtf | ≥1.2 | CSRF protection |
 | sqlmodel | ≥0.0.21 | ORM (SQLite / MySQL) |
-| argon2-cffi | 23.1.0 | Password hashing |
-| httpx | ≥0.23 | HTTP client for API calls |
-| Pillow | ≥10.0 | Image EXIF extraction |
-| PyMySQL | 1.1.1 | MySQL driver (optional) |
+| argon2-cffi | 23.1.0 | Argon2id password hashing |
+| httpx[socks] | ≥0.23 | HTTP client (Tor/SOCKS5 support) |
+| APScheduler | ≥3.10.0 | Watchlist auto-rescan background job |
+| Pillow | ≥10.0 | Image EXIF metadata |
+| fpdf2 | ≥2.7.0 | PDF report generation |
+| python-docx | ≥1.1.0 | DOCX report generation |
+| openpyxl | ≥3.1.0 | XLSX report generation |
 
 ### 5. Initialise the Database
 
@@ -71,11 +77,11 @@ Core dependencies:
 python reset_admin.py
 ```
 
-Creates an admin account:
+Creates the default admin account:
 - **Username**: `admin`
 - **Password**: `changeme`
 
-> Change this password before any public deployment.
+> Change this password immediately via **Settings → Change Password** or the **Admin Panel** after first login.
 
 For MySQL (production):
 
@@ -86,8 +92,7 @@ GRANT ALL PRIVILEGES ON osint_tracker.* TO 'osint_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Set the connection string before running `reset_admin.py`:
-
+Then set the connection string before running:
 ```bash
 export DB_URL=mysql+pymysql://osint_user:secure_password@localhost/osint_tracker
 python reset_admin.py
@@ -95,14 +100,19 @@ python reset_admin.py
 
 ### 6. Configure Environment (Optional)
 
-Create a `.env` file in the project root (load it via `export $(cat .env | xargs)` or use `python-dotenv`):
+Create a `.env` file in the project root:
 
 ```env
 # Database — defaults to SQLite if not set
 DB_URL=sqlite:///./dev.db
 
-# Flask session signing key — MUST be set to a long random string in production
+# Flask session signing key — set a long random string in production
 SECRET_KEY=change-me-to-something-long-and-random
+```
+
+Load it before starting:
+```bash
+export $(cat .env | xargs)
 ```
 
 ### 7. Run the Application
@@ -120,37 +130,50 @@ chmod +x start.sh
 
 **Production (gunicorn)**
 ```bash
-pip install gunicorn
 gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
 ```
 
 The app is available at [http://localhost:3000](http://localhost:3000).
 
-### 8. Verify Installation
-
-1. Open http://localhost:3000
-2. Log in with `admin` / `changeme`
-3. Try a domain lookup: enter `example.com` on the Domain WHOIS page
+---
 
 ## Post-Installation
+
+### Grant Admin to Existing Users
+
+If you already have user accounts and need to grant admin privileges:
+
+```python
+# run as: python -c "exec(open('grant_admin.py').read())"
+from app import create_app
+from app.repositories.user_repository import set_admin
+
+app = create_app()
+with app.app_context():
+    set_admin(1, True)   # replace 1 with the user's database ID
+```
+
+Or use the Admin Panel at `/admin/users` once logged in as an admin.
 
 ### Configure API Services
 
 1. Go to **Settings** in the sidebar
 2. Find the service you want to enable
-3. Enter your API key and base URL
+3. Enter your API key and confirm the base URL
 4. Toggle **Enabled** and click **Save**
 
-No restart is required — keys are read from the database at request time.
+No restart required.
 
-### Database Migrations
+### Database Schema Updates
 
-For schema changes, use Alembic:
+New columns are added automatically by `init_db()` on startup using idempotent `ALTER TABLE` statements — no manual migration needed for existing databases when upgrading from a previous version.
 
+For structural schema changes (new tables, column type changes), use Alembic:
 ```bash
-alembic upgrade head          # Apply all pending migrations
-alembic revision --autogenerate -m "describe the change"  # Create new migration
+alembic upgrade head
 ```
+
+---
 
 ## Troubleshooting
 
@@ -165,11 +188,21 @@ rm dev.db
 python reset_admin.py
 ```
 
+**APScheduler not installed (watchlist rescan won't run)**
+```bash
+pip install APScheduler>=3.10.0
+```
+
 **Python cache issues**
 ```bash
 find . -type d -name __pycache__ -exec rm -r {} +
 pip install -r requirements.txt --force-reinstall --no-cache-dir
 ```
+
+**IMEI lookup fails**
+Verify the base URL in Settings is `https://dash.imei.info/api`. The API requires a funded account balance on dash.imei.info.
+
+---
 
 ## Next Steps
 
@@ -178,3 +211,4 @@ pip install -r requirements.txt --force-reinstall --no-cache-dir
 - [Architecture](./ARCHITECTURE.md) — technical design
 - [Development Guide](./DEVELOPMENT.md) — contributing
 - [Deployment Guide](./DEPLOYMENT.md) — production deployment
+- [Termux / Android](./TERMUX.md) — mobile installation
