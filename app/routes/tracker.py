@@ -181,6 +181,37 @@ def detail(token):
                            tracking_url=tracking_url, pixel_url=pixel_url)
 
 
+@tracker_bp.route("/tracker/<token>/hits.json")
+@login_required
+def hits_json(token):
+    link = get_link_by_token(token)
+    if not link or link.user_id != current_user.id:
+        return jsonify([]), 404
+    hits = list_hits(link.id)
+    return jsonify([{
+        "id":           h.id,
+        "hit_type":     h.hit_type,
+        "ip":           h.ip,
+        "isp":          h.isp,
+        "country":      h.country,
+        "city":         h.city,
+        "lat":          h.lat,
+        "lon":          h.lon,
+        "screen":       h.screen,
+        "platform":     h.platform,
+        "browser":      h.browser,
+        "timezone":     h.timezone,
+        "language":     h.language,
+        "plugins":      h.plugins,
+        "gps_lat":      h.gps_lat,
+        "gps_lon":      h.gps_lon,
+        "gps_accuracy": h.gps_accuracy,
+        "user_agent":   h.user_agent,
+        "referrer":     h.referrer,
+        "created_at":   h.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+    } for h in hits])
+
+
 @tracker_bp.route("/tracker/<token>/delete", methods=["POST"])
 @login_required
 def delete(token):
