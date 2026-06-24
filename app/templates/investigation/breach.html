@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Breach & Password Check{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">Breach & Password Check</h1>
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+    Check if an email has appeared in known data breaches (HaveIBeenPwned) or if a password is in the Pwned Passwords database (k-anonymity — password never sent in full).
+  </p>
+
+  <form method="post" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 mb-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email address</label>
+      <input type="email" name="email" value="{{ email or '' }}" placeholder="target@example.com"
+             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password (optional — k-anonymity check)</label>
+      <input type="text" name="password" placeholder="Leave blank to skip password check"
+             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      <p class="text-xs text-gray-400 mt-1">Only the first 5 chars of the SHA-1 hash are sent. The full password never leaves this server.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg">
+        Check
+      </button>
+      {% if cases %}
+      <select name="case_id" class="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="">Save to case…</option>
+        {% for case in cases %}<option value="{{ case.id }}">{{ case.title }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if error %}
+  <div class="p-4 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-sm mb-4">{{ error }}</div>
+  {% endif %}
+
+  {% if breaches is not none %}
+  <div class="mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+      Email Breaches
+      {% if breaches %}
+      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ breaches|length }} found</span>
+      {% else %}
+      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Clean</span>
+      {% endif %}
+    </h2>
+    {% if breaches %}
+    <div class="space-y-3">
+      {% for b in breaches %}
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-red-200 dark:border-red-800 p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-gray-900 dark:text-white">{{ b.name }}</span>
+          <span class="text-xs text-gray-400">{{ b.date }}</span>
+        </div>
+        {% if b.data_classes %}
+        <div class="flex flex-wrap gap-1 mb-2">
+          {% for dc in b.data_classes %}
+          <span class="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">{{ dc }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if b.description %}
+        <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{{ b.description|striptags }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-green-700 dark:text-green-400">No breaches found for this email address.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if pwned_count is not none %}
+  <div class="bg-white dark:bg-gray-800 rounded-xl border {% if pwned_count > 0 %}border-red-200 dark:border-red-800{% else %}border-green-200 dark:border-green-800{% endif %} p-5">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+      Password Check
+      {% if pwned_count > 0 %}
+      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">PWNED</span>
+      {% else %}
+      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Not found</span>
+      {% endif %}
+    </h2>
+    {% if pwned_count > 0 %}
+    <p class="text-sm text-red-700 dark:text-red-400">
+      This password has been seen <strong>{{ "{:,}".format(pwned_count) }}</strong> times in data breaches.
+      It should <strong>never</strong> be used.
+    </p>
+    {% else %}
+    <p class="text-sm text-green-700 dark:text-green-400">This password was not found in any known breach database.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

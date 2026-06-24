@@ -37,7 +37,9 @@ def new():
             flash("Title is required.", "error")
             return render_template("cases/new.html")
 
-        create_case(title, description, owner_user_id=current_user.id, priority=priority)
+        case = create_case(title, description, owner_user_id=current_user.id, priority=priority)
+        from app.utils.audit import log as audit_log
+        audit_log("case.create", entity_type="case", entity_id=getattr(case, "id", None), detail=title)
         flash("Case created.", "success")
         return redirect(url_for("cases.index"))
 
@@ -117,7 +119,10 @@ def delete(case_id):
     case = get_case(case_id)
     if case and case.owner_user_id and case.owner_user_id != current_user.id:
         abort(403)
+    title = case.title if case else str(case_id)
     delete_case(case_id)
+    from app.utils.audit import log as audit_log
+    audit_log("case.delete", entity_type="case", entity_id=case_id, detail=title)
     flash("Case deleted.", "success")
     return redirect(url_for("cases.index"))
 
@@ -135,6 +140,8 @@ def export_pdf(case_id):
     except RuntimeError as e:
         flash(str(e), "error")
         return redirect(url_for("cases.detail", case_id=case_id))
+    from app.utils.audit import log as audit_log
+    audit_log("report.export", entity_type="case", entity_id=case_id, detail=f"PDF — {case.title}")
     safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
     filename = f"osint-report-{safe_title or case_id}.pdf"
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
@@ -212,6 +219,120 @@ def export_xlsx(case_id):
     return send_file(io.BytesIO(xlsx_bytes),
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True, download_name=filename)
+
+
+@cases_bp.route("/<int:case_id>/export/stix")
+@login_required
+def export_stix(case_id):
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    investigations = list_by_case(case_id)
+    from app.services.stix_export import export_stix as _stix
+    from app.utils.audit import log as audit_log
+    stix_bytes = _stix(case, investigations)
+    audit_log("report.export", entity_type="case", entity_id=case_id,
+               detail=f"STIX export — {case.title}")
+    safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+    return send_file(io.BytesIO(stix_bytes), mimetype="application/json",
+                     as_attachment=True,
+                     download_name=f"osint-stix-{safe_title or case_id}.json")
+
+
+# ── Async report generation ───────────────────────────────────────────────────
+import threading, tempfile, uuid as _uuid
+
+_report_jobs: dict = {}  # job_id -> {status, fmt, path, filename, mimetype, error}
+
+
+def _run_report_job(job_id: str, fmt: str, case, investigations):
+    try:
+        if fmt == "pdf":
+            data = report_exporter.export_pdf(case, investigations)
+            mime = "application/pdf"
+            ext = "pdf"
+        elif fmt == "docx":
+            data = report_exporter.export_docx(case, investigations)
+            mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ext = "docx"
+        elif fmt == "html":
+            data = report_exporter.export_html(case, investigations).encode("utf-8")
+            mime = "text/html"
+            ext = "html"
+        elif fmt == "xlsx":
+            data = report_exporter.export_xlsx(case, investigations)
+            mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ext = "xlsx"
+        else:
+            data = report_exporter.export_csv(case, investigations)
+            mime = "text/csv"
+            ext = "csv"
+
+        safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+        fd, path = tempfile.mkstemp(suffix=f".{ext}", prefix="osint_report_")
+        import os
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        _report_jobs[job_id].update({
+            "status": "done", "path": path,
+            "filename": f"osint-report-{safe_title or 'case'}.{ext}",
+            "mimetype": mime,
+        })
+    except Exception as exc:
+        _report_jobs[job_id].update({"status": "error", "error": str(exc)})
+
+
+@cases_bp.route("/<int:case_id>/export/start", methods=["POST"])
+@login_required
+def export_start(case_id):
+    case = get_case(case_id)
+    if not case:
+        from flask import jsonify
+        return jsonify({"error": "Not found"}), 404
+    fmt = request.form.get("fmt", "pdf")
+    if fmt not in {"pdf", "docx", "html", "xlsx", "csv"}:
+        fmt = "pdf"
+    investigations = list_by_case(case_id)
+    job_id = str(_uuid.uuid4())
+    _report_jobs[job_id] = {"status": "running", "fmt": fmt, "path": None,
+                             "filename": None, "mimetype": None, "error": None}
+    t = threading.Thread(target=_run_report_job, args=(job_id, fmt, case, investigations), daemon=True)
+    t.start()
+    from flask import jsonify
+    return jsonify({"job_id": job_id})
+
+
+@cases_bp.route("/export/status/<job_id>")
+@login_required
+def export_status(job_id):
+    from flask import jsonify
+    job = _report_jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({"status": job["status"], "error": job.get("error")})
+
+
+@cases_bp.route("/export/download/<job_id>")
+@login_required
+def export_download(job_id):
+    import os
+    job = _report_jobs.get(job_id)
+    if not job or job["status"] != "done":
+        flash("Report not ready or not found.", "error")
+        return redirect(url_for("cases.index"))
+    path = job["path"]
+    resp = send_file(path, mimetype=job["mimetype"],
+                     as_attachment=True, download_name=job["filename"])
+    # Clean up temp file after sending
+    @resp.call_on_close
+    def _cleanup():
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+    _report_jobs.pop(job_id, None)
+    return resp
 
 
 @cases_bp.route("/<int:case_id>/set-active", methods=["POST"])
