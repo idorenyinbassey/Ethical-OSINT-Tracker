@@ -351,19 +351,50 @@
     <!-- Export Report -->
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">Export Report</h2>
-      <div class="space-y-2">
-        <a href="{{ url_for('cases.export_pdf', case_id=case.id) }}"
-           class="block w-full text-center bg-red-900/30 hover:bg-red-900/50 text-red-300 text-sm py-2 rounded-lg border border-red-900">PDF Report</a>
-        <a href="{{ url_for('cases.export_docx', case_id=case.id) }}"
-           class="block w-full text-center bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-sm py-2 rounded-lg border border-blue-900">DOCX Report</a>
-        <a href="{{ url_for('cases.export_html', case_id=case.id) }}"
-           class="block w-full text-center bg-green-900/30 hover:bg-green-900/50 text-green-300 text-sm py-2 rounded-lg border border-green-900">HTML Report</a>
-        <a href="{{ url_for('cases.export_csv', case_id=case.id) }}"
-           class="block w-full text-center bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-300 text-sm py-2 rounded-lg border border-yellow-900">CSV</a>
-        <a href="{{ url_for('cases.export_xlsx', case_id=case.id) }}"
-           class="block w-full text-center bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 text-sm py-2 rounded-lg border border-emerald-900">XLSX</a>
+
+      <!-- Format selector -->
+      <div class="grid grid-cols-5 gap-1 mb-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+        {% for fmt, label, color in [('pdf','PDF','red'),('docx','DOCX','blue'),('html','HTML','green'),('csv','CSV','yellow'),('xlsx','XLSX','emerald')] %}
+        <button type="button" onclick="selectFmt('{{ fmt }}')"
+                id="fmt-btn-{{ fmt }}"
+                class="fmt-btn text-xs py-1.5 rounded-md font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
+                       {% if loop.first %}bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white{% endif %}">
+          {{ label }}
+        </button>
+        {% endfor %}
       </div>
-      <p class="text-xs text-gray-500 mt-2">{{ investigations|length }} investigations linked.</p>
+
+      <!-- Generate button -->
+      <button id="export-btn" onclick="startExport()"
+              class="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors mb-3">
+        Generate Report
+      </button>
+
+      <!-- Progress area (hidden until job starts) -->
+      <div id="export-progress" class="hidden">
+        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-2 overflow-hidden">
+          <div id="export-bar" class="h-1.5 bg-indigo-500 rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+        <p id="export-status-msg" class="text-xs text-gray-500 dark:text-gray-400 text-center">Starting…</p>
+      </div>
+
+      <!-- Download link (appears when done) -->
+      <a id="export-download-link" href="#" class="hidden block w-full text-center py-2 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg mb-3">
+        Download
+      </a>
+
+      <!-- Error -->
+      <p id="export-error" class="hidden text-xs text-red-500 dark:text-red-400 text-center mb-2"></p>
+
+      <p class="text-xs text-gray-400 text-center">{{ investigations|length }} investigations · background generation</p>
+
+      <!-- STIX export -->
+      <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+        <a href="{{ url_for('cases.export_stix', case_id=case.id) }}"
+           class="block w-full text-center text-xs py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+          STIX 2.1 (threat intel)
+        </a>
+      </div>
     </div>
 
   </div>
@@ -389,5 +420,110 @@ document.addEventListener('click', function(e) {
     document.querySelectorAll('[id^="tag-menu-"]').forEach(m => m.classList.add('hidden'));
   }
 });
+
+// ── Async export ──────────────────────────────────────────────────────────────
+const CASE_ID = {{ case.id }};
+const START_URL = `/cases/${CASE_ID}/export/start`;
+const STATUS_URL = `/cases/export/status/`;
+const DOWNLOAD_URL = `/cases/export/download/`;
+const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+let _selectedFmt = 'pdf';
+let _pollTimer = null;
+
+function selectFmt(fmt) {
+  _selectedFmt = fmt;
+  document.querySelectorAll('.fmt-btn').forEach(b => {
+    b.classList.remove('bg-white','dark:bg-gray-700','shadow','text-gray-900','dark:text-white');
+    b.classList.add('text-gray-500','dark:text-gray-400');
+  });
+  const active = document.getElementById('fmt-btn-' + fmt);
+  active.classList.add('bg-white','dark:bg-gray-700','shadow','text-gray-900','dark:text-white');
+  active.classList.remove('text-gray-500','dark:text-gray-400');
+  // Reset UI on format change
+  resetExportUI();
+}
+
+function resetExportUI() {
+  clearInterval(_pollTimer);
+  document.getElementById('export-progress').classList.add('hidden');
+  document.getElementById('export-download-link').classList.add('hidden');
+  document.getElementById('export-error').classList.add('hidden');
+  document.getElementById('export-bar').style.width = '0%';
+  document.getElementById('export-btn').disabled = false;
+  document.getElementById('export-btn').textContent = 'Generate Report';
+}
+
+async function startExport() {
+  resetExportUI();
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+
+  const progress = document.getElementById('export-progress');
+  const bar = document.getElementById('export-bar');
+  const statusMsg = document.getElementById('export-status-msg');
+  progress.classList.remove('hidden');
+
+  // Animate indeterminate progress while waiting
+  let pct = 10;
+  _pollTimer = setInterval(() => {
+    pct = Math.min(pct + 3, 85);
+    bar.style.width = pct + '%';
+  }, 400);
+
+  try {
+    const form = new FormData();
+    form.append('fmt', _selectedFmt);
+    form.append('csrf_token', CSRF);
+
+    const res = await fetch(START_URL, { method: 'POST', body: form });
+    if (!res.ok) throw new Error('Server error ' + res.status);
+    const { job_id } = await res.json();
+
+    statusMsg.textContent = 'Generating ' + _selectedFmt.toUpperCase() + '…';
+
+    // Poll for completion
+    clearInterval(_pollTimer);
+    _pollTimer = setInterval(async () => {
+      try {
+        const sr = await fetch(STATUS_URL + job_id);
+        const { status, error } = await sr.json();
+
+        if (status === 'done') {
+          clearInterval(_pollTimer);
+          bar.style.width = '100%';
+          statusMsg.textContent = 'Done!';
+          setTimeout(() => progress.classList.add('hidden'), 800);
+
+          const dl = document.getElementById('export-download-link');
+          dl.href = DOWNLOAD_URL + job_id;
+          dl.textContent = 'Download ' + _selectedFmt.toUpperCase();
+          dl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Generate Again';
+
+        } else if (status === 'error') {
+          clearInterval(_pollTimer);
+          progress.classList.add('hidden');
+          const errEl = document.getElementById('export-error');
+          errEl.textContent = error || 'Export failed.';
+          errEl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+        }
+      } catch(e) { /* network glitch — keep polling */ }
+    }, 1500);
+
+  } catch(err) {
+    clearInterval(_pollTimer);
+    progress.classList.add('hidden');
+    const errEl = document.getElementById('export-error');
+    errEl.textContent = err.message || 'Export failed.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
+}
 </script>
 {% endblock %}
