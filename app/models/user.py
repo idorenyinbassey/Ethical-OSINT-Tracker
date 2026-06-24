@@ -9,6 +9,7 @@ class User(UserMixin, SQLModel, table=True):
     password_hash: str
     created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.utcnow())
     is_active: bool = Field(default=True, sa_column_kwargs={"name": "is_active"})
+    is_admin: bool = Field(default=False)
 
     def get_id(self) -> str:
         return str(self.id)

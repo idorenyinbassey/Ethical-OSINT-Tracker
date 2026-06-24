@@ -40,6 +40,8 @@ def init_db():
         _add_column_if_missing(conn, "auditlog", "entity_type", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "auditlog", "entity_id", "INTEGER")
         _add_column_if_missing(conn, "auditlog", "ip", "TEXT NOT NULL DEFAULT ''")
+        # user: admin flag
+        _add_column_if_missing(conn, "user", "is_admin", "INTEGER NOT NULL DEFAULT 0")
 
 def get_session():
     return Session(engine)
