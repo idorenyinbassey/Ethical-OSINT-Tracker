@@ -70,4 +70,34 @@
     </div>
   {% endfor %}
 </div>
+
+<!-- Change Password -->
+<div class="mt-8 max-w-md">
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+    <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Change Password</h2>
+    <form method="post" action="{{ url_for('settings.change_password') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current password</label>
+        <input type="password" name="current_password" required autocomplete="current-password"
+               class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New password</label>
+        <input type="password" name="new_password" required autocomplete="new-password" minlength="6"
+               class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <p class="text-xs text-gray-400 mt-1">Minimum 6 characters.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm new password</label>
+        <input type="password" name="confirm_password" required autocomplete="new-password"
+               class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <button type="submit"
+              class="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors">
+        Update Password
+      </button>
+    </form>
+  </div>
+</div>
 {% endblock %}
