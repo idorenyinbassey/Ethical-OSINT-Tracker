@@ -33,6 +33,13 @@ def init_db():
     with engine.connect() as conn:
         _add_column_if_missing(conn, "watchlist", "has_alert", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "watchlist", "alert_message", "TEXT NOT NULL DEFAULT ''")
+        # auditlog was created by old stub model — add missing columns
+        _add_column_if_missing(conn, "auditlog", "user_id", "INTEGER")
+        _add_column_if_missing(conn, "auditlog", "username", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "auditlog", "action", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "auditlog", "entity_type", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "auditlog", "entity_id", "INTEGER")
+        _add_column_if_missing(conn, "auditlog", "ip", "TEXT NOT NULL DEFAULT ''")
 
 def get_session():
     return Session(engine)
