@@ -30,6 +30,11 @@ def login():
             return render_template("auth/login.html")
 
         login_user(user)
+        try:
+            from app.utils.audit import log as audit_log
+            audit_log("login", detail=f"user {username}")
+        except Exception:
+            pass
         next_page = request.args.get("next", "")
         # Only allow relative redirects to prevent open-redirect attacks
         parsed = urlparse(next_page)

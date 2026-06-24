@@ -37,3 +37,23 @@ def check_breaches(email: str) -> Optional[List[Dict]]:
             ]
     except Exception:
         return None
+
+
+def check_password_pwned(password: str) -> int:
+    """K-anonymity check via pwnedpasswords.com — returns seen count (0 = not found). No API key required."""
+    import hashlib
+    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    prefix, suffix = sha1[:5], sha1[5:]
+    try:
+        with httpx.Client(timeout=8) as client:
+            r = client.get(f"https://api.pwnedpasswords.com/range/{prefix}",
+                           headers={"User-Agent": "OSINT-Tracker", "Add-Padding": "true"})
+            if r.status_code != 200:
+                return -1
+            for line in r.text.splitlines():
+                parts = line.split(":")
+                if len(parts) == 2 and parts[0].upper() == suffix:
+                    return int(parts[1])
+            return 0
+    except Exception:
+        return -1

@@ -10,6 +10,8 @@ def _detach(w: WatchlistTarget) -> WatchlistTarget:
         id=w.id, query=w.query, kind=w.kind, user_id=w.user_id,
         case_id=w.case_id, notes=w.notes, created_at=w.created_at,
         last_checked=w.last_checked, last_result_hash=w.last_result_hash,
+        has_alert=getattr(w, "has_alert", False),
+        alert_message=getattr(w, "alert_message", ""),
     )
 
 
@@ -56,3 +58,27 @@ def update_checked(target_id: int, result_hash: str) -> None:
             w.last_checked = datetime.datetime.utcnow()
             w.last_result_hash = result_hash
             session.add(w)
+
+
+def set_alert(target_id: int, message: str) -> None:
+    with session_scope() as session:
+        w = session.get(WatchlistTarget, target_id)
+        if w:
+            w.has_alert = True
+            w.alert_message = message
+            session.add(w)
+
+
+def clear_alert(target_id: int) -> None:
+    with session_scope() as session:
+        w = session.get(WatchlistTarget, target_id)
+        if w:
+            w.has_alert = False
+            w.alert_message = ""
+            session.add(w)
+
+
+def list_all_targets() -> List[WatchlistTarget]:
+    """Return all targets across all users — used by scheduler only."""
+    with session_scope() as session:
+        return [_detach(w) for w in session.exec(select(WatchlistTarget)).all()]

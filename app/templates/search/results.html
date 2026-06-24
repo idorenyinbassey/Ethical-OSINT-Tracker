@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Search — {{ q }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <!-- Search bar -->
+  <form method="get" action="{{ url_for('search.results') }}" class="mb-6">
+    <div class="flex gap-2">
+      <input type="text" name="q" value="{{ q }}" autofocus placeholder="Search investigations, cases, notes…"
+             class="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg">Search</button>
+    </div>
+  </form>
+
+  {% if q %}
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
+    <span class="font-medium text-gray-900 dark:text-white">{{ total }}</span> result{{ 's' if total != 1 }} for <span class="font-mono text-indigo-600 dark:text-indigo-400">"{{ q }}"</span>
+  </p>
+
+  <!-- Investigations -->
+  {% if investigations %}
+  <div class="mb-8">
+    <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+      Investigations ({{ investigations|length }})
+    </h2>
+    <div class="space-y-2">
+      {% for inv in investigations %}
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 mb-0.5">
+            <span class="text-xs px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium">{{ inv.kind }}</span>
+            <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ inv.query }}</span>
+          </div>
+          <p class="text-xs text-gray-400">{{ inv.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+        {% if inv.case_id %}
+        <a href="{{ url_for('cases.detail', case_id=inv.case_id) }}"
+           class="shrink-0 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">View case</a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Cases -->
+  {% if cases %}
+  <div class="mb-8">
+    <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+      Cases ({{ cases|length }})
+    </h2>
+    <div class="space-y-2">
+      {% for case in cases %}
+      <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+         class="block bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors">
+        <div class="flex items-center justify-between">
+          <span class="font-medium text-gray-900 dark:text-white">{{ case.title }}</span>
+          <span class="text-xs px-2 py-0.5 rounded
+            {% if case.status == 'active' %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300
+            {% elif case.status == 'closed' %}bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400
+            {% else %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300{% endif %}">
+            {{ case.status }}
+          </span>
+        </div>
+        {% if case.description %}
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{{ case.description }}</p>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Notes -->
+  {% if notes %}
+  <div class="mb-8">
+    <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+      Case Notes ({{ notes|length }})
+    </h2>
+    <div class="space-y-2">
+      {% for note in notes %}
+      <a href="{{ url_for('cases.detail', case_id=note.case_id) }}"
+         class="block bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{{ note.kind }}</span>
+          <span class="text-xs text-gray-400">{{ note.username }} · {{ note.created_at.strftime('%Y-%m-%d') }}</span>
+        </div>
+        <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">{{ note.body }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if total == 0 %}
+  <div class="text-center py-20 text-gray-400 dark:text-gray-600">
+    <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <p class="font-medium">No results for "{{ q }}"</p>
+    <p class="text-sm mt-1">Try a different keyword or check the spelling.</p>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="text-center py-20 text-gray-400 dark:text-gray-600">
+    <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <p class="font-medium">Search across all investigations, cases, and notes</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

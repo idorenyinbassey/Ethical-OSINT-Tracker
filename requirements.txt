@@ -9,6 +9,9 @@ flask-wtf>=1.2.0
 # ── Production WSGI server ────────────────────────────────────────────────────
 gunicorn>=21.0.0
 
+# ── Background scheduler ──────────────────────────────────────────────────────
+APScheduler>=3.10.0     # Watchlist auto-rescan every 6h
+
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlmodel>=0.0.21
 PyMySQL==1.1.1          # MySQL driver; SQLite is used by default (no extra package)

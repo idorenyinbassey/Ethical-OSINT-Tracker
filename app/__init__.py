@@ -29,6 +29,8 @@ def create_app():
     from app.routes.cases import cases_bp
     from app.routes.settings import settings_bp
     from app.routes.tracker import tracker_bp, land, pixel, collect_fingerprint
+    from app.routes.search import search_bp
+    from app.routes.audit import audit_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -36,11 +38,17 @@ def create_app():
     app.register_blueprint(cases_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(tracker_bp)
+    app.register_blueprint(search_bp)
+    app.register_blueprint(audit_bp)
 
     # Public tracking endpoints have no session — exempt from CSRF
     csrf.exempt(land)
     csrf.exempt(pixel)
     csrf.exempt(collect_fingerprint)
+
+    # Start background watchlist rescan scheduler
+    from app.utils.scheduler import start_scheduler
+    start_scheduler(app)
 
     @app.context_processor
     def inject_active_case():
