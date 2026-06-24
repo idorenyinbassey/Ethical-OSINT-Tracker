@@ -156,6 +156,13 @@
         </svg>
         Dark Web
       </a>
+      <a href="{{ url_for('investigation.breach') }}"
+         class="sidebar-link {% if request.endpoint == 'investigation.breach' %}active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        Breach Check
+      </a>
 
       <p class="px-4 pt-3 pb-1 text-xs text-gray-500 uppercase tracking-wider">People &amp; Entities</p>
       <a href="{{ url_for('investigation.person') }}"
@@ -218,6 +225,13 @@
         </svg>
         Cases
       </a>
+      <a href="{{ url_for('audit.index') }}"
+         class="sidebar-link {% if 'audit.' in (request.endpoint or '') %}active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+        </svg>
+        Audit Log
+      </a>
       <a href="{{ url_for('settings.index') }}"
          class="sidebar-link {% if 'settings.' in (request.endpoint or '') %}active{% endif %}">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -273,16 +287,25 @@
 
   <!-- Main content -->
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-    <!-- Mobile top bar -->
-    <div class="md:hidden flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-      <button onclick="openSidebar()" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+    <!-- Top bar (mobile + desktop search) -->
+    <div class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      <button onclick="openSidebar()" class="md:hidden text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
       </button>
-      <span class="font-semibold text-indigo-600 dark:text-indigo-400 flex-1">OSINT Tracker</span>
+      <!-- Global search -->
+      <form method="get" action="{{ url_for('search.results') }}" class="flex-1 max-w-md">
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input type="text" name="q" placeholder="Search investigations, cases, notes…"
+                 class="w-full pl-9 pr-4 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+      </form>
       {% if active_case %}
-      <span class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{{ active_case.title }}</span>
+      <span class="hidden md:block text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{{ active_case.title }}</span>
       {% endif %}
     </div>
 
