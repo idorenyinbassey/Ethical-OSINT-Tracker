@@ -32,6 +32,16 @@ def list_users() -> List[User]:
         return users
 
 
+def update_password(user_id: int, new_password_hash: str) -> bool:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        user.password_hash = new_password_hash
+        session.add(user)
+        return True
+
+
 def create_user(username: str, password_hash: str) -> User:
     with session_scope(expire_on_commit=False) as session:
         user = User(username=username, password_hash=password_hash)

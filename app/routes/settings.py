@@ -1,6 +1,11 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from app.repositories.api_config_repository import get_all_configs, create_or_update_config
+from app.repositories.user_repository import update_password, get_by_id
+
+ph = PasswordHasher()
 
 settings_bp = Blueprint("settings", __name__, url_prefix="/settings")
 
@@ -47,4 +52,37 @@ def save():
         notes=notes,
     )
     flash(f"{service_name} settings saved.", "success")
+    return redirect(url_for("settings.index"))
+
+
+@settings_bp.route("/change-password", methods=["POST"])
+@login_required
+def change_password():
+    current_pw = request.form.get("current_password", "")
+    new_pw = request.form.get("new_password", "")
+    confirm_pw = request.form.get("confirm_password", "")
+
+    user = get_by_id(current_user.id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("settings.index"))
+
+    try:
+        ph.verify(user.password_hash, current_pw)
+    except VerifyMismatchError:
+        flash("Current password is incorrect.", "error")
+        return redirect(url_for("settings.index"))
+
+    if len(new_pw) < 6:
+        flash("New password must be at least 6 characters.", "error")
+        return redirect(url_for("settings.index"))
+
+    if new_pw != confirm_pw:
+        flash("New passwords do not match.", "error")
+        return redirect(url_for("settings.index"))
+
+    update_password(current_user.id, ph.hash(new_pw))
+    from app.utils.audit import log as audit_log
+    audit_log("account.password_change", entity_type="user", entity_id=current_user.id)
+    flash("Password changed successfully.", "success")
     return redirect(url_for("settings.index"))
