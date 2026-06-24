@@ -31,6 +31,7 @@ def create_app():
     from app.routes.tracker import tracker_bp, land, pixel, collect_fingerprint
     from app.routes.search import search_bp
     from app.routes.audit import audit_bp
+    from app.routes.admin import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -40,6 +41,7 @@ def create_app():
     app.register_blueprint(tracker_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(audit_bp)
+    app.register_blueprint(admin_bp)
 
     # Public tracking endpoints have no session — exempt from CSRF
     csrf.exempt(land)

@@ -32,6 +32,35 @@ def list_users() -> List[User]:
         return users
 
 
+def set_admin(user_id: int, is_admin: bool) -> bool:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        user.is_admin = is_admin
+        session.add(user)
+        return True
+
+
+def set_active(user_id: int, is_active: bool) -> bool:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        user.is_active = is_active
+        session.add(user)
+        return True
+
+
+def delete_user(user_id: int) -> bool:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        session.delete(user)
+        return True
+
+
 def update_password(user_id: int, new_password_hash: str) -> bool:
     with session_scope() as session:
         user = session.get(User, user_id)
