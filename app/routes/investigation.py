@@ -906,6 +906,43 @@ def watchlist_rescan(target_id):
     return redirect(url_for("investigation.watchlist"))
 
 
+# ── Breach & Password Check ──────────────────────────────────────────────────
+
+@investigation_bp.route("/breach", methods=["GET", "POST"])
+@login_required
+def breach():
+    from app.services.hibp_client import check_breaches, check_password_pwned
+    from app.repositories.case_repository import list_cases as _list_cases
+    from app.utils.audit import log as audit_log
+
+    cases = _list_cases(owner_user_id=current_user.id)
+    email = breaches = error = None
+    pwned_count = None
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+
+        if email:
+            breaches = check_breaches(email)
+            if breaches is None:
+                error = "HIBP API key not configured or disabled. Add it in Settings → HIBP."
+            audit_log("investigation.run", entity_type="investigation",
+                      detail=f"breach check — {email}")
+            result_json = json.dumps({"breaches": breaches})
+            find_or_update_recent(kind="breach", query=email, result_json=result_json,
+                                  user_id=current_user.id, case_id=case_id,
+                                  confidence="CONFIRMED" if breaches is not None else "UNVERIFIED")
+
+        if password:
+            pwned_count = check_password_pwned(password)
+
+    return render_template("investigation/breach.html", email=email,
+                           breaches=breaches, pwned_count=pwned_count,
+                           error=error, cases=cases)
+
+
 # ── Plugins ───────────────────────────────────────────────────────────────────
 
 @investigation_bp.route("/plugins")

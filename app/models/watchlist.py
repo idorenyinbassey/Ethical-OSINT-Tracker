@@ -14,3 +14,5 @@ class WatchlistTarget(SQLModel, table=True):
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
     last_checked: Optional[datetime.datetime] = Field(default=None)
     last_result_hash: str = Field(default="")
+    has_alert: bool = Field(default=False)
+    alert_message: str = Field(default="")
