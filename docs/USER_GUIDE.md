@@ -38,7 +38,7 @@ The sidebar gives access to all sections:
 | Section | Pages |
 |---------|-------|
 | **Dashboard** | Overview, recent history, stats |
-| **Investigate** | All 15+ investigation tools |
+| **Investigate** | All 17+ core tools + plugin investigations |
 | **Cases** | Case list, new case, case detail |
 | **Link Tracker** | IP grabber / tracking link management |
 | **Search** | Global full-text search bar (top of every page) |
@@ -167,6 +167,19 @@ OpenStreetMap / Leaflet.js map that auto-plots GPS coordinates gathered from all
 ### Network Graph (`/investigate/graph`)
 
 vis.js graph showing relationships between all cases and investigations. Purple star-shaped hub nodes appear where the same IP, email, domain, or username appears in multiple cases. Subdomain scan results expand as child nodes from the domain.
+
+### Plugin Investigations (`/investigate/plugins`)
+
+Run modular investigation plugins without modifying core route code.
+
+- Open **Investigate → Plugins** to view available plugins
+- Select a plugin and provide a query value
+- Choose a case and run; results are saved to the case like other tools
+
+Built-in plugins include:
+- DNS plugin
+- WHOIS plugin
+- Hash plugin
 
 ---
 
