@@ -5,7 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Copyright (C) 2025 Idorenyin Bassey](https://img.shields.io/badge/copyright-©%202025%20Idorenyin%20Bassey-lightgrey.svg)](https://github.com/idorenyinbassey)
 
-A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with **Flask** (Python). Perform legally compliant investigations with domain analysis, IP geolocation, subdomain enumeration, email forensics, social media reconnaissance, company registry lookups, person search, vehicle identification, file metadata extraction, blockchain analysis, phone verification, IMEI lookup, dark web monitoring, and interactive location mapping — all under one roof with full case management, professional report generation, and a live link tracker.
+A comprehensive ethical Open Source Intelligence (OSINT) investigation platform built with **Flask** (Python). Perform legally compliant investigations with domain analysis, IP geolocation, subdomain enumeration, email forensics, social media reconnaissance, company registry lookups, person search, vehicle identification, file metadata extraction, optional AI image recognition, blockchain analysis, phone verification, IMEI lookup, dark web monitoring, and interactive location mapping — all under one roof with full case management, professional report generation, a built-in plugin framework, and a live link tracker.
 
 ---
 
@@ -45,7 +45,13 @@ Tools marked **zero-key** work without any API configuration out of the box.
 #### File Intelligence
 | Tool | Description | Key required? |
 |------|-------------|---------------|
-| **File & Document Forensics** | Full metadata extraction for images (EXIF + GPS), audio (ID3/Vorbis), video, PDF, DOCX, XLSX; MD5 + SHA-256 hashes, MIME type verification, filesystem timestamps; GPS reverse geocoding via Nominatim OSM | Zero-key |
+| **File & Document Forensics** | Full metadata extraction for images (EXIF + GPS), audio (ID3/Vorbis), video, PDF, DOCX, XLSX; MD5 + SHA-256 hashes, MIME type verification, filesystem timestamps; GPS reverse geocoding via Nominatim OSM; optional Google Vision enrichment (labels, OCR, safe-search) | Zero-key (Google Vision optional) |
+
+### Extensible Investigations (Plugins)
+
+- **Built-in plugin framework** at `/investigate/plugins` for modular checks without changing core routes
+- **Built-in plugins** include DNS lookups, WHOIS checks, and hash utilities
+- **Plugin run history** is stored like other investigations (`kind=plugin_<name>`) and links to cases
 
 ### Link Tracker (IP Grabber)
 
@@ -233,6 +239,7 @@ Ethical-OSINT-Tracker/
 │   │   ├── imei_client.py       # dash.imei.info API
 │   │   ├── stix_export.py       # STIX 2.1 bundle builder
 │   │   └── report_exporter.py   # PDF + DOCX + HTML + CSV + XLSX (async-capable)
+│   ├── plugins/                 # Extensible investigation plugins (DNS, WHOIS, hash, ...)
 │   ├── templates/
 │   │   ├── base.html            # Sidebar + search bar + dark/light/system theme
 │   │   ├── admin/users.html
@@ -332,7 +339,8 @@ The scheduler starts automatically when the app starts. Logs appear as `APSchedu
 ## Roadmap
 
 ### Completed
-- [x] 15+ investigation tools (IP, domain, subdomain, email, social, phone, IMEI, MAC, file forensics, crypto, dark web, person, company, vehicle)
+- [x] 17+ investigation tools (IP, domain, subdomain, email, breach/password, email header, social, phone, IMEI, MAC, file forensics, crypto, dark web, person, company, vehicle)
+- [x] Extensible plugin investigation framework (DNS, WHOIS, hash plugins)
 - [x] PDF / DOCX / HTML / CSV / XLSX report exports with SHA-256 fingerprint
 - [x] Async report generation with progress bar
 - [x] STIX 2.1 threat intel export
