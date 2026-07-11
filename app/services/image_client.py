@@ -1,8 +1,11 @@
 import base64
+import logging
 import httpx
 from pathlib import Path
 from typing import Optional, Dict
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 try:
     from PIL import Image
@@ -107,8 +110,9 @@ def extract_image_metadata(image_path: Path) -> Dict[str, str]:
                     metadata["EXIF_Fields_Found"] = str(exif_count)
             else:
                 metadata["EXIF_Status"] = "No EXIF data - image may be a screenshot, edited, or format doesn't support EXIF"
-    except Exception as e:
-        metadata["extraction_error"] = f"Error reading image: {str(e)}"
+    except Exception:
+        logger.exception("Failed to read image metadata from %s", image_path)
+        metadata["extraction_error"] = "Error reading image metadata."
 
     return metadata
 
@@ -240,14 +244,16 @@ def analyze_image(image_path: Path) -> Optional[Dict]:
 
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code
+            logger.error("Google Vision HTTP %s for %s", status_code, image_path.name)
             msg = {401: "Authentication Failed (401): Invalid API key.",
                    403: "Access Denied (403): Vision API not enabled or quota exceeded.",
                    429: "Rate Limit Exceeded (429): Too many requests."}.get(status_code, f"HTTP Error ({status_code})")
             result["exif"]["api_error"] = msg
             result["identified_person"] = "API request failed"
             result["confidence"] = "N/A"
-        except Exception as e:
-            result["exif"]["api_error"] = f"Error: {str(e)}"
+        except Exception:
+            logger.exception("Google Vision analysis failed for %s", image_path.name)
+            result["exif"]["api_error"] = "Image analysis failed."
             result["identified_person"] = "Analysis failed"
             result["confidence"] = "N/A"
     else:

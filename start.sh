@@ -35,22 +35,45 @@ echo "Using database: $DB_URL"
 # Initialise database / admin on first run, or on --reset-admin request
 if [ "${1}" = "--reset-admin" ]; then
     echo "Resetting admin account..."
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        echo "❌ ERROR: ADMIN_PASSWORD environment variable not set"
+        echo "Usage: ADMIN_PASSWORD=your_secure_password $0 --reset-admin"
+        exit 1
+    fi
     "$PYTHON" reset_admin.py
 elif [ ! -f "dev.db" ] && { [ -z "$DB_URL" ] || [ "$DB_URL" = "sqlite:///./dev.db" ]; }; then
-    echo "First run — initialising database and creating admin account..."
+    # First run with new SQLite database requires admin password
+    echo "First run — database requires admin account initialization"
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        echo "❌ ERROR: ADMIN_PASSWORD environment variable not set"
+        echo ""
+        echo "Usage for first run:"
+        echo "  ADMIN_PASSWORD=your_secure_password ./start.sh"
+        echo ""
+        echo "Requirements:"
+        echo "  - ADMIN_PASSWORD must be at least 8 characters"
+        echo "  - Store securely, never hardcode or commit to version control"
+        exit 1
+    fi
+    echo "Initialising database and creating admin account..."
     "$PYTHON" reset_admin.py
-    echo "Admin account created. Change the password on first login."
+    echo "✅ Admin account created successfully"
 else
     # Just ensure tables are created without resetting credentials
     "$PYTHON" -c "from app import create_app; app = create_app()"
 fi
 
 echo ""
-echo "Starting Flask application on http://0.0.0.0:3000"
-echo ""
 
-if [ "${FLASK_ENV:-development}" = "production" ]; then
-    "$PYTHON" -m gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
-else
+# Development mode requires explicit FLASK_DEV=1 environment variable
+# Production (gunicorn) is the default for security
+if [ "${FLASK_DEV:-0}" = "1" ]; then
+    echo "Starting Flask development server on http://localhost:3000"
+    echo "⚠️  Development mode enabled - debug and features may be exposed"
+    echo ""
     "$PYTHON" run.py
+else
+    echo "Starting Flask application with gunicorn on http://0.0.0.0:3000 (production)"
+    echo ""
+    "$PYTHON" -m gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
 fi

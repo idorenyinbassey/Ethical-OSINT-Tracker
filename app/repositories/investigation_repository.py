@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from sqlmodel import select, func
+from sqlmodel import select, func, delete
 from datetime import datetime, timedelta
 from app.models.investigation import Investigation
 # Ensure user model is imported so SQLAlchemy knows about the referenced `user` table
@@ -70,25 +70,41 @@ def update_tags(inv_id: int, tags: str) -> None:
             session.add(inv)
 
 
-def list_recent(limit: int = 25) -> List[Investigation]:
+def list_recent(limit: int = 25, user_id: int | None = None) -> List[Investigation]:
+    """Return most recent investigations, scoped to a single user when given.
+
+    Scoping to `user_id` prevents cross-user PII exposure on the dashboard
+    (Issue #15): query strings can contain emails/phone numbers, so a user must
+    only ever see their own recent investigations.
+    """
     with session_scope() as session:
-        stmt = select(Investigation).order_by(Investigation.id.desc()).limit(limit)
+        stmt = select(Investigation)
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
+        stmt = stmt.order_by(Investigation.id.desc()).limit(limit)
         results = session.exec(stmt).all()
         return [_detach(inv) for inv in results]
 
 
-def count_all() -> int:
-    """Count total investigations"""
+def count_all(user_id: int | None = None) -> int:
+    """Count total investigations, scoped to a single user when given."""
     with session_scope() as session:
         stmt = select(func.count(Investigation.id))
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
         return session.exec(stmt).one()
 
 
-def aggregate_by_day(days: int = 7) -> Dict[datetime.date, int]:
-    """Count investigations grouped by date for last N days"""
+def aggregate_by_day(days: int = 7, user_id: int | None = None) -> Dict[datetime.date, int]:
+    """Count investigations grouped by date for last N days, optionally per user."""
     with session_scope() as session:
-        cutoff = datetime.now() - timedelta(days=days)
+        # created_at is stored as naive UTC (Investigation model default is
+        # datetime.utcnow), so compare against UTC — not local now() — to avoid
+        # timezone-offset errors.
+        cutoff = datetime.utcnow() - timedelta(days=days)
         stmt = select(Investigation).where(Investigation.created_at >= cutoff)
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
         records = session.exec(stmt).all()
 
         counts = {}
@@ -98,12 +114,33 @@ def aggregate_by_day(days: int = 7) -> Dict[datetime.date, int]:
         return counts
 
 
-def count_by_kind() -> Dict[str, int]:
-    """Count investigations grouped by kind"""
+def count_by_kind(user_id: int | None = None) -> Dict[str, int]:
+    """Count investigations grouped by kind, scoped to a single user when given."""
     with session_scope() as session:
-        stmt = select(Investigation.kind, func.count(Investigation.id)).group_by(Investigation.kind)
+        stmt = select(Investigation.kind, func.count(Investigation.id))
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
+        stmt = stmt.group_by(Investigation.kind)
         results = session.exec(stmt).all()
         return {kind: count for kind, count in results}
+
+
+def purge_old_investigations(retention_days: int) -> int:
+    """Delete investigations older than `retention_days` (Issue #15 retention).
+
+    Returns the number of rows deleted. A non-positive retention_days disables
+    purging (returns 0) so operators can opt out by setting RETENTION_DAYS<=0.
+    """
+    if retention_days is None or retention_days <= 0:
+        return 0
+    # created_at is naive UTC (see Investigation model default).
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    with session_scope() as session:
+        # Single bulk DELETE rather than loading and deleting row-by-row.
+        result = session.exec(
+            delete(Investigation).where(Investigation.created_at < cutoff)
+        )
+        return result.rowcount or 0
 
 
 def list_by_case(case_id: int) -> List[Investigation]:

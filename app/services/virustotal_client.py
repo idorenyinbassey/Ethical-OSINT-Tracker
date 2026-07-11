@@ -1,7 +1,10 @@
+import logging
 import httpx
 from typing import Optional, Dict
 from app.services.cache import cached
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 
 @cached(ttl=21600)
@@ -53,5 +56,12 @@ def fetch_virustotal(ip: str) -> Optional[Dict]:
                 "last_analysis_date": attributes.get("last_analysis_date", "Unknown"),
                 "whois": attributes.get("whois", ""),
             }
+    except httpx.TimeoutException:
+        logger.error("VirusTotal fetch timed out for %s", ip)
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error("VirusTotal HTTP %s for %s", e.response.status_code, ip)
+        return None
     except Exception:
+        logger.exception("VirusTotal fetch failed for %s", ip)
         return None

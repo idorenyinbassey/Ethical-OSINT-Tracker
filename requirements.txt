@@ -18,6 +18,7 @@ PyMySQL==1.1.1          # MySQL driver; SQLite is used by default (no extra pack
 
 # ── Authentication & Security ─────────────────────────────────────────────────
 argon2-cffi==23.1.0     # Argon2id password hashing
+cryptography>=42.0.0    # Fernet symmetric encryption for stored API keys
 
 # ── HTTP Client ───────────────────────────────────────────────────────────────
 # [socks] extra enables SOCKS5 proxy / Tor routing via httpx

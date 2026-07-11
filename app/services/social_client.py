@@ -10,10 +10,13 @@ For each site we define:
   - error_msg_list: list of strings, any of which means NOT FOUND (Sherlock list errorMsg)
 """
 import json
+import logging
 import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.proxy_config import get_http_client
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Sherlock site-list integration
@@ -1636,9 +1639,12 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
         if result["found"]:
             result.update(_extract_profile_meta(r.text))
 
-    except Exception as exc:
+    except Exception:
+        # Log the full exception server-side; do NOT surface internal details
+        # (hostnames, file paths, library internals) to the browser.
+        logger.exception("Social site check failed for %s @ %s", name, username)
         result["status"] = "error"
-        result["error"] = str(exc)[:120]
+        result["error_type"] = "unknown"
 
     return result
 

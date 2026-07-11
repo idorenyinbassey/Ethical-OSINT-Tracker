@@ -24,6 +24,8 @@ jobs:
 
       - name: Initialise database
         run: python reset_admin.py
+        env:
+          ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'test-password-12345' }}
 
       - name: Run tests
         run: PYTHONPATH=. pytest -q

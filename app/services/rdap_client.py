@@ -1,6 +1,9 @@
+import logging
 import httpx
 from typing import Optional, Dict
 from app.services.cache import cached
+
+logger = logging.getLogger(__name__)
 
 
 def _rdap_parse(data: dict) -> dict:
@@ -60,6 +63,8 @@ def fetch_domain(domain: str) -> Optional[Dict]:
                     return _rdap_parse(data)
                 except (httpx.HTTPStatusError, httpx.RequestError):
                     continue
+    except httpx.TimeoutException:
+        logger.error("RDAP lookup timed out for %s", domain)
     except Exception:
-        pass
+        logger.exception("RDAP lookup failed for %s", domain)
     return None

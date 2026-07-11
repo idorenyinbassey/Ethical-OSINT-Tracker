@@ -59,14 +59,35 @@ def _rescan_all(app):
             pass  # scheduler jobs must never crash the process
 
 
+def _purge_retention(app):
+    """Delete investigations older than the configured RETENTION_DAYS (Issue #15)."""
+    with app.app_context():
+        try:
+            from app.config import Config
+            from app.repositories.investigation_repository import purge_old_investigations
+            deleted = purge_old_investigations(Config.RETENTION_DAYS)
+            if deleted:
+                app.logger.info(
+                    "Data retention: purged %d investigations older than %d days",
+                    deleted, Config.RETENTION_DAYS,
+                )
+        except Exception:
+            pass  # scheduler jobs must never crash the process
+
+
 def start_scheduler(app):
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         scheduler = BackgroundScheduler(daemon=True)
         scheduler.add_job(_rescan_all, "interval", hours=6, args=[app],
                           id="watchlist_rescan", replace_existing=True)
+        # Enforce the PII data-retention policy once a day.
+        scheduler.add_job(_purge_retention, "interval", hours=24, args=[app],
+                          id="retention_purge", replace_existing=True)
         scheduler.start()
-        app.logger.info("APScheduler started — watchlist rescan every 6h")
+        # Run an initial purge so retention takes effect immediately on boot.
+        _purge_retention(app)
+        app.logger.info("APScheduler started — watchlist rescan every 6h, retention purge daily")
     except ImportError:
         app.logger.warning("APScheduler not installed — watchlist auto-rescan disabled. Run: pip install apscheduler")
     except Exception as exc:
