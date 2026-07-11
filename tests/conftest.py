@@ -88,6 +88,16 @@ def case_of_a(app, user_a):
         return create_case("Case A", "owned by A", owner_user_id=user_a.id)
 
 
+@pytest.fixture()
+def synthetic_image(tmp_path):
+    """A Pillow-generated PNG — used instead of committing real photos (Issue #9)."""
+    from PIL import Image
+
+    path = tmp_path / "synthetic.png"
+    Image.new("RGB", (32, 32), color=(120, 60, 200)).save(path, format="PNG")
+    return path
+
+
 def login(client, username, password=_PASSWORD):
     """Log a user in through the real /login route (CSRF disabled in tests)."""
     return client.post(
