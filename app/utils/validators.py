@@ -1,6 +1,6 @@
 """Validation utilities for user input and configuration."""
 from urllib.parse import urlparse
-from ipaddress import ip_address, AddressValueError
+from ipaddress import ip_address
 
 
 def validate_base_url(url: str, allow_api_key: bool = True) -> tuple[bool, str]:
@@ -30,7 +30,9 @@ def validate_base_url(url: str, allow_api_key: bool = True) -> tuple[bool, str]:
             return False, "URL must include a hostname"
 
         try:
-            # Try to parse as IP address
+            # Try to parse as IP address. Note: ip_address() raises a plain
+            # ValueError (not AddressValueError) for non-IP strings such as
+            # hostnames, so we must catch ValueError here.
             ip_obj = ip_address(parsed.hostname)
             # Reject private IP ranges
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
@@ -38,7 +40,7 @@ def validate_base_url(url: str, allow_api_key: bool = True) -> tuple[bool, str]:
                     f"Cannot use private IP address {ip_obj}. "
                     "URLs must point to public services (SSRF prevention)."
                 )
-        except AddressValueError:
+        except ValueError:
             # It's a hostname, not an IP - check against known problematic names
             hostname_lower = parsed.hostname.lower()
             blocked_hosts = {
