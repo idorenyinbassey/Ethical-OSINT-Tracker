@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from argon2 import PasswordHasher
 from app.repositories.user_repository import (
     list_users, get_by_id, update_password, set_admin, set_active, delete_user,
+    create_user, get_by_username,
 )
 from app.utils.audit import log as audit_log
 
@@ -26,6 +27,34 @@ def admin_required(f):
 def users():
     all_users = list_users()
     return render_template("admin/users.html", users=all_users)
+
+
+@admin_bp.route("/users/create", methods=["POST"])
+@login_required
+@admin_required
+def create():
+    """Create a new user account directly (no public registration needed)."""
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    is_admin = request.form.get("is_admin") == "on"
+
+    if len(username) < 3:
+        flash("Username must be at least 3 characters.", "error")
+        return redirect(url_for("admin.users"))
+    if len(password) < 6:
+        flash("Password must be at least 6 characters.", "error")
+        return redirect(url_for("admin.users"))
+    if get_by_username(username):
+        flash("Username already taken.", "error")
+        return redirect(url_for("admin.users"))
+
+    user = create_user(username, ph.hash(password))
+    if is_admin:
+        set_admin(user.id, True)
+    audit_log("admin.create_user", entity_type="user", entity_id=user.id,
+               detail=f"created user {username}" + (" (admin)" if is_admin else ""))
+    flash(f"User {username} created{' as admin' if is_admin else ''}.", "success")
+    return redirect(url_for("admin.users"))
 
 
 @admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])

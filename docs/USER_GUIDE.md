@@ -24,12 +24,14 @@ Complete guide to using Ethical OSINT Tracker.
 
 ### First Login
 
-1. Start the app: `python run.py`
+1. Start the app (see the installation guide for environment setup):
+   `FLASK_DEV=1 python run.py`, or `ADMIN_PASSWORD='...' ./start.sh` for gunicorn.
 2. Open [http://localhost:3000](http://localhost:3000)
-3. Log in with the demo credentials:
-   - **Username**: `admin`
-   - **Password**: `changeme`
-4. **Change this password immediately** — go to **Settings → Change Password** after your first login.
+3. Log in with:
+   - **Username**: `admin` (fixed)
+   - **Password**: the `ADMIN_PASSWORD` you set when initialising the database
+4. You can change it any time via **Settings → Change Password**, or reset it from
+   the CLI: `ADMIN_PASSWORD='new-password' python reset_admin.py`.
 
 ### Navigation
 
@@ -463,8 +465,8 @@ Only use this tool for investigations you are explicitly authorised to conduct. 
 
 ### Security
 
-- Change the default `admin / changeme` credentials immediately
-- Never commit API keys to source control
+- Use a strong `ADMIN_PASSWORD` (there is no default password) and rotate it if exposed
+- Never commit API keys, `secrets.env`, or `.env` files to source control
 - Use HTTPS (see [Deployment Guide](./DEPLOYMENT.md)) for any network-accessible deployment
 - Rotate API keys if they may have been exposed
 

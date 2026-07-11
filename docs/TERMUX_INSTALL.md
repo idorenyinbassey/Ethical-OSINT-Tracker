@@ -55,20 +55,53 @@ pkg install libjpeg-turbo zlib freetype libxml2 libxslt
 pip install Pillow --no-cache-dir
 ```
 
-### Step 5 — Initialise the database
-
+If `cryptography` fails to import (`ImportError: dlopen failed ... _rust.abi3.so`),
+its prebuilt wheel is incompatible with your Python. Use Termux's build:
 ```bash
-python reset_admin.py
+pkg install python-cryptography rust openssl openssl-tool clang binutils
+pip install --no-binary cryptography --force-reinstall cryptography
+python -c "from cryptography.fernet import Fernet; print('crypto OK')"
 ```
 
-Creates the SQLite database and a demo admin account:
-- **Username**: `admin`
-- **Password**: `changeme`
+Install `tzdata` so the background scheduler can resolve your timezone
+(Termux lacks the IANA tz database by default):
+```bash
+pip install tzdata
+```
 
-### Step 6 — Run the app
+### Step 5 — Set environment variables
+
+`.env` is **not** auto-loaded, so export the required variables. Generate the
+keys **once** and keep them stable (a changing `SECRET_KEY` logs you out; a
+changing `API_KEYS_FERNET_KEY` makes stored API keys undecryptable):
 
 ```bash
-python run.py
+cat > secrets.env <<'EOF'
+export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+export API_KEYS_FERNET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+EOF
+source secrets.env
+```
+
+### Step 6 — Initialise the database
+
+There is **no default password** — supply `ADMIN_PASSWORD` (min 8 chars):
+
+```bash
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
+```
+
+Creates (or resets) the admin account:
+- **Username**: `admin` (fixed)
+- **Password**: the value of `ADMIN_PASSWORD`
+
+### Step 7 — Run the app
+
+```bash
+source secrets.env
+FLASK_DEV=1 python run.py          # development server
+# or for the gunicorn (production) launcher:
+# ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
 Open Chrome or Firefox on your device and go to:
@@ -76,7 +109,10 @@ Open Chrome or Firefox on your device and go to:
 http://localhost:3000
 ```
 
-Log in with `admin` / `changeme` and **change the password immediately**.
+Log in with `admin` and the password you set. To change it later:
+```bash
+ADMIN_PASSWORD='new-strong-password' python reset_admin.py
+```
 
 ## Running in the Background with tmux
 
