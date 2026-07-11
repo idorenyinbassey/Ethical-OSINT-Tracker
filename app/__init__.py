@@ -64,6 +64,35 @@ def create_app():
     from app.utils.scheduler import start_scheduler
     start_scheduler(app)
 
+    @app.after_request
+    def set_security_headers(response):
+        """Add HTTP security headers to every response (Issue #17).
+
+        The CSP intentionally allows the CDN/inline resources the UI already
+        depends on (Tailwind CDN, unpkg for Leaflet/vis-network, OpenStreetMap
+        tiles, DuckDuckGo favicons) while still constraining everything else to
+        'self'. img-src allows https: so map tiles and remote favicons load.
+        """
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https://cdn.tailwindcss.com; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'",
+        )
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+        )
+        return response
+
     @app.context_processor
     def inject_active_case():
         from flask_login import current_user

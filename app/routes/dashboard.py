@@ -9,9 +9,9 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @dashboard_bp.route("/")
 @login_required
 def index():
-    total_investigations = count_all()
-    by_kind = count_by_kind()
-    recent = list_recent(10)
+    total_investigations = count_all(user_id=current_user.id)
+    by_kind = count_by_kind(user_id=current_user.id)
+    recent = list_recent(10, user_id=current_user.id)
     all_cases = list_cases(owner_user_id=current_user.id)
     case_stats = {
         "total": len(all_cases),

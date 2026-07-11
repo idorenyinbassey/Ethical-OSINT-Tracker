@@ -82,7 +82,7 @@ def _investigation_before():
 @investigation_bp.route("/")
 @login_required
 def index():
-    return render_template("investigation/index.html", recent=list_recent(20))
+    return render_template("investigation/index.html", recent=list_recent(20, user_id=current_user.id))
 
 
 # ── IP Lookup ─────────────────────────────────────────────────────────────────
