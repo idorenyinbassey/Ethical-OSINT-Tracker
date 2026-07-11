@@ -1,13 +1,25 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, abort
 from flask_login import login_required, current_user
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from app.repositories.api_config_repository import get_all_configs, create_or_update_config
 from app.repositories.user_repository import update_password, get_by_id
+from app.utils.validators import validate_base_url
+from functools import wraps
 
 ph = PasswordHasher()
 
 settings_bp = Blueprint("settings", __name__, url_prefix="/settings")
+
+
+def admin_required(f):
+    """Decorator to require admin user for a route."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
 
 SERVICES = [
     # Free sources (no API key needed)
@@ -27,13 +39,23 @@ SERVICES = [
 @settings_bp.route("/")
 @login_required
 def index():
+    # Non-admins can only see password change form
+    if not current_user.is_admin:
+        return render_template("settings/index.html", services=[], configs={})
+
+    # Admins can see all API configurations
     configs = {c.service_name: c for c in get_all_configs()}
     return render_template("settings/index.html", services=SERVICES, configs=configs)
 
 
 @settings_bp.route("/save", methods=["POST"])
 @login_required
+@admin_required
 def save():
+    """Save API configuration. Admin-only to prevent key/URL tampering.
+
+    Validates base URLs to prevent SSRF attacks. Encrypts API keys before storage.
+    """
     service_name = request.form.get("service_name", "")
     api_key = request.form.get("api_key", "").strip()
     base_url = request.form.get("base_url", "").strip()
@@ -44,6 +66,21 @@ def save():
         flash("Service name is required.", "error")
         return redirect(url_for("settings.index"))
 
+    # Validate base URL to prevent SSRF attacks
+    if base_url:
+        is_valid, error_msg = validate_base_url(base_url)
+        if not is_valid:
+            flash(f"Invalid base URL: {error_msg}", "error")
+            return redirect(url_for("settings.index"))
+
+        # Warn if HTTP is used with API key (should be HTTPS)
+        if base_url.startswith("http://") and api_key:
+            flash(
+                f"{service_name} uses HTTP (not HTTPS) — API key is exposed in transit. "
+                "Consider using HTTPS instead.",
+                "warning"
+            )
+
     create_or_update_config(
         service_name=service_name,
         api_key=api_key,
@@ -51,7 +88,7 @@ def save():
         is_enabled=is_enabled,
         notes=notes,
     )
-    flash(f"{service_name} settings saved.", "success")
+    flash(f"{service_name} settings saved by admin.", "success")
     return redirect(url_for("settings.index"))
 
 
