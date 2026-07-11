@@ -10,3 +10,13 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Sensitive files and user uploads
+.api_keys_key
+.fernet_key
+app/uploads/
+uploaded_files/
+*.key
+*.pem
+*.p12
+*.pfx
