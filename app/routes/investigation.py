@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from app.services import (
 )
 
 investigation_bp = Blueprint("investigation", __name__, url_prefix="/investigate")
+
+# Social usernames may only contain letters, digits, and . _ - (1–50 chars).
+# This blocks format-string/path-traversal payloads (e.g. "{username.__class__}"
+# or "../admin") from ever reaching the site URL templates in social_client.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,50}$")
 
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"}
 ALLOWED_FILE_EXTENSIONS = {
@@ -76,7 +82,7 @@ def _investigation_before():
 @investigation_bp.route("/")
 @login_required
 def index():
-    return render_template("investigation/index.html", recent=list_recent(20))
+    return render_template("investigation/index.html", recent=list_recent(20, user_id=current_user.id))
 
 
 # ── IP Lookup ─────────────────────────────────────────────────────────────────
@@ -224,6 +230,14 @@ def social():
             flash("Username is required.", "error")
             return render_template("investigation/social.html", cases=cases, result=None)
 
+        if not USERNAME_PATTERN.match(username):
+            flash(
+                "Invalid username — use only letters, numbers, dots, "
+                "underscores, and dashes (max 50 characters).",
+                "error",
+            )
+            return render_template("investigation/social.html", cases=cases, result=None), 400
+
         result = social_client.search_username(username)
 
         confirmed = result.get("confirmed_count", 0)
@@ -358,17 +372,33 @@ def image():
         flash("Unsupported file type.", "error")
         return redirect(url_for("investigation.file_forensics"))
 
-    filename = secure_filename(file.filename)
+    original_filename = secure_filename(file.filename)
+    if not original_filename:
+        flash("Invalid filename — rename the file and try again.", "error")
+        return redirect(url_for("investigation.file_forensics"))
+
+    # Generate UUID-based filename to avoid collisions
+    ext = os.path.splitext(original_filename)[1].lower()
+    uuid_filename = f"{uuid.uuid4().hex}{ext}"
+
     upload_dir = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_dir, exist_ok=True)
-    filepath = Path(upload_dir) / filename
-    file.save(str(filepath))
+    filepath = Path(upload_dir) / uuid_filename
 
-    result = image_client.analyze_image(filepath)
-    find_or_update_recent(kind="image", query=filename, result_json=json.dumps(result),
-                          user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
-    flash(f"Image analysis complete for {filename}.", "success")
-    return render_template("investigation/image.html", cases=cases, result=result)
+    try:
+        file.save(str(filepath))
+        result = image_client.analyze_image(filepath)
+        # Store original filename (not UUID) in investigation record for user display
+        find_or_update_recent(kind="image", query=original_filename, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
+        flash(f"Image analysis complete for {original_filename}.", "success")
+        return render_template("investigation/image.html", cases=cases, result=result)
+    finally:
+        # Always cleanup uploaded file after analysis completes
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
 # ── Crypto / Blockchain Address Lookup ────────────────────────────────────────

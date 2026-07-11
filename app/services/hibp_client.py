@@ -1,7 +1,10 @@
+import logging
 import httpx
 from typing import Optional, List, Dict
 from app.services.cache import cached
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 
 @cached(ttl=3600)
@@ -35,7 +38,14 @@ def check_breaches(email: str) -> Optional[List[Dict]]:
                 }
                 for b in breaches
             ]
+    except httpx.TimeoutException:
+        logger.error("HIBP breach check timed out")
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error("HIBP HTTP %s during breach check", e.response.status_code)
+        return None
     except Exception:
+        logger.exception("HIBP breach check failed")
         return None
 
 
@@ -55,5 +65,9 @@ def check_password_pwned(password: str) -> int:
                 if len(parts) == 2 and parts[0].upper() == suffix:
                     return int(parts[1])
             return 0
+    except httpx.TimeoutException:
+        logger.error("pwnedpasswords range check timed out")
+        return -1
     except Exception:
+        logger.exception("pwnedpasswords range check failed")
         return -1

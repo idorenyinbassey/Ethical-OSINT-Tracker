@@ -1,8 +1,11 @@
 """Subdomain and DNS scanner — uses crt.sh (Certificate Transparency) + DNS resolution wordlist."""
+import logging
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.services.cache import cached
 from app.utils.proxy_config import get_http_client
+
+logger = logging.getLogger(__name__)
 
 _WORDLIST = [
     "www", "mail", "ftp", "smtp", "pop", "imap", "webmail", "cpanel", "whm",
@@ -37,7 +40,7 @@ def _crt_sh_subdomains(domain: str) -> list[str]:
                             if sub and "." not in sub:
                                 subs.add(sub)
     except Exception:
-        pass
+        logger.exception("crt.sh subdomain lookup failed for %s", domain)
     return list(subs)
 
 

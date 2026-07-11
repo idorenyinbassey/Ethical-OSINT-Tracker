@@ -14,6 +14,23 @@ from app.services import report_exporter
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 
 
+def _get_case_owned_by_user(case_id: int) -> dict | None:
+    """Fetch a case and enforce that the current user owns it.
+
+    Returns {"case": case, "investigations": [...]} on success. Returns None
+    only when the case does not exist; when the case exists but is owned by
+    another user this raises a 403 via abort() and does not return. Callers
+    therefore only need to handle the not-found (None) case.
+    """
+    case = get_case(case_id)
+    if not case:
+        return None
+    if case.owner_user_id != current_user.id:
+        abort(403)
+    investigations = list_by_case(case_id)
+    return {"case": case, "investigations": investigations}
+
+
 @cases_bp.route("/")
 @login_required
 def index():
@@ -54,6 +71,10 @@ def detail(case_id):
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
 
+    # Enforce user ownership - IDOR prevention
+    if case.owner_user_id != current_user.id:
+        abort(403)
+
     if request.method == "POST":
         body = request.form.get("body", "").strip()
         if body:
@@ -86,7 +107,8 @@ def edit(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    if case.owner_user_id and case.owner_user_id != current_user.id:
+    # Enforce user ownership - IDOR prevention
+    if case.owner_user_id != current_user.id:
         abort(403)
 
     if request.method == "POST":
@@ -117,9 +139,13 @@ def edit(case_id):
 @login_required
 def delete(case_id):
     case = get_case(case_id)
-    if case and case.owner_user_id and case.owner_user_id != current_user.id:
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    # Enforce user ownership - IDOR prevention
+    if case.owner_user_id != current_user.id:
         abort(403)
-    title = case.title if case else str(case_id)
+    title = case.title
     delete_case(case_id)
     from app.utils.audit import log as audit_log
     audit_log("case.delete", entity_type="case", entity_id=case_id, detail=title)
@@ -130,11 +156,12 @@ def delete(case_id):
 @cases_bp.route("/<int:case_id>/export/pdf")
 @login_required
 def export_pdf(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     try:
         pdf_bytes = report_exporter.export_pdf(case, investigations)
     except RuntimeError as e:
@@ -151,11 +178,12 @@ def export_pdf(case_id):
 @cases_bp.route("/<int:case_id>/export/docx")
 @login_required
 def export_docx(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     try:
         docx_bytes = report_exporter.export_docx(case, investigations)
     except Exception as e:
@@ -174,11 +202,12 @@ def export_docx(case_id):
 @cases_bp.route("/<int:case_id>/export/html")
 @login_required
 def export_html(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     html_str = report_exporter.export_html(case, investigations)
     safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
     filename = f"osint-report-{safe_title or case_id}.html"
@@ -189,11 +218,12 @@ def export_html(case_id):
 @cases_bp.route("/<int:case_id>/export/csv")
 @login_required
 def export_csv(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     csv_bytes = report_exporter.export_csv(case, investigations)
     safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
     filename = f"osint-report-{safe_title or case_id}.csv"
@@ -204,11 +234,12 @@ def export_csv(case_id):
 @cases_bp.route("/<int:case_id>/export/xlsx")
 @login_required
 def export_xlsx(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     try:
         xlsx_bytes = report_exporter.export_xlsx(case, investigations)
     except Exception as e:
@@ -224,11 +255,12 @@ def export_xlsx(case_id):
 @cases_bp.route("/<int:case_id>/export/stix")
 @login_required
 def export_stix(case_id):
-    case = get_case(case_id)
-    if not case:
+    result = _get_case_owned_by_user(case_id)
+    if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    investigations = list_by_case(case_id)
+    case = result["case"]
+    investigations = result["investigations"]
     from app.services.stix_export import export_stix as _stix
     from app.utils.audit import log as audit_log
     stix_bytes = _stix(case, investigations)
@@ -290,13 +322,18 @@ def export_start(case_id):
     if not case:
         from flask import jsonify
         return jsonify({"error": "Not found"}), 404
+    # Enforce user ownership - IDOR prevention
+    if case.owner_user_id != current_user.id:
+        from flask import jsonify
+        return jsonify({"error": "Forbidden"}), 403
     fmt = request.form.get("fmt", "pdf")
     if fmt not in {"pdf", "docx", "html", "xlsx", "csv"}:
         fmt = "pdf"
     investigations = list_by_case(case_id)
     job_id = str(_uuid.uuid4())
     _report_jobs[job_id] = {"status": "running", "fmt": fmt, "path": None,
-                             "filename": None, "mimetype": None, "error": None}
+                             "filename": None, "mimetype": None, "error": None,
+                             "user_id": current_user.id}
     t = threading.Thread(target=_run_report_job, args=(job_id, fmt, case, investigations), daemon=True)
     t.start()
     from flask import jsonify
@@ -310,6 +347,9 @@ def export_status(job_id):
     job = _report_jobs.get(job_id)
     if not job:
         return jsonify({"status": "not_found"}), 404
+    # Enforce user ownership of job - IDOR prevention
+    if job.get("user_id") != current_user.id:
+        return jsonify({"status": "forbidden"}), 403
     return jsonify({"status": job["status"], "error": job.get("error")})
 
 
@@ -321,6 +361,9 @@ def export_download(job_id):
     if not job or job["status"] != "done":
         flash("Report not ready or not found.", "error")
         return redirect(url_for("cases.index"))
+    # Enforce user ownership of job - IDOR prevention
+    if job.get("user_id") != current_user.id:
+        abort(403)
     path = job["path"]
     resp = send_file(path, mimetype=job["mimetype"],
                      as_attachment=True, download_name=job["filename"])
