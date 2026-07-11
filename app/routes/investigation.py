@@ -358,17 +358,33 @@ def image():
         flash("Unsupported file type.", "error")
         return redirect(url_for("investigation.file_forensics"))
 
-    filename = secure_filename(file.filename)
+    original_filename = secure_filename(file.filename)
+    if not original_filename:
+        flash("Invalid filename — rename the file and try again.", "error")
+        return redirect(url_for("investigation.file_forensics"))
+
+    # Generate UUID-based filename to avoid collisions
+    ext = os.path.splitext(original_filename)[1].lower()
+    uuid_filename = f"{uuid.uuid4().hex}{ext}"
+
     upload_dir = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_dir, exist_ok=True)
-    filepath = Path(upload_dir) / filename
-    file.save(str(filepath))
+    filepath = Path(upload_dir) / uuid_filename
 
-    result = image_client.analyze_image(filepath)
-    find_or_update_recent(kind="image", query=filename, result_json=json.dumps(result),
-                          user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
-    flash(f"Image analysis complete for {filename}.", "success")
-    return render_template("investigation/image.html", cases=cases, result=result)
+    try:
+        file.save(str(filepath))
+        result = image_client.analyze_image(filepath)
+        # Store original filename (not UUID) in investigation record for user display
+        find_or_update_recent(kind="image", query=original_filename, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
+        flash(f"Image analysis complete for {original_filename}.", "success")
+        return render_template("investigation/image.html", cases=cases, result=result)
+    finally:
+        # Always cleanup uploaded file after analysis completes
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
 # ── Crypto / Blockchain Address Lookup ────────────────────────────────────────
