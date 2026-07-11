@@ -34,9 +34,16 @@ pip install -r requirements.txt
 
 ## 4. Database Initialisation
 
+The admin password comes from `ADMIN_PASSWORD` (min 8 chars); there is no
+default. Username is always `admin`.
+
 ```bash
-python reset_admin.py  # creates tables + demo admin (admin/changeme)
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py  # creates tables + admin
 ```
+
+If `cryptography` won't import or the scheduler reports a timezone error, see
+[TERMUX_INSTALL.md](./TERMUX_INSTALL.md) (install `python-cryptography` and
+`tzdata`).
 
 ## 5. Running the App
 

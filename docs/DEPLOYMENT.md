@@ -25,12 +25,19 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 COPY . .
 
-RUN python reset_admin.py
+# Do NOT initialise the admin at build time — it needs the ADMIN_PASSWORD secret
+# and a persistent database. Run it once at deploy time instead, e.g.:
+#   docker compose run --rm -e ADMIN_PASSWORD='...' app python reset_admin.py
 
 EXPOSE 3000
 
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:3000", "run:app"]
 ```
+
+> Provide `ADMIN_PASSWORD` (first run only), `SECRET_KEY`, and
+> `API_KEYS_FERNET_KEY` via the container environment / secrets — never bake them
+> into the image. Keep `SECRET_KEY` and `API_KEYS_FERNET_KEY` stable across
+> deploys.
 
 ### docker-compose.yml
 
@@ -147,9 +154,15 @@ pip install gunicorn
 
 ```bash
 export DB_URL=mysql+pymysql://osint_user:password@localhost/osint_tracker
-export SECRET_KEY=your-long-random-secret
-python reset_admin.py
+export SECRET_KEY=your-long-random-secret          # keep this stable across restarts
+export API_KEYS_FERNET_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')  # generate once, keep stable
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py   # first run only; min 8 chars
 ```
+
+> `SECRET_KEY` and `API_KEYS_FERNET_KEY` must stay stable across restarts —
+> rotating the former logs everyone out, rotating the latter makes stored API
+> keys undecryptable. The systemd unit below should load them from an
+> `EnvironmentFile` so every restart uses the same values.
 
 ### 3. Create a systemd service
 
@@ -214,7 +227,8 @@ sudo certbot --nginx -d your-domain.com
 
 - [ ] Set a strong, unique `SECRET_KEY`
 - [ ] Switch `DB_URL` to MySQL or PostgreSQL
-- [ ] Change default `admin / changeme` password immediately
+- [ ] Set a strong `ADMIN_PASSWORD` at setup (no default exists); rotate it if exposed
+- [ ] Set stable `SECRET_KEY` and `API_KEYS_FERNET_KEY` (never bake into the image)
 - [ ] Enable HTTPS (TLS via Let's Encrypt)
 - [ ] Implement API key encryption in `app/utils/crypto.py`
 - [ ] Restrict `app/uploads/` directory in Nginx (no public listing)
