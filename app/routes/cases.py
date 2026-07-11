@@ -15,7 +15,13 @@ cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 
 
 def _get_case_owned_by_user(case_id: int) -> dict | None:
-    """Get case and verify current user owns it. Returns (case, investigations) or None."""
+    """Fetch a case and enforce that the current user owns it.
+
+    Returns {"case": case, "investigations": [...]} on success. Returns None
+    only when the case does not exist; when the case exists but is owned by
+    another user this raises a 403 via abort() and does not return. Callers
+    therefore only need to handle the not-found (None) case.
+    """
     case = get_case(case_id)
     if not case:
         return None
