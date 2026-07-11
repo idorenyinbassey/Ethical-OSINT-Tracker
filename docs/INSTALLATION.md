@@ -73,15 +73,20 @@ Key dependencies:
 
 ### 5. Initialise the Database
 
+The admin password is supplied via the `ADMIN_PASSWORD` environment variable
+(minimum 8 characters). There is **no default password** — the script exits if
+`ADMIN_PASSWORD` is not set.
+
 ```bash
-python reset_admin.py
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
-Creates the default admin account:
-- **Username**: `admin`
-- **Password**: `changeme`
+Creates (or resets, if it already exists) the admin account:
+- **Username**: `admin` (fixed)
+- **Password**: the value of `ADMIN_PASSWORD`
 
-> Change this password immediately via **Settings → Change Password** or the **Admin Panel** after first login.
+> To change the password later, re-run the same command — it resets the existing
+> `admin` account in place.
 
 For MySQL (production):
 
@@ -95,38 +100,49 @@ FLUSH PRIVILEGES;
 Then set the connection string before running:
 ```bash
 export DB_URL=mysql+pymysql://osint_user:secure_password@localhost/osint_tracker
-python reset_admin.py
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
-### 6. Configure Environment (Optional)
+### 6. Configure Environment
 
-Create a `.env` file in the project root:
+> **`.env` is not auto-loaded** (no `python-dotenv` integration yet). Put these
+> variables in the actual environment — export them, use your process manager,
+> or `source` a file. Generate `SECRET_KEY` and `API_KEYS_FERNET_KEY` **once**
+> and keep them stable (a changing `SECRET_KEY` logs everyone out; a changing
+> `API_KEYS_FERNET_KEY` makes stored API keys undecryptable).
 
-```env
-# Database — defaults to SQLite if not set
-DB_URL=sqlite:///./dev.db
-
-# Flask session signing key — set a long random string in production
-SECRET_KEY=change-me-to-something-long-and-random
-```
-
-Load it before starting:
 ```bash
-export $(cat .env | xargs)
+# Generate stable keys once and store them in a file you source (do not commit):
+cat > secrets.env <<'EOF'
+export SECRET_KEY="<paste a fixed random value, e.g. python -c 'import secrets;print(secrets.token_hex(32))'>"
+export API_KEYS_FERNET_KEY="<paste: python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())'>"
+# export DB_URL="sqlite:///./dev.db"   # optional; this is the default
+EOF
+
+source secrets.env
 ```
+
+See the README's Environment Variables table for the full list
+(`REGISTRATION_ENABLED`, `RETENTION_DAYS`, `CACHE_MAX_SIZE`, `FLASK_DEV`,
+`FLASK_DEBUG`, …).
 
 ### 7. Run the Application
 
-**Development**
-```bash
-python run.py
-```
-
-**Using the convenience script**
+**Production (default)** — `start.sh` launches gunicorn and, on a brand-new
+database, creates the admin (so `ADMIN_PASSWORD` is required on first run):
 ```bash
 chmod +x start.sh
-./start.sh
+source secrets.env
+ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
+
+**Development server** — set `FLASK_DEV=1` (debug stays off unless `FLASK_DEBUG=1`):
+```bash
+source secrets.env
+FLASK_DEV=1 python run.py
+```
+
+Open http://localhost:3000 and log in as `admin`.
 
 **Production (gunicorn)**
 ```bash
@@ -182,11 +198,32 @@ alembic upgrade head
 lsof -ti:3000 | xargs kill -9
 ```
 
-**Database reset**
+**"Invalid username or password" / forgot the admin password**
+The username is always `admin`. Reset the password (works whether or not the
+database exists):
+```bash
+ADMIN_PASSWORD='new-strong-password' python reset_admin.py
+# or: ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
+```
+Note: `./start.sh` without `--reset-admin` only creates the admin when `dev.db`
+does not already exist.
+
+**Getting logged out after every restart**
+Set a fixed `SECRET_KEY` in the environment — the random per-start fallback
+invalidates sessions on each restart.
+
+**Database reset (wipes all data)**
 ```bash
 rm dev.db
-python reset_admin.py
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
+
+**Scheduler fails to start: `No time zone found with key ...`**
+Common on Termux/minimal systems missing the IANA tz database:
+```bash
+pip install tzdata
+```
+Non-fatal, but the watchlist rescan and retention purge won't run until fixed.
 
 **APScheduler not installed (watchlist rescan won't run)**
 ```bash

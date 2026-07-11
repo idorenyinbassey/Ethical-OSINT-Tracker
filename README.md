@@ -139,38 +139,83 @@ pip install -r requirements.txt
 
 ### 4. Initialise the database & create admin
 
+The admin password is **not** hardcoded — you must supply it via the
+`ADMIN_PASSWORD` environment variable (minimum 8 characters). The script fails
+loudly if it is not set.
+
 ```bash
-python reset_admin.py
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
-Creates:
-- **Username**: `admin`
-- **Password**: `changeme`
+Creates (or, if it already exists, resets the password of):
+- **Username**: `admin` (fixed)
+- **Password**: the value you passed in `ADMIN_PASSWORD`
 
-> Change this password immediately after first login via **Settings → Change Password** or via the **Admin panel**.
+> The username is always `admin`. To change the password later, re-run the same
+> command (it resets the existing account in place) — see
+> [Resetting the admin password](#resetting-the-admin-password).
 
 ### 5. Run
 
+**Production (default)** — `start.sh` runs gunicorn and, on a brand-new
+database, also creates the admin (so `ADMIN_PASSWORD` is required on first run):
+
 ```bash
-python run.py
+ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+**Development server** (Werkzeug, debug off unless enabled) — set `FLASK_DEV=1`:
+
+```bash
+FLASK_DEV=1 python run.py         # debug stays OFF
+FLASK_DEV=1 FLASK_DEBUG=1 python run.py   # debug ON (never in production)
+```
+
+Open [http://localhost:3000](http://localhost:3000) and log in as `admin`.
+
+> **Note:** `start.sh` only auto-creates the admin when the database file does
+> **not** yet exist. If `dev.db` is already present, admin creation is skipped —
+> use `./start.sh --reset-admin` (see below) to (re)set the password.
 
 ---
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `DB_URL` | `sqlite:///./dev.db` | SQLAlchemy database URL |
-| `SECRET_KEY` | random (generated at startup) | Flask session signing key — set a fixed value in production |
+| Variable | Required? | Default | Description |
+|---|---|---|---|
+| `ADMIN_PASSWORD` | **Yes**, for `reset_admin.py` / first run | — | Admin password (min 8 chars). Never hardcoded; the script exits if unset. |
+| `SECRET_KEY` | Recommended | random per start | Flask session/CSRF signing key. **Set a fixed value** — if it changes between restarts, all sessions are invalidated and you get logged out. |
+| `API_KEYS_FERNET_KEY` | Recommended | — (warns) | Fernet key used to encrypt stored API keys at rest. If unset, keys are stored **unencrypted** and a warning is logged. Generate with the command below. |
+| `DB_URL` | No | `sqlite:///./dev.db` | SQLAlchemy database URL |
+| `REGISTRATION_ENABLED` | No | `False` | Set to `true` to allow public self-registration (rate-limited). Off by default. |
+| `RETENTION_DAYS` | No | `90` | Investigations older than this are purged by the daily job. Set `0` to disable. |
+| `CACHE_MAX_SIZE` | No | `1000` | Max entries in the in-memory service cache (LRU eviction). |
+| `FLASK_DEV` | No | `0` | `1` runs the dev server instead of gunicorn (via `start.sh`). |
+| `FLASK_DEBUG` | No | `0` | `1` enables debug mode (dev only — never in production). |
 
-Example `.env`:
+Generate a Fernet key:
 
-```env
-DB_URL=sqlite:///./dev.db
-SECRET_KEY=change-me-to-something-long-and-random
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+> **`.env` is not auto-loaded.** These variables must be present in the
+> environment (there is no `python-dotenv` integration yet). Export them in your
+> shell, your process manager (systemd/Docker), or a file you `source`. Generate
+> `SECRET_KEY` and `API_KEYS_FERNET_KEY` **once** and keep them stable —
+> rotating `SECRET_KEY` logs everyone out, and rotating `API_KEYS_FERNET_KEY`
+> makes previously-stored API keys undecryptable.
+
+Example: keep stable keys in a sourced file (do not commit it):
+
+```bash
+cat > secrets.env <<'EOF'
+export SECRET_KEY="<paste a fixed random 64-hex value>"
+export API_KEYS_FERNET_KEY="<paste a fixed generated Fernet key>"
+EOF
+
+source secrets.env
+ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
 ---
@@ -303,11 +348,13 @@ This tool is designed **exclusively** for:
 
 ### Security Best Practices
 
-1. Set a strong `SECRET_KEY` environment variable in production
-2. Change the default `admin / changeme` credentials immediately after first login
-3. Use HTTPS in production (reverse proxy via nginx or Caddy)
-4. Never commit `.env` or API key files to source control
-5. Rotate API keys if they may have been exposed
+1. Set a strong, **fixed** `SECRET_KEY` in production (never rely on the random per-start fallback)
+2. Set `API_KEYS_FERNET_KEY` so stored API keys are encrypted at rest
+3. Choose a strong `ADMIN_PASSWORD` (min 8 chars) at setup; there is no default password
+4. Keep `REGISTRATION_ENABLED=False` unless you intend to allow public sign-ups
+5. Use HTTPS in production (reverse proxy via nginx or Caddy)
+6. Never commit `.env`, `secrets.env`, or API key files to source control
+7. Rotate API keys (and `API_KEYS_FERNET_KEY`) if they may have been exposed
 
 ---
 
@@ -318,21 +365,52 @@ This tool is designed **exclusively** for:
 lsof -ti:3000 | xargs kill -9
 ```
 
-**Database reset**
+<a id="resetting-the-admin-password"></a>
+**"Invalid username or password" / forgot the admin password**
+
+The username is always `admin`. Reset its password (works whether or not the
+database already exists):
+```bash
+ADMIN_PASSWORD='new-strong-password' python reset_admin.py
+# or, via the startup script:
+ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
+```
+A successful reset prints `✅ Admin password reset successfully / Username: admin`.
+Note that `./start.sh` (without `--reset-admin`) only creates the admin when
+`dev.db` does **not** already exist, so on an existing database you must use
+`--reset-admin`. Also confirm the password is exactly what you typed (no
+surrounding quotes or trailing spaces).
+
+**Getting logged out after every restart**
+
+Your `SECRET_KEY` is changing between runs (the random fallback). Set a fixed
+`SECRET_KEY` in the environment and keep it stable.
+
+**Database reset (wipes all data)**
 ```bash
 rm dev.db
-python reset_admin.py
+ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
 **IMEI lookup fails**
 - Ensure the base URL in Settings is `https://dash.imei.info/api`
 - The imei.info API requires a funded account balance (minimum $5) to process requests
 
+**Scheduler fails to start: `No time zone found with key ...`**
+
+Common on Termux/minimal systems that lack the IANA timezone database. Install
+the fallback data:
+```bash
+pip install tzdata
+```
+The scheduler failure is non-fatal (the app keeps running), but the watchlist
+auto-rescan and the data-retention purge job will not run until it is fixed.
+
 **Watchlist auto-rescan not running**
 ```bash
 pip install APScheduler>=3.10.0
 ```
-The scheduler starts automatically when the app starts. Logs appear as `APScheduler started — watchlist rescan every 6h`.
+The scheduler starts automatically when the app starts. Logs appear as `APScheduler started — watchlist rescan every 6h, retention purge daily`.
 
 ---
 
