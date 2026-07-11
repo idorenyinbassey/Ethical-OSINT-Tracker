@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 from ipaddress import ip_address
 
 
-def validate_base_url(url: str, allow_api_key: bool = True) -> tuple[bool, str]:
+def validate_base_url(url: str) -> tuple[bool, str]:
     """Validate base URL for API configuration.
 
     Rejects URLs pointing to private IP ranges (RFC 1918, loopback, link-local)
@@ -11,7 +11,6 @@ def validate_base_url(url: str, allow_api_key: bool = True) -> tuple[bool, str]:
 
     Args:
         url: URL string to validate
-        allow_api_key: If True, allows URLs without API keys
 
     Returns:
         (is_valid, error_message) tuple

@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from sqlmodel import select, func
+from sqlmodel import select, func, delete
 from datetime import datetime, timedelta
 from app.models.investigation import Investigation
 # Ensure user model is imported so SQLAlchemy knows about the referenced `user` table
@@ -98,7 +98,10 @@ def count_all(user_id: int | None = None) -> int:
 def aggregate_by_day(days: int = 7, user_id: int | None = None) -> Dict[datetime.date, int]:
     """Count investigations grouped by date for last N days, optionally per user."""
     with session_scope() as session:
-        cutoff = datetime.now() - timedelta(days=days)
+        # created_at is stored as naive UTC (Investigation model default is
+        # datetime.utcnow), so compare against UTC — not local now() — to avoid
+        # timezone-offset errors.
+        cutoff = datetime.utcnow() - timedelta(days=days)
         stmt = select(Investigation).where(Investigation.created_at >= cutoff)
         if user_id is not None:
             stmt = stmt.where(Investigation.user_id == user_id)
@@ -130,16 +133,14 @@ def purge_old_investigations(retention_days: int) -> int:
     """
     if retention_days is None or retention_days <= 0:
         return 0
+    # created_at is naive UTC (see Investigation model default).
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     with session_scope() as session:
-        stale = session.exec(
-            select(Investigation).where(Investigation.created_at < cutoff)
-        ).all()
-        count = 0
-        for inv in stale:
-            session.delete(inv)
-            count += 1
-        return count
+        # Single bulk DELETE rather than loading and deleting row-by-row.
+        result = session.exec(
+            delete(Investigation).where(Investigation.created_at < cutoff)
+        )
+        return result.rowcount or 0
 
 
 def list_by_case(case_id: int) -> List[Investigation]:

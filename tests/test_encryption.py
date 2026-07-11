@@ -1,4 +1,8 @@
-"""API key encryption round-trip (Issue #5)."""
+"""API key encryption round-trip and failure modes (Issue #5)."""
+import pytest
+from cryptography.fernet import Fernet
+
+from app.utils import crypto
 from app.utils.crypto import encrypt_api_key, decrypt_api_key
 
 
@@ -18,6 +22,28 @@ def test_ciphertext_is_not_readable():
 def test_empty_values_passthrough():
     assert encrypt_api_key("") == ""
     assert decrypt_api_key("") == ""
+
+
+def test_missing_key_raises_runtime_error(monkeypatch):
+    monkeypatch.delenv("API_KEYS_FERNET_KEY", raising=False)
+    with pytest.raises(RuntimeError):
+        encrypt_api_key("some-value")
+    with pytest.raises(RuntimeError):
+        decrypt_api_key("some-ciphertext")
+
+
+def test_wrong_key_fails_to_decrypt(monkeypatch):
+    ciphertext = encrypt_api_key("rotate-me")
+    # Simulate key rotation: decrypt under a different Fernet key.
+    other_key = Fernet.generate_key()
+    monkeypatch.setattr(crypto, "_get_fernet_key", lambda: other_key)
+    with pytest.raises(RuntimeError):
+        decrypt_api_key(ciphertext)
+
+
+def test_malformed_ciphertext_raises_runtime_error():
+    with pytest.raises(RuntimeError):
+        decrypt_api_key("this-is-not-valid-fernet-token")
 
 
 def test_config_roundtrip_through_repository(app):
