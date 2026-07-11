@@ -78,7 +78,10 @@ def _purge_retention(app):
 def start_scheduler(app):
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
-        scheduler = BackgroundScheduler(daemon=True)
+        # Pin to UTC so the scheduler does not depend on resolving the host's
+        # local timezone via the IANA tz database, which is often missing on
+        # minimal systems (e.g. Termux/Android — "No time zone found with key ...").
+        scheduler = BackgroundScheduler(daemon=True, timezone=datetime.timezone.utc)
         scheduler.add_job(_rescan_all, "interval", hours=6, args=[app],
                           id="watchlist_rescan", replace_existing=True)
         # Enforce the PII data-retention policy once a day.

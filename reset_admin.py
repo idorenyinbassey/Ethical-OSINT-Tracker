@@ -2,6 +2,15 @@
 """Reset admin user password - requires ADMIN_PASSWORD environment variable"""
 import sys
 import os
+
+# Load variables from a .env file if present (optional dependency), so
+# ADMIN_PASSWORD / DB_URL can be provided there rather than only via export.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from argon2 import PasswordHasher
 from app.db import init_db, get_session
 from app.models.user import User
