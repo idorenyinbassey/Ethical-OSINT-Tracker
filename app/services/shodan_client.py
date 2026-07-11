@@ -1,7 +1,10 @@
+import logging
 import httpx
 from typing import Optional, Dict
 from app.services.cache import cached
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 
 @cached(ttl=3600)
@@ -50,5 +53,12 @@ def fetch_shodan(ip: str) -> Optional[Dict]:
                 "hostnames": data.get("hostnames", []),
                 "tags": data.get("tags", []),
             }
+    except httpx.TimeoutException:
+        logger.error("Shodan fetch timed out for %s", ip)
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error("Shodan HTTP %s for %s", e.response.status_code, ip)
+        return None
     except Exception:
+        logger.exception("Shodan fetch failed for %s", ip)
         return None

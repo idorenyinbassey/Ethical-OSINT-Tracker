@@ -1,7 +1,10 @@
+import logging
 import httpx
 from typing import Optional, Dict
 from app.services.cache import cached
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 
 @cached(ttl=3600)
@@ -32,5 +35,12 @@ def verify_email(email: str) -> Optional[Dict]:
                 "accept_all": data.get("accept_all", False),
                 "score": data.get("score", 0),
             }
+    except httpx.TimeoutException:
+        logger.error("Hunter.io verify timed out for %s", email)
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error("Hunter.io HTTP %s for %s", e.response.status_code, email)
+        return None
     except Exception:
+        logger.exception("Hunter.io verify failed for %s", email)
         return None
