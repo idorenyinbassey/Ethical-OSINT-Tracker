@@ -11,6 +11,10 @@ gunicorn>=21.0.0
 
 # ── Background scheduler ──────────────────────────────────────────────────────
 APScheduler>=3.10.0     # Watchlist auto-rescan every 6h
+tzdata                  # IANA timezone DB fallback (Termux/minimal systems lack it)
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0    # Load environment variables from a .env file
 
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlmodel>=0.0.21
