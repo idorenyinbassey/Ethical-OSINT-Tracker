@@ -1,12 +1,19 @@
 """Dark web monitoring via AHMIA.fi — indexes .onion hidden services."""
+import logging
 import re
 import httpx
 from app.services.cache import cached
 
+logger = logging.getLogger(__name__)
+
 
 @cached(ttl=1800)
 def search_ahmia(query: str) -> dict:
-    """Search AHMIA.fi for .onion content. Returns up to 20 results."""
+    """Search AHMIA.fi for .onion content. Returns up to 20 results.
+
+    On failure returns a structured dict with a generic `error`/`error_type`;
+    the raw exception is logged server-side only (never surfaced to the browser).
+    """
     url = "https://ahmia.fi/search/"
     try:
         with httpx.Client(timeout=20, follow_redirects=True) as client:
@@ -15,9 +22,17 @@ def search_ahmia(query: str) -> dict:
             r.raise_for_status()
             return _parse_ahmia(r.text, query)
     except httpx.TimeoutException:
-        return {"query": query, "results": [], "error": "AHMIA request timed out. Try again."}
-    except Exception as exc:
-        return {"query": query, "results": [], "error": str(exc)}
+        logger.error("AHMIA search timed out for %r", query)
+        return {"query": query, "results": [], "error_type": "timeout",
+                "error": "AHMIA request timed out. Try again."}
+    except httpx.HTTPStatusError as e:
+        logger.error("AHMIA HTTP %s for %r", e.response.status_code, query)
+        return {"query": query, "results": [], "error_type": "http_error",
+                "error": "AHMIA request failed. Try again."}
+    except Exception:
+        logger.exception("AHMIA search failed for %r", query)
+        return {"query": query, "results": [], "error_type": "unknown",
+                "error": "AHMIA search failed. Try again."}
 
 
 def _parse_ahmia(html: str, query: str) -> dict:
