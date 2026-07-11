@@ -10,7 +10,20 @@ def hash_identifier(value: str) -> str:
 
 
 def hash_if_sensitive(kind: str, query: str) -> str:
-    """Hash query if it's a sensitive resource type."""
+    """Hash query if it's a sensitive resource type.
+
+    ARCHITECTURAL DECISION (Issue #15): this helper is intentionally NOT called
+    from create_investigation()/find_or_update_recent(). Hashing is one-way, and
+    the investigation query is the human-readable label an investigator relies on
+    to know *which* email or phone number a result belongs to. Hashing it would
+    render the tool's own case views and dashboard unusable (queries would show
+    as opaque digests). Instead, cross-user PII exposure is addressed by scoping
+    all dashboard/recent queries to the current user, and indefinite retention is
+    addressed by the RETENTION_DAYS purge job (see scheduler._purge_retention).
+
+    The function is retained for callers that genuinely need a stable, anonymised
+    identifier (e.g. correlation without storing raw PII).
+    """
     sensitive_kinds = {"email", "phone"}
     if kind in sensitive_kinds:
         return hash_identifier(query)
