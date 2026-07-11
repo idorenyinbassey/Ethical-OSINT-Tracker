@@ -13,6 +13,18 @@ def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.from_object(Config)
 
+    # Check for required encryption key for API key storage
+    if not app.config.get("API_KEYS_FERNET_KEY"):
+        import warnings
+        warnings.warn(
+            "API_KEYS_FERNET_KEY not set — API keys will be stored unencrypted. "
+            "This is INSECURE for production. "
+            "Generate a key with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\" "
+            "and set API_KEYS_FERNET_KEY environment variable.",
+            stacklevel=2,
+        )
+
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
     login_manager.init_app(app)
