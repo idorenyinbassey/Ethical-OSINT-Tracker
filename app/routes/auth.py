@@ -4,6 +4,8 @@ from flask_login import login_user, logout_user, login_required, current_user
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from app.repositories.user_repository import get_by_username, create_user
+from app.utils.rate_limiter import check_rate_limit
+from app.config import Config
 
 auth_bp = Blueprint("auth", __name__)
 ph = PasswordHasher()
@@ -15,6 +17,20 @@ def login():
         return redirect(url_for("dashboard.index"))
 
     if request.method == "POST":
+        # Rate limit login attempts per IP: 10 attempts per 60 seconds
+        ip_address = request.remote_addr or "unknown"
+        allowed, remaining = check_rate_limit(
+            key=f"login:{ip_address}",
+            max_requests=10,
+            window_seconds=60
+        )
+        if not allowed:
+            flash(
+                f"Too many login attempts. Please try again in a moment.",
+                "error"
+            )
+            return render_template("auth/login.html"), 429
+
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
@@ -51,6 +67,28 @@ def register():
         return redirect(url_for("dashboard.index"))
 
     if request.method == "POST":
+        # Check if registration is enabled
+        if not Config.REGISTRATION_ENABLED:
+            flash(
+                "Registration is currently disabled. Please contact an administrator.",
+                "error"
+            )
+            return render_template("auth/register.html"), 403
+
+        # Rate limit registration per IP: 3 registrations per hour
+        ip_address = request.remote_addr or "unknown"
+        allowed, remaining = check_rate_limit(
+            key=f"register:{ip_address}",
+            max_requests=3,
+            window_seconds=3600
+        )
+        if not allowed:
+            flash(
+                "Too many registration attempts. Please try again later.",
+                "error"
+            )
+            return render_template("auth/register.html"), 429
+
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
@@ -76,6 +114,12 @@ def register():
         login_user(user)
         flash("Account created successfully.", "success")
         return redirect(url_for("dashboard.index"))
+
+    if not Config.REGISTRATION_ENABLED:
+        flash(
+            "Registration is currently disabled. Please contact an administrator.",
+            "error"
+        )
 
     return render_template("auth/register.html")
 
