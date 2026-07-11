@@ -46,6 +46,14 @@ def test_malformed_ciphertext_raises_runtime_error():
         decrypt_api_key("this-is-not-valid-fernet-token")
 
 
+def test_passthrough_when_cryptography_unavailable(monkeypatch):
+    # Simulate a platform where the cryptography Rust binding won't load: the
+    # app must not crash — it stores/returns the value unencrypted.
+    monkeypatch.setattr(crypto, "_CRYPTOGRAPHY_AVAILABLE", False)
+    assert crypto.encrypt_api_key("plain-key") == "plain-key"
+    assert crypto.decrypt_api_key("plain-key") == "plain-key"
+
+
 def test_config_roundtrip_through_repository(app):
     from app.repositories.api_config_repository import (
         create_or_update_config, get_by_service, delete_config,

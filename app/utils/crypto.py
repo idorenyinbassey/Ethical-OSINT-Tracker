@@ -1,7 +1,29 @@
 """Cryptographic helpers for sensitive data: API key encryption and identifier hashing."""
 import hashlib
+import logging
 import os
-from cryptography.fernet import Fernet, InvalidToken
+
+logger = logging.getLogger(__name__)
+
+# cryptography ships a compiled Rust extension that can fail to load on some
+# platforms (e.g. an ABI-mismatched wheel on Termux/Android). Import defensively
+# so the app still boots — it degrades to storing API keys unencrypted with a
+# loud warning rather than hard-crashing at startup.
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+    _CRYPTOGRAPHY_AVAILABLE = True
+except Exception as _crypto_import_error:  # ImportError or dlopen/ABI failure
+    Fernet = None
+
+    class InvalidToken(Exception):  # placeholder so callers' except clauses still work
+        pass
+
+    _CRYPTOGRAPHY_AVAILABLE = False
+    logger.warning(
+        "cryptography could not be imported (%s) — API keys will be stored "
+        "UNENCRYPTED. Install a working 'cryptography' build to enable encryption "
+        "at rest.", _crypto_import_error,
+    )
 
 
 def hash_identifier(value: str) -> str:
@@ -62,6 +84,10 @@ def encrypt_api_key(plaintext: str) -> str:
     if not plaintext:
         return plaintext
 
+    if not _CRYPTOGRAPHY_AVAILABLE:
+        logger.warning("Storing API key UNENCRYPTED — cryptography library unavailable.")
+        return plaintext
+
     try:
         key = _get_fernet_key()
         cipher = Fernet(key)
@@ -86,6 +112,10 @@ def decrypt_api_key(ciphertext: str) -> str:
         RuntimeError: If decryption fails (key mismatch, invalid token, etc.)
     """
     if not ciphertext:
+        return ciphertext
+
+    if not _CRYPTOGRAPHY_AVAILABLE:
+        # Nothing was encrypted, so return the stored value as-is.
         return ciphertext
 
     try:

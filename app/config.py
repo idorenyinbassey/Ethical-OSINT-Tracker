@@ -1,6 +1,13 @@
 import os
 import secrets
 
+# Load variables from a .env file if present (optional dependency).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class Config:
     _raw_key = os.getenv("SECRET_KEY", "")

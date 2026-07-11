@@ -10,6 +10,7 @@ __pycache__/
 .venv/
 venv/
 .env
+secrets.env
 
 # Sensitive files and user uploads
 .api_keys_key
