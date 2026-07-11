@@ -44,5 +44,12 @@ def validate_phone(phone: str) -> Optional[Dict]:
                 "line_type": data.get("line_type", ""),
                 "location": data.get("location", ""),
             }
+    except httpx.TimeoutException:
+        logger.error("NumVerify validation timed out")
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error("NumVerify HTTP %s during validation", e.response.status_code)
+        return None
     except Exception:
+        logger.exception("NumVerify validation failed")
         return None

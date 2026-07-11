@@ -3,10 +3,13 @@
 ip-api.com is used as HTTP fallback (free tier only supports HTTP).
 IPInfo.io is used as a secondary enrichment source when configured.
 """
+import logging
 import httpx
 from typing import Optional, Dict
 from app.services.cache import cached
 from app.repositories.api_config_repository import get_by_service
+
+logger = logging.getLogger(__name__)
 
 
 @cached(ttl=3600)
@@ -53,7 +56,11 @@ def _from_ipapi_co(ip: str) -> Optional[Dict]:
             "zip": d.get("postal", ""),
             "source": "ipapi.co",
         }
+    except httpx.TimeoutException:
+        logger.error("ipapi.co lookup timed out for %s", ip)
+        return None
     except Exception:
+        logger.exception("ipapi.co lookup failed for %s", ip)
         return None
 
 
@@ -83,7 +90,11 @@ def _from_ip_api(ip: str) -> Optional[Dict]:
             "zip": d.get("zip", ""),
             "source": "ip-api.com",
         }
+    except httpx.TimeoutException:
+        logger.error("ip-api.com lookup timed out for %s", ip)
+        return None
     except Exception:
+        logger.exception("ip-api.com lookup failed for %s", ip)
         return None
 
 
@@ -123,5 +134,9 @@ def _from_ipinfo(ip: str) -> Optional[Dict]:
             "lon": lon,
             "source": "IPInfo.io",
         }
+    except httpx.TimeoutException:
+        logger.error("IPInfo.io lookup timed out for %s", ip)
+        return None
     except Exception:
+        logger.exception("IPInfo.io lookup failed for %s", ip)
         return None
