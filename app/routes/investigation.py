@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from app.services import (
 )
 
 investigation_bp = Blueprint("investigation", __name__, url_prefix="/investigate")
+
+# Social usernames may only contain letters, digits, and . _ - (1–50 chars).
+# This blocks format-string/path-traversal payloads (e.g. "{username.__class__}"
+# or "../admin") from ever reaching the site URL templates in social_client.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,50}$")
 
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"}
 ALLOWED_FILE_EXTENSIONS = {
@@ -223,6 +229,14 @@ def social():
         if not username:
             flash("Username is required.", "error")
             return render_template("investigation/social.html", cases=cases, result=None)
+
+        if not USERNAME_PATTERN.match(username):
+            flash(
+                "Invalid username — use only letters, numbers, dots, "
+                "underscores, and dashes (max 50 characters).",
+                "error",
+            )
+            return render_template("investigation/social.html", cases=cases, result=None), 400
 
         result = social_client.search_username(username)
 
