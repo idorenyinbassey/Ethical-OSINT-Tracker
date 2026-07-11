@@ -46,29 +46,43 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 If the key is not set the application logs a warning and falls back to storing
 keys unencrypted — **do not run production without this key set**.
 
-## Committed photos — git history remediation (Issue #9)
+## Git history remediation — completed (Issues #9 and secret leak)
 
-Three real photos were previously committed under `uploaded_files/`. They have
-been removed from the working tree and `uploaded_files/` is now in `.gitignore`,
-so they will not reappear in new commits. EXIF review found **no GPS
-coordinates**, but device make/model (OPPO A18, Toshiba webcam) and capture
-timestamps were exposed.
+Two categories of sensitive data were previously committed and have now been
+**purged from git history** via `git filter-repo` + force-push:
 
-**Deleting the files from the tree does not remove them from git history.**
-Because rewriting history changes every commit hash and requires a force-push,
-this step must be performed by a repository administrator on the default branch,
-after obtaining contributor consent:
+1. **Real photos** under `uploaded_files/` (Issue #9). EXIF review found **no GPS
+   coordinates**, but device make/model (OPPO A18, Toshiba webcam) and capture
+   timestamps were exposed.
+2. **A committed Fernet key** in `.api_keys_key` — a valid 44-byte encryption
+   key that was public in history from the initial commits until it was removed
+   from the tree in the Issue #5 fix.
+
+Both `uploaded_files/` and `.api_keys_key` are in `.gitignore` so they cannot
+reappear in new commits.
+
+### How the purge was performed
 
 ```bash
 # From a fresh clone (git-filter-repo removes the origin remote as a safety):
 pip install git-filter-repo
-git filter-repo --path uploaded_files/ --invert-paths
+git filter-repo --path uploaded_files/ --path .api_keys_key --invert-paths
 git remote add origin <repo-url>
-git push --force --all
-git push --force --tags
+git push --force origin main
 ```
 
-All collaborators must then re-clone, as history will have diverged. This was
-deliberately **not** automated in the fix branch because a history rewrite +
-force-push on the shared default branch is a destructive, consent-gated admin
-action.
+Verified afterward from a fresh clone: the leaked key is unreachable from every
+ref and no commit references either path.
+
+### Required follow-up (cannot be done by rewriting history alone)
+
+- **Rotate the secrets.** History rewriting does not un-leak data that was
+  public. Treat the leaked Fernet key and **any third-party API keys ever
+  stored** (Shodan, VirusTotal, HIBP, Hunter, NumVerify, etc.) as compromised:
+  regenerate them at the providers and set a fresh `API_KEYS_FERNET_KEY`.
+- **Trigger GitHub garbage collection.** GitHub retains unreachable objects for
+  a period, so old commit SHAs may remain accessible via direct URL until GC.
+  A repository admin should contact GitHub Support to request removal of
+  unreachable objects.
+- **All collaborators must re-clone.** History has diverged; a `git pull` on an
+  old clone would reintroduce the removed objects. Delete and re-clone instead.
