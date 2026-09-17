@@ -8,6 +8,7 @@
 
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
     <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label class="block text-sm text-gray-400 mb-1">Title *</label>
         <input type="text" name="title" required value="{{ case.title }}"

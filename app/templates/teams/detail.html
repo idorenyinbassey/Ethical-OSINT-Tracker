@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ team.name }} – Teams – OSINT Tracker{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('teams.index') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-white text-sm mb-4 inline-block">← All Teams</a>
+<div class="flex items-center justify-between mb-2">
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ team.name }}</h1>
+  <span class="px-2 py-0.5 rounded text-xs bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+    your role: {{ my_role }}
+  </span>
+</div>
+{% if team.description %}
+<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ team.description }}</p>
+{% endif %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="mb-4 px-4 py-3 rounded-lg text-sm {% if cat == 'error' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300{% endif %}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if my_role in ('owner', 'admin') %}
+<div class="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+  <details class="group">
+    <summary class="text-sm font-semibold text-gray-900 dark:text-white cursor-pointer select-none list-none flex items-center gap-1">
+      <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      Add a member
+    </summary>
+    <form method="post" action="{{ url_for('teams.add_member', team_id=team.id) }}" class="mt-4 flex items-end gap-3 flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Username</label>
+        <input type="text" name="username" required
+               class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Role</label>
+        <select name="role" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="member">member</option>
+          <option value="analyst">analyst</option>
+          <option value="admin">admin</option>
+          <option value="owner">owner</option>
+        </select>
+      </div>
+      <button type="submit"
+              class="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
+        Add Member
+      </button>
+    </form>
+  </details>
+</div>
+{% endif %}
+
+<div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+  <div class="px-5 py-3 border-b border-gray-100 dark:border-gray-700">
+    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Members ({{ member_rows|length }})</h2>
+  </div>
+  <div class="divide-y divide-gray-100 dark:divide-gray-700">
+    {% for row in member_rows %}
+    {% set m = row.member %}
+    <div class="px-5 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-gray-900 dark:text-white text-sm">{{ row.username }}</span>
+        {% if m.user_id == current_user.id %}
+        <span class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">You</span>
+        {% endif %}
+        <span class="px-2 py-0.5 rounded text-xs
+          {% if m.role == 'owner' %}bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300
+          {% elif m.role == 'admin' %}bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300
+          {% elif m.role == 'analyst' %}bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-300
+          {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300{% endif %}">
+          {{ m.role }}
+        </span>
+      </div>
+
+      {% if my_role in ('owner', 'admin') and not (m.role == 'owner' and owner_count <= 1) %}
+      <div class="flex items-center gap-2">
+        <form method="post" action="{{ url_for('teams.change_role', team_id=team.id, user_id=m.user_id) }}" class="flex items-center gap-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="role" onchange="this.form.submit()"
+                  class="text-xs px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+            <option value="member" {% if m.role == 'member' %}selected{% endif %}>member</option>
+            <option value="analyst" {% if m.role == 'analyst' %}selected{% endif %}>analyst</option>
+            <option value="admin" {% if m.role == 'admin' %}selected{% endif %}>admin</option>
+            <option value="owner" {% if m.role == 'owner' %}selected{% endif %}>owner</option>
+          </select>
+        </form>
+        <form method="post" action="{{ url_for('teams.remove_member', team_id=team.id, user_id=m.user_id) }}"
+              onsubmit="return confirm('Remove {{ row.username }} from this team?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="text-xs bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 rounded-lg border border-red-800">Remove</button>
+        </form>
+      </div>
+      {% elif m.role == 'owner' and owner_count <= 1 %}
+      <span class="text-xs text-gray-400 italic">last owner — cannot remove/demote</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if my_role == 'owner' %}
+<div class="mt-6 bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-900 p-5">
+  <h2 class="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">Danger Zone</h2>
+  <form method="post" action="{{ url_for('teams.delete', team_id=team.id) }}"
+        onsubmit="return confirm('Delete team \'{{ team.name }}\'? This removes all members and cannot be undone. Cases shared with this team will no longer be team-accessible.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="text-xs bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 rounded-lg border border-red-800">Delete Team</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

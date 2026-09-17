@@ -19,10 +19,13 @@
       </span>
     </div>
     <div class="flex gap-2 flex-shrink-0">
+      {% if can_edit %}
       <a href="{{ url_for('cases.edit', case_id=case.id) }}"
          class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
         Edit
       </a>
+      {% endif %}
+      {% if can_delete %}
       <form method="post" action="{{ url_for('cases.delete', case_id=case.id) }}"
             onsubmit="return confirm('Delete this case and all linked data?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -31,6 +34,7 @@
           Delete
         </button>
       </form>
+      {% endif %}
     </div>
   </div>
 
@@ -48,6 +52,7 @@
     </div>
     {% endif %}
 
+    {% if can_edit %}
     {% if case.status != 'closed' %}
     <form method="post" action="{{ url_for('cases.close_case', case_id=case.id) }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -59,6 +64,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="bg-gray-700 hover:bg-green-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">Reopen</button>
     </form>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -108,6 +114,28 @@
         <div class="flex gap-4">
           <dt class="text-gray-500 dark:text-gray-400 w-28">Description</dt>
           <dd class="text-gray-700 dark:text-gray-200">{{ case.description }}</dd>
+        </div>
+        {% endif %}
+        {% if can_edit %}
+        <div class="flex gap-4 items-center">
+          <dt class="text-gray-500 dark:text-gray-400 w-28">Shared with</dt>
+          <dd>
+            <form method="post" action="{{ url_for('cases.share', case_id=case.id) }}" class="flex items-center gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="team_id" onchange="this.form.submit()"
+                      class="text-xs px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+                <option value="">-- Personal (not shared) --</option>
+                {% for team in my_teams %}
+                <option value="{{ team.id }}" {% if case.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </dd>
+        </div>
+        {% elif case.team_id %}
+        <div class="flex gap-4">
+          <dt class="text-gray-500 dark:text-gray-400 w-28">Shared</dt>
+          <dd class="text-gray-700 dark:text-gray-200 text-xs">Shared with a team</dd>
         </div>
         {% endif %}
       </dl>

@@ -42,6 +42,8 @@ def init_db():
         _add_column_if_missing(conn, "auditlog", "ip", "TEXT NOT NULL DEFAULT ''")
         # user: admin flag
         _add_column_if_missing(conn, "user", "is_admin", "INTEGER NOT NULL DEFAULT 0")
+        # case: optional team sharing (nullable — personal cases unaffected)
+        _add_column_if_missing(conn, "case", "team_id", "INTEGER")
 
 def get_session():
     return Session(engine)

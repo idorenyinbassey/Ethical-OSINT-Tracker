@@ -12,3 +12,7 @@ class Case(SQLModel, table=True):
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
     updated_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
     owner_user_id: Optional[int] = Field(default=None, index=True)
+    # Optional team the case is shared with (nullable — unshared/personal by
+    # default). Set via POST /cases/<id>/share. See app/utils/authz.py for
+    # the read/comment/export/edit/delete matrix per team role.
+    team_id: Optional[int] = Field(default=None, index=True)

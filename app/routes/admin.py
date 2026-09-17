@@ -1,5 +1,4 @@
-from functools import wraps
-from flask import Blueprint, render_template, request, flash, redirect, url_for, abort
+from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_required, current_user
 from argon2 import PasswordHasher
 from app.repositories.user_repository import (
@@ -7,18 +6,10 @@ from app.repositories.user_repository import (
     create_user, get_by_username,
 )
 from app.utils.audit import log as audit_log
+from app.utils.decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 ph = PasswordHasher()
-
-
-def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated
 
 
 @admin_bp.route("/users")

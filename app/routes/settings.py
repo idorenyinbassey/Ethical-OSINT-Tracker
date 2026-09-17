@@ -1,25 +1,15 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, abort
+from flask import Blueprint, render_template, redirect, url_for, request, flash
 from flask_login import login_required, current_user
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from app.repositories.api_config_repository import get_all_configs, create_or_update_config
 from app.repositories.user_repository import update_password, get_by_id
 from app.utils.validators import validate_base_url
-from functools import wraps
+from app.utils.decorators import admin_required
 
 ph = PasswordHasher()
 
 settings_bp = Blueprint("settings", __name__, url_prefix="/settings")
-
-
-def admin_required(f):
-    """Decorator to require admin user for a route."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated
 
 SERVICES = [
     # Free sources (no API key needed)

@@ -26,6 +26,7 @@ from app import create_app  # noqa: E402
 from app.db import init_db  # noqa: E402
 from app.repositories.user_repository import create_user, set_admin  # noqa: E402
 from app.repositories.case_repository import create_case  # noqa: E402
+from app.repositories.team_repository import create_team, add_team_member  # noqa: E402
 from app.utils import rate_limiter  # noqa: E402
 
 _ph = PasswordHasher()
@@ -86,6 +87,15 @@ def admin_user(app):
 def case_of_a(app, user_a):
     with app.app_context():
         return create_case("Case A", "owned by A", owner_user_id=user_a.id)
+
+
+@pytest.fixture()
+def team_a(app, user_a):
+    """A team owned by user_a, with user_a as its 'owner' member."""
+    with app.app_context():
+        team = create_team("Team A", "created for tests", owner_user_id=user_a.id)
+        add_team_member(team.id, user_a.id, role="owner")
+        return team
 
 
 @pytest.fixture()

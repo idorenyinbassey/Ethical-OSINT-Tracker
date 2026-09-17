@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Teams – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Teams</h1>
+<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Share cases with a team instead of keeping them personal. Team roles: owner, admin, analyst, member.</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="mb-4 px-4 py-3 rounded-lg text-sm {% if cat == 'error' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300{% endif %}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+  <details class="group">
+    <summary class="text-sm font-semibold text-gray-900 dark:text-white cursor-pointer select-none list-none flex items-center gap-1">
+      <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      Create a new team
+    </summary>
+    <form method="post" action="{{ url_for('teams.create') }}" class="mt-4 flex items-end gap-3 flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Team name</label>
+        <input type="text" name="name" required minlength="2"
+               class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Description (optional)</label>
+        <input type="text" name="description"
+               class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64">
+      </div>
+      <button type="submit"
+              class="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
+        Create Team
+      </button>
+    </form>
+    <p class="mt-3 text-xs text-gray-400">You'll be the team's owner.</p>
+  </details>
+</div>
+
+<div class="space-y-4">
+  {% for team in teams %}
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex items-center justify-between">
+    <div>
+      <a href="{{ url_for('teams.detail', team_id=team.id) }}" class="text-base font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
+        {{ team.name }}
+      </a>
+      {% if team.description %}
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ team.description }}</p>
+      {% endif %}
+      <p class="text-xs text-gray-400 mt-1">{{ member_counts.get(team.id, 0) }} member(s)</p>
+    </div>
+    <a href="{{ url_for('teams.detail', team_id=team.id) }}"
+       class="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg">
+      Manage →
+    </a>
+  </div>
+  {% else %}
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
+    <p class="text-gray-500 mb-2">You're not on any team yet.</p>
+    <p class="text-sm text-gray-400">Create one above to start sharing cases with other analysts.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

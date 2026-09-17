@@ -225,6 +225,13 @@
         </svg>
         Cases
       </a>
+      <a href="{{ url_for('teams.index') }}"
+         class="sidebar-link {% if 'teams.' in (request.endpoint or '') %}active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-4.13a4 4 0 100-8 4 4 0 000 8zm6 4v-1a4 4 0 00-3-3.87m-9.7 0A4 4 0 006 15v1"/>
+        </svg>
+        Teams
+      </a>
       {% if current_user.is_authenticated and current_user.is_admin %}
       <a href="{{ url_for('admin.users') }}"
          class="sidebar-link {% if 'admin.' in (request.endpoint or '') %}active{% endif %}">

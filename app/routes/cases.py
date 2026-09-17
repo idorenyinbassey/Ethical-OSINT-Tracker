@@ -5,27 +5,30 @@ import hashlib
 import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session
 from flask_login import login_required, current_user
-from app.repositories.case_repository import list_cases, get_case, create_case, update_case, delete_case
+from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
 from app.repositories.case_note_repository import add_note, list_notes, delete_note
 from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation
+from app.repositories.team_repository import list_teams_for_user
 from app.services import report_exporter
+from app.utils.authz import can_access_case
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 
 
-def _get_case_owned_by_user(case_id: int) -> dict | None:
-    """Fetch a case and enforce that the current user owns it.
+def _get_case_with_access(case_id: int, action: str = "read") -> dict | None:
+    """Fetch a case and enforce that the current user may perform `action`
+    on it (owner, or team-shared per app.utils.authz.can_access_case).
 
     Returns {"case": case, "investigations": [...]} on success. Returns None
-    only when the case does not exist; when the case exists but is owned by
-    another user this raises a 403 via abort() and does not return. Callers
+    only when the case does not exist; when the case exists but access is
+    denied this raises a 403 via abort() and does not return. Callers
     therefore only need to handle the not-found (None) case.
     """
     case = get_case(case_id)
     if not case:
         return None
-    if case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action=action):
         abort(403)
     investigations = list_by_case(case_id)
     return {"case": case, "investigations": investigations}
@@ -34,7 +37,7 @@ def _get_case_owned_by_user(case_id: int) -> dict | None:
 @cases_bp.route("/")
 @login_required
 def index():
-    cases = list_cases(owner_user_id=current_user.id)
+    cases = list_cases_for_user(current_user.id)
     threat_scores = {}
     for case in cases:
         invs = list_by_case(case.id)
@@ -71,17 +74,18 @@ def detail(case_id):
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
 
-    # Enforce user ownership - IDOR prevention
-    if case.owner_user_id != current_user.id:
-        abort(403)
-
     if request.method == "POST":
+        if not can_access_case(case, current_user, action="comment"):
+            abort(403)
         body = request.form.get("body", "").strip()
         if body:
             add_comment(case_id=case_id, user_id=current_user.id,
                         username=current_user.username, body=body)
             flash("Comment added.", "success")
         return redirect(url_for("cases.detail", case_id=case_id))
+
+    if not can_access_case(case, current_user, action="read"):
+        abort(403)
 
     session['active_case_id'] = case_id
     investigations = list_by_case(case_id)
@@ -94,10 +98,14 @@ def detail(case_id):
         if related_case:
             related_cases.append({"case": related_case, "shared": corr["shared"]})
     threat_score = _compute_threat_score(investigations)
+    can_edit = can_access_case(case, current_user, action="edit")
+    can_delete = can_access_case(case, current_user, action="delete")
+    my_teams = list_teams_for_user(current_user.id)
     return render_template("cases/detail.html", case=case,
                            investigations=investigations, comments=comments,
                            notes=notes, threat_score=threat_score,
-                           related_cases=related_cases)
+                           related_cases=related_cases, can_edit=can_edit,
+                           can_delete=can_delete, my_teams=my_teams)
 
 
 @cases_bp.route("/<int:case_id>/edit", methods=["GET", "POST"])
@@ -107,8 +115,7 @@ def edit(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    # Enforce user ownership - IDOR prevention
-    if case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="edit"):
         abort(403)
 
     if request.method == "POST":
@@ -142,8 +149,7 @@ def delete(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    # Enforce user ownership - IDOR prevention
-    if case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="delete"):
         abort(403)
     title = case.title
     delete_case(case_id)
@@ -156,7 +162,7 @@ def delete(case_id):
 @cases_bp.route("/<int:case_id>/export/pdf")
 @login_required
 def export_pdf(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -178,7 +184,7 @@ def export_pdf(case_id):
 @cases_bp.route("/<int:case_id>/export/docx")
 @login_required
 def export_docx(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -202,7 +208,7 @@ def export_docx(case_id):
 @cases_bp.route("/<int:case_id>/export/html")
 @login_required
 def export_html(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -218,7 +224,7 @@ def export_html(case_id):
 @cases_bp.route("/<int:case_id>/export/csv")
 @login_required
 def export_csv(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -234,7 +240,7 @@ def export_csv(case_id):
 @cases_bp.route("/<int:case_id>/export/xlsx")
 @login_required
 def export_xlsx(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -255,7 +261,7 @@ def export_xlsx(case_id):
 @cases_bp.route("/<int:case_id>/export/stix")
 @login_required
 def export_stix(case_id):
-    result = _get_case_owned_by_user(case_id)
+    result = _get_case_with_access(case_id, action="export")
     if not result:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
@@ -322,8 +328,7 @@ def export_start(case_id):
     if not case:
         from flask import jsonify
         return jsonify({"error": "Not found"}), 404
-    # Enforce user ownership - IDOR prevention
-    if case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="export"):
         from flask import jsonify
         return jsonify({"error": "Forbidden"}), 403
     fmt = request.form.get("fmt", "pdf")
@@ -395,7 +400,7 @@ def close_case(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    if case.owner_user_id and case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="edit"):
         abort(403)
     update_case(case_id, status="closed", updated_at=datetime.datetime.utcnow())
     flash(f"Case '{case.title}' has been closed.", "success")
@@ -409,10 +414,45 @@ def reopen_case(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    if case.owner_user_id and case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="edit"):
         abort(403)
     update_case(case_id, status="open", updated_at=datetime.datetime.utcnow())
     flash(f"Case '{case.title}' has been reopened.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@cases_bp.route("/<int:case_id>/share", methods=["POST"])
+@login_required
+def share(case_id):
+    """Share (or unshare, if team_id is blank) a case with a team the
+    current user belongs to. Only owner/team-owner/team-admin (action
+    'edit') may (re)share a case."""
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    if not can_access_case(case, current_user, action="edit"):
+        abort(403)
+
+    raw_team_id = request.form.get("team_id", "").strip()
+    if not raw_team_id:
+        update_case(case_id, team_id=None)
+        flash("Case unshared.", "success")
+    else:
+        try:
+            team_id = int(raw_team_id)
+        except ValueError:
+            flash("Invalid team.", "error")
+            return redirect(url_for("cases.detail", case_id=case_id))
+        my_team_ids = {t.id for t in list_teams_for_user(current_user.id)}
+        if team_id not in my_team_ids:
+            flash("You can only share a case with a team you belong to.", "error")
+            return redirect(url_for("cases.detail", case_id=case_id))
+        update_case(case_id, team_id=team_id)
+        from app.utils.audit import log as audit_log
+        audit_log("case.share", entity_type="case", entity_id=case_id,
+                   detail=f"shared with team {team_id}")
+        flash("Case shared with team.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
 
@@ -458,6 +498,8 @@ def add_case_note(case_id):
     case = get_case(case_id)
     if not case:
         abort(404)
+    if not can_access_case(case, current_user, action="comment"):
+        abort(403)
     body = request.form.get("body", "").strip()
     kind = request.form.get("kind", "observation")
     valid_kinds = {"observation", "lead", "key_evidence", "follow_up"}
@@ -473,7 +515,15 @@ def add_case_note(case_id):
 @cases_bp.route("/<int:case_id>/notes/<int:note_id>/delete", methods=["POST"])
 @login_required
 def delete_case_note(case_id, note_id):
-    delete_note(note_id, user_id=current_user.id)
+    case = get_case(case_id)
+    if not case:
+        abort(404)
+    if not can_access_case(case, current_user, action="comment"):
+        abort(403)
+    # Note authors can always delete their own entry; a privileged role
+    # (case owner, or team owner/admin on a shared case) can delete anyone's.
+    is_privileged = can_access_case(case, current_user, action="edit")
+    delete_note(note_id, user_id=current_user.id, force=is_privileged)
     flash("Entry deleted.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -483,6 +533,11 @@ def delete_case_note(case_id, note_id):
 @cases_bp.route("/<int:case_id>/investigations/<int:inv_id>/tag", methods=["POST"])
 @login_required
 def tag_investigation(case_id, inv_id):
+    case = get_case(case_id)
+    if not case:
+        abort(404)
+    if not can_access_case(case, current_user, action="comment"):
+        abort(403)
     tags_raw = request.form.get("tags", "")
     allowed = {"key_evidence", "follow_up", "disputed", "verified", "archived"}
     tags = ",".join(t.strip() for t in tags_raw.split(",") if t.strip() in allowed)
@@ -500,7 +555,7 @@ def bulk_import(case_id):
     case = get_case(case_id)
     if not case:
         abort(404)
-    if case.owner_user_id and case.owner_user_id != current_user.id:
+    if not can_access_case(case, current_user, action="edit"):
         abort(403)
 
     f = request.files.get("csv_file")
