@@ -249,6 +249,14 @@ def _extract_findings(kind: str, result_json: str) -> list:
                 pairs.append(("Subdomain", label))
             else:
                 pairs.append(("Subdomain", _safe_str(item)))
+        takeovers = d.get("takeovers") or []
+        pairs.append(("Possible Takeovers", str(len(takeovers))))
+        for t in takeovers[:20]:
+            if isinstance(t, dict):
+                pairs.append((
+                    "Possible Takeover",
+                    f"{t.get('hostname', '')} -> {t.get('service', '')} ({t.get('confidence', '')})",
+                ))
 
     # ------------------------------------------------------------------
     elif kind == "email":
@@ -588,6 +596,14 @@ def _risk_notes(investigations):
             confirmed = int(d.get("confirmed_count") or 0)
             if confirmed > 5:
                 notes.append(f"Username '{inv.query}' confirmed on {confirmed} platforms - broad digital footprint.")
+        elif inv.kind == "subdomain":
+            takeovers = d.get("takeovers") or []
+            if takeovers:
+                services = ", ".join(sorted({t.get("service", "?") for t in takeovers if isinstance(t, dict)}))
+                notes.append(
+                    f"Domain {inv.query} has {len(takeovers)} possible subdomain takeover(s) "
+                    f"({services}) - verify and remediate dangling DNS records."
+                )
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")
     return notes

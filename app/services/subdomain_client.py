@@ -86,6 +86,79 @@ def _probe_http(hostname: str) -> dict | None:
     return None
 
 
+def _get_cname(hostname: str) -> str | None:
+    """Resolve a hostname's CNAME target, or None if it has none / lookup
+    fails for any reason (NXDOMAIN, no CNAME record, timeout, dnspython
+    missing). Same call convention as the MX/NS/TXT lookups in
+    _get_dns_info — dns.resolver is imported locally, not at module level.
+    """
+    try:
+        import dns.resolver  # type: ignore
+        answers = dns.resolver.resolve(hostname, "CNAME", lifetime=5)
+        return str(answers[0].target).rstrip(".")
+    except Exception:
+        return None
+
+
+# Known dangling-CNAME signatures for subdomain takeover detection. Static
+# reference data (like _WORDLIST above), matched primarily on CNAME suffix
+# and secondarily on HTTP status (reusing the HTTP-probe pass above rather
+# than issuing a second request per host — see _check_takeover). This is
+# a CNAME-suffix + status-code match, NOT a body-fingerprint confirmation —
+# it identifies *candidates* worth manually verifying, not confirmed
+# takeovers. Modeled on the public "can-i-take-over-xyz" reference list.
+_TAKEOVER_SIGNATURES = [
+    {"service": "GitHub Pages", "cname_suffix": "github.io", "http_status": [404]},
+    {"service": "AWS S3", "cname_suffix": "s3.amazonaws.com", "http_status": [404]},
+    {"service": "AWS S3 (website)", "cname_suffix": "s3-website", "http_status": [404]},
+    {"service": "Heroku", "cname_suffix": "herokuapp.com", "http_status": [404]},
+    {"service": "Azure Web Apps", "cname_suffix": "azurewebsites.net", "http_status": [404]},
+    {"service": "Fastly", "cname_suffix": "fastly.net", "http_status": [404, 410]},
+    {"service": "Shopify", "cname_suffix": "myshopify.com", "http_status": [404]},
+    {"service": "Netlify", "cname_suffix": "netlify.app", "http_status": [404]},
+    {"service": "Vercel", "cname_suffix": "vercel-dns.com", "http_status": [404]},
+    {"service": "Vercel (legacy)", "cname_suffix": "now.sh", "http_status": [404]},
+    {"service": "Unbounce", "cname_suffix": "unbouncepages.com", "http_status": [404]},
+    {"service": "Zendesk", "cname_suffix": "zendesk.com", "http_status": [404]},
+    {"service": "Surge.sh", "cname_suffix": "surge.sh", "http_status": [404]},
+    {"service": "Bitbucket", "cname_suffix": "bitbucket.io", "http_status": [404]},
+    {"service": "Cargo Collective", "cname_suffix": "cargocollective.com", "http_status": [404]},
+    {"service": "Tumblr", "cname_suffix": "tumblr.com", "http_status": [404]},
+    {"service": "WordPress.com", "cname_suffix": "wordpress.com", "http_status": [404]},
+    {"service": "Pantheon", "cname_suffix": "pantheonsite.io", "http_status": [404]},
+    {"service": "UserVoice", "cname_suffix": "uservoice.com", "http_status": [404]},
+    {"service": "Ghost", "cname_suffix": "ghost.io", "http_status": [404]},
+    {"service": "Cloudfront", "cname_suffix": "cloudfront.net", "http_status": [403]},
+    {"service": "HubSpot", "cname_suffix": "hubspot.net", "http_status": [404]},
+]
+
+
+def _check_takeover(hostname: str, cname: str | None, http: dict | None) -> dict | None:
+    """Return a takeover-candidate dict if `cname` matches a known
+    dangling-service signature, else None.
+
+    Confidence is HIGH when the CNAME suffix matches AND the HTTP status
+    (from the phase-1 probe, not a fresh request) also matches the
+    signature's expected "nothing here" status; MEDIUM when only the
+    CNAME suffix matches (no HTTP data, or a different status). This is
+    a candidate signal, not a confirmed takeover — callers must present
+    it as something to manually verify.
+    """
+    if not cname:
+        return None
+    for sig in _TAKEOVER_SIGNATURES:
+        if cname.endswith(sig["cname_suffix"]):
+            status = http.get("status_code") if isinstance(http, dict) else None
+            confidence = "HIGH" if status in sig["http_status"] else "MEDIUM"
+            return {
+                "hostname": hostname,
+                "cname": cname,
+                "service": sig["service"],
+                "confidence": confidence,
+            }
+    return None
+
+
 def _get_dns_info(domain: str) -> dict:
     info: dict = {}
     try:
@@ -137,6 +210,23 @@ def scan_domain(domain: str) -> dict:
                 if probe is not None:
                     http_probed_count += 1
 
+    # Third pass: CNAME + takeover check on resolved hosts only, reusing
+    # each host's already-captured HTTP status from the second pass rather
+    # than issuing a fresh request (see _check_takeover docstring).
+    takeovers: list[dict] = []
+    if found:
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            cname_futures = {pool.submit(_get_cname, item["hostname"]): item for item in found}
+            for future in as_completed(cname_futures):
+                item = cname_futures[future]
+                cname = future.result()
+                item["cname"] = cname
+                takeover = _check_takeover(item["hostname"], cname, item.get("http"))
+                item["takeover"] = takeover
+                if takeover:
+                    takeovers.append(takeover)
+
+    takeovers.sort(key=lambda t: t["hostname"])
     dns_info = _get_dns_info(domain)
 
     return {
@@ -145,5 +235,7 @@ def scan_domain(domain: str) -> dict:
         "subdomains": found,
         "ct_subdomains": len(ct_subs),
         "http_probed_count": http_probed_count,
+        "takeovers": takeovers,
+        "takeover_count": len(takeovers),
         "dns": dns_info,
     }

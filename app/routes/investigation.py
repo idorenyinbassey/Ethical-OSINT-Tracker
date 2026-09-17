@@ -160,7 +160,11 @@ def subdomain():
         conf = "CONFIRMED" if result.get("subdomains_found", 0) > 0 else "UNVERIFIED"
         find_or_update_recent(kind="subdomain", query=domain_name, result_json=json.dumps(result),
                               user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found.", "success")
+        msg = f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found."
+        takeover_count = result.get("takeover_count", 0)
+        if takeover_count > 0:
+            msg += f" {takeover_count} possible takeover(s) detected — verify manually."
+        flash(msg, "success")
 
     return render_template("investigation/subdomain.html", cases=cases, result=result)
 

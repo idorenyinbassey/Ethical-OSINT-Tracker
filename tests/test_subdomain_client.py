@@ -1,5 +1,7 @@
 """app.services.subdomain_client — passive (crt.sh) + brute-force subdomain
-discovery, plus (this phase) HTTP probing of resolved hosts."""
+discovery, plus HTTP probing and (this phase) takeover detection of
+resolved hosts."""
+import dns.resolver
 from unittest.mock import patch, MagicMock
 from app.services import subdomain_client
 
@@ -134,3 +136,114 @@ def test_scan_domain_probe_failure_leaves_http_none():
 
     assert result["http_probed_count"] == 0
     assert result["subdomains"][0]["http"] is None
+
+
+# ── Phase 2: subdomain takeover detection ────────────────────────────────
+
+def test_check_takeover_high_confidence_on_cname_and_status_match():
+    result = subdomain_client._check_takeover(
+        "old.example.com", "old-example.github.io", {"status_code": 404}
+    )
+    assert result is not None
+    assert result["service"] == "GitHub Pages"
+    assert result["confidence"] == "HIGH"
+    assert result["hostname"] == "old.example.com"
+    assert result["cname"] == "old-example.github.io"
+
+
+def test_check_takeover_medium_confidence_on_cname_only():
+    result = subdomain_client._check_takeover(
+        "old.example.com", "old-example.github.io", {"status_code": 200}
+    )
+    assert result is not None
+    assert result["confidence"] == "MEDIUM"
+
+
+def test_check_takeover_medium_confidence_when_no_http_data():
+    result = subdomain_client._check_takeover(
+        "old.example.com", "bucket.s3.amazonaws.com", None
+    )
+    assert result is not None
+    assert result["service"] == "AWS S3"
+    assert result["confidence"] == "MEDIUM"
+
+
+def test_check_takeover_no_match_returns_none():
+    assert subdomain_client._check_takeover(
+        "www.example.com", "www.example.com.cdn.other.net", {"status_code": 200}
+    ) is None
+
+
+def test_check_takeover_none_cname_returns_none():
+    assert subdomain_client._check_takeover("www.example.com", None, {"status_code": 404}) is None
+
+
+def test_get_cname_returns_none_on_exception(monkeypatch):
+    def fake_resolve(*args, **kwargs):
+        raise Exception("NXDOMAIN")
+
+    monkeypatch.setattr(dns.resolver, "resolve", fake_resolve)
+    assert subdomain_client._get_cname("nonexistent.example.com") is None
+
+
+def test_get_cname_returns_target(monkeypatch):
+    class _FakeAnswer:
+        target = "some-target.github.io."
+
+    def fake_resolve(hostname, rtype, lifetime=5):
+        assert rtype == "CNAME"
+        return [_FakeAnswer()]
+
+    monkeypatch.setattr(dns.resolver, "resolve", fake_resolve)
+    assert subdomain_client._get_cname("old.example.com") == "some-target.github.io"
+
+
+def test_scan_domain_detects_takeover_end_to_end(monkeypatch):
+    domain = "takeover-test-1.example"
+
+    def fake_resolve(hostname, rtype, lifetime=5):
+        class _FakeAnswer:
+            target = "dangling.github.io."
+        if rtype == "CNAME":
+            return [_FakeAnswer()]
+        raise Exception("no record")
+
+    monkeypatch.setattr(dns.resolver, "resolve", fake_resolve)
+
+    with patch.object(subdomain_client, "_crt_sh_subdomains", return_value=[]), \
+         patch.object(subdomain_client, "_resolve",
+                       side_effect=lambda sub, d: {"hostname": f"{sub}.{d}", "ip": "1.2.3.4"}
+                       if sub == "www" else None), \
+         patch.object(subdomain_client, "_probe_http",
+                       return_value={"scheme": "https", "status_code": 404, "final_url": "x",
+                                     "server": "", "title": None}), \
+         patch.object(subdomain_client, "_get_dns_info", return_value={}):
+        result = subdomain_client.scan_domain(domain)
+
+    assert result["takeover_count"] == 1
+    assert result["takeovers"][0]["service"] == "GitHub Pages"
+    assert result["takeovers"][0]["confidence"] == "HIGH"
+    assert result["subdomains"][0]["cname"] == "dangling.github.io"
+    assert result["subdomains"][0]["takeover"]["service"] == "GitHub Pages"
+
+
+def test_scan_domain_no_takeover_when_cname_absent(monkeypatch):
+    domain = "takeover-test-2.example"
+
+    def fake_resolve(hostname, rtype, lifetime=5):
+        raise Exception("no record")
+
+    monkeypatch.setattr(dns.resolver, "resolve", fake_resolve)
+
+    with patch.object(subdomain_client, "_crt_sh_subdomains", return_value=[]), \
+         patch.object(subdomain_client, "_resolve",
+                       side_effect=lambda sub, d: {"hostname": f"{sub}.{d}", "ip": "1.2.3.4"}
+                       if sub == "www" else None), \
+         patch.object(subdomain_client, "_probe_http", return_value=None), \
+         patch.object(subdomain_client, "_get_dns_info", return_value={}):
+        result = subdomain_client.scan_domain(domain)
+
+    assert result["takeover_count"] == 0
+    assert result["takeovers"] == []
+    assert result["subdomains"][0]["cname"] is None
+    assert result["subdomains"][0]["takeover"] is None
