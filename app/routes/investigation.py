@@ -558,6 +558,20 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         sender = data.get("from") or data.get("From") or ""
         if "@" in sender:
             _reg("email", sender)
+    elif kind == "subdomain":
+        domain = data.get("domain") or inv.query
+        _reg("domain", domain)
+    elif kind == "typosquat":
+        domain = data.get("domain") or inv.query
+        _reg("domain", domain)
+    elif kind == "paste_leak":
+        query = data.get("query") or inv.query
+        if "@" in query:
+            _reg("email", query)
+        elif "." in query and " " not in query:
+            _reg("domain", query)
+        else:
+            _reg("username", query)
 
 
 @investigation_bp.route("/graph/data")
@@ -628,6 +642,29 @@ def graph_data():
                             "from": inv_node_id,
                             "to": sub_node_id,
                             "edge_type": "subdomain",
+                        })
+            except Exception:
+                pass
+
+        # Expand typosquat results as child nodes (registered lookalikes only —
+        # the other ~99 checked-but-unregistered permutations aren't graphed)
+        if inv.kind == "typosquat" and inv.result_json:
+            try:
+                ts_data = json.loads(inv.result_json)
+                for i, hit in enumerate(ts_data.get("registered", [])[:50]):
+                    hit_domain = hit.get("domain", "")
+                    if hit_domain:
+                        hit_node_id = f"typosquat-{inv.id}-{i}"
+                        nodes.append({
+                            "id": hit_node_id,
+                            "label": hit_domain[:28],
+                            "group": "typosquat_hit",
+                            "title": f"Registered lookalike: {hit_domain}\nIP: {hit.get('ip', 'unknown')}\nRegistrar: {hit.get('registrar') or 'unknown'}",
+                        })
+                        edges.append({
+                            "from": inv_node_id,
+                            "to": hit_node_id,
+                            "edge_type": "typosquat",
                         })
             except Exception:
                 pass
