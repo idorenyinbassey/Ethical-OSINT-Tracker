@@ -242,7 +242,11 @@ def _extract_findings(kind: str, result_json: str) -> list:
             if isinstance(item, dict):
                 host = item.get("hostname") or item.get("subdomain") or ""
                 ip = item.get("ip") or item.get("ip_address") or ""
-                pairs.append(("Subdomain", f"{host} -> {ip}" if ip else host))
+                label = f"{host} -> {ip}" if ip else host
+                http = item.get("http")
+                if isinstance(http, dict) and http.get("status_code"):
+                    label += f" [{http['status_code']}]"
+                pairs.append(("Subdomain", label))
             else:
                 pairs.append(("Subdomain", _safe_str(item)))
 

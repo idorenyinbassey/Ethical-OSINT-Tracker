@@ -53,6 +53,39 @@ def _resolve(sub: str, domain: str) -> dict | None:
         return None
 
 
+def _probe_http(hostname: str) -> dict | None:
+    """Probe a resolved subdomain over HTTP(S) — status, final URL (after
+    redirects), server header, and page title. Tries HTTPS first, falling
+    back to HTTP only on a connection-level failure (not on a non-2xx
+    response, which is still a valid probe result). Returns None if
+    neither scheme responds — never raises, matching `_resolve`'s
+    "return None on failure" convention so a bad host never poisons the
+    ThreadPoolExecutor pass.
+    """
+    for scheme in ("https", "http"):
+        try:
+            with get_http_client(timeout=6) as client:
+                r = client.get(f"{scheme}://{hostname}", follow_redirects=True)
+            title = None
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(r.text[:20000], "html.parser")
+                if soup.title and soup.title.string:
+                    title = soup.title.string.strip()[:200]
+            except Exception:
+                pass
+            return {
+                "scheme": scheme,
+                "status_code": r.status_code,
+                "final_url": str(r.url),
+                "server": r.headers.get("server", ""),
+                "title": title,
+            }
+        except Exception:
+            continue  # try the next scheme, or fall through to None
+    return None
+
+
 def _get_dns_info(domain: str) -> dict:
     info: dict = {}
     try:
@@ -87,6 +120,23 @@ def scan_domain(domain: str) -> dict:
                 found.append(r)
 
     found.sort(key=lambda x: x["hostname"])
+
+    # Second pass: probe HTTP(S) on resolved hosts only. Lower concurrency
+    # than the DNS pass above (20 vs 30) — HTTP requests are heavier, and
+    # this app scans only domains the user is authorised to test, so
+    # bounding request volume against target infrastructure is a
+    # deliberate ethical-scanning choice, not just a performance one.
+    http_probed_count = 0
+    if found:
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            probe_futures = {pool.submit(_probe_http, item["hostname"]): item for item in found}
+            for future in as_completed(probe_futures):
+                item = probe_futures[future]
+                probe = future.result()
+                item["http"] = probe
+                if probe is not None:
+                    http_probed_count += 1
+
     dns_info = _get_dns_info(domain)
 
     return {
@@ -94,5 +144,6 @@ def scan_domain(domain: str) -> dict:
         "subdomains_found": len(found),
         "subdomains": found,
         "ct_subdomains": len(ct_subs),
+        "http_probed_count": http_probed_count,
         "dns": dns_info,
     }
