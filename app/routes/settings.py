@@ -4,6 +4,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from app.repositories.api_config_repository import get_all_configs, create_or_update_config
 from app.repositories.user_repository import update_password, get_by_id
+from app.repositories.api_key_repository import create_api_key, list_active_keys, revoke_key
 from app.utils.validators import validate_base_url
 from app.utils.decorators import admin_required
 
@@ -31,13 +32,14 @@ SERVICES = [
 @settings_bp.route("/")
 @login_required
 def index():
-    # Non-admins can only see password change form
+    api_keys = list_active_keys(current_user.id)
+    # Non-admins can only see password change + their own API keys
     if not current_user.is_admin:
-        return render_template("settings/index.html", services=[], configs={})
+        return render_template("settings/index.html", services=[], configs={}, api_keys=api_keys)
 
     # Admins can see all API configurations
     configs = {c.service_name: c for c in get_all_configs()}
-    return render_template("settings/index.html", services=SERVICES, configs=configs)
+    return render_template("settings/index.html", services=SERVICES, configs=configs, api_keys=api_keys)
 
 
 @settings_bp.route("/save", methods=["POST"])
@@ -114,4 +116,32 @@ def change_password():
     from app.utils.audit import log as audit_log
     audit_log("account.password_change", entity_type="user", entity_id=current_user.id)
     flash("Password changed successfully.", "success")
+    return redirect(url_for("settings.index"))
+
+
+# ── Personal API keys (for /api/v1) ────────────────────────────────────────────
+
+@settings_bp.route("/api-keys/create", methods=["POST"])
+@login_required
+def create_api_key_route():
+    label = request.form.get("label", "").strip()[:100]
+    key, raw_key = create_api_key(current_user.id, label=label)
+    from app.utils.audit import log as audit_log
+    audit_log("apikey.created", entity_type="apikey", entity_id=key.id, detail=label)
+    flash(
+        f"API key created. Copy it now — it will not be shown again: {raw_key}",
+        "success",
+    )
+    return redirect(url_for("settings.index"))
+
+
+@settings_bp.route("/api-keys/<int:key_id>/revoke", methods=["POST"])
+@login_required
+def revoke_api_key_route(key_id):
+    if revoke_key(key_id, user_id=current_user.id):
+        from app.utils.audit import log as audit_log
+        audit_log("apikey.revoked", entity_type="apikey", entity_id=key_id)
+        flash("API key revoked.", "success")
+    else:
+        flash("API key not found.", "error")
     return redirect(url_for("settings.index"))

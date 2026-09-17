@@ -46,6 +46,7 @@ def create_app():
     from app.routes.audit import audit_bp
     from app.routes.admin import admin_bp
     from app.routes.teams import teams_bp
+    from app.routes.api_v1 import api_v1_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -57,11 +58,15 @@ def create_app():
     app.register_blueprint(audit_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(teams_bp)
+    app.register_blueprint(api_v1_bp)
 
     # Public tracking endpoints have no session — exempt from CSRF
     csrf.exempt(land)
     csrf.exempt(pixel)
     csrf.exempt(collect_fingerprint)
+    # The whole /api/v1 surface is stateless (API-key auth, no cookies) —
+    # exempt the entire blueprint rather than each view individually.
+    csrf.exempt(api_v1_bp)
 
     # Start background watchlist rescan scheduler
     from app.utils.scheduler import start_scheduler

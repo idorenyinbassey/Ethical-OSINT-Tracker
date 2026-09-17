@@ -6,7 +6,7 @@ def _rescan_all(app):
     with app.app_context():
         try:
             from app.repositories.watchlist_repository import list_all_targets
-            from app.services.watchlist_scan_service import finalize_scan
+            from app.services.watchlist_scan_service import fetch_target_data, finalize_scan
 
             targets = list_all_targets()
             cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=6)
@@ -15,33 +15,10 @@ def _rescan_all(app):
                 if target.last_checked and target.last_checked > cutoff:
                     continue  # checked recently enough
 
-                result = {}
-                try:
-                    if target.kind == "ip":
-                        from app.services import ip_client
-                        result = ip_client.fetch_ip(target.query) or {}
-                    elif target.kind == "domain":
-                        from app.services import rdap_client
-                        result = rdap_client.fetch_domain(target.query) or {}
-                    elif target.kind == "email":
-                        from app.services import hibp_client
-                        breaches = hibp_client.check_breaches(target.query)
-                        result = {"breaches": breaches}
-                    elif target.kind == "social":
-                        from app.services import social_client
-                        result = social_client.search_username(target.query) or {}
-                    elif target.kind == "crypto":
-                        from app.services import crypto_client
-                        result = crypto_client.lookup(target.query) or {}
-                    elif target.kind == "phone":
-                        from app.services import numverify_client
-                        result = numverify_client.fetch_phone(target.query) or {}
-                except Exception as exc:
-                    result = {"error": str(exc)}
-
-                # Hash-diff, persist, alert-flag, log, and notify — shared
-                # with the manual "Rescan" button so both paths behave
-                # identically (app/services/watchlist_scan_service.py).
+                # Fetch, then hash-diff/persist/alert/notify — shared with
+                # the API's rescan endpoint (app/routes/api_v1.py) so both
+                # automatic triggers behave identically.
+                result = fetch_target_data(target)
                 finalize_scan(target, result)
         except Exception:
             pass  # scheduler jobs must never crash the process

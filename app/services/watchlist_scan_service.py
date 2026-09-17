@@ -25,6 +25,40 @@ from app.services.notification_service import notify
 logger = logging.getLogger(__name__)
 
 
+def fetch_target_data(target) -> dict:
+    """One cheap, free/low-cost fetch per watchlist kind — the "automatic"
+    tier used by both the scheduler's 6h rescan and the API's
+    /api/v1/watchlist/<id>/rescan endpoint. Deliberately lighter than the
+    browser "Rescan" button in app/routes/investigation.py, which enriches
+    more heavily (multiple paid-tier services) since a human explicitly
+    asked for it and is spending their own configured API quota — an
+    unattended trigger firing every few hours (or on demand via a script)
+    should not silently burn through the same quota.
+    """
+    try:
+        if target.kind == "ip":
+            from app.services import ip_client
+            return ip_client.fetch_ip(target.query) or {}
+        elif target.kind == "domain":
+            from app.services import rdap_client
+            return rdap_client.fetch_domain(target.query) or {}
+        elif target.kind == "email":
+            from app.services import hibp_client
+            return {"breaches": hibp_client.check_breaches(target.query)}
+        elif target.kind == "social":
+            from app.services import social_client
+            return social_client.search_username(target.query) or {}
+        elif target.kind == "crypto":
+            from app.services import crypto_client
+            return crypto_client.lookup(target.query) or {}
+        elif target.kind == "phone":
+            from app.services import numverify_client
+            return numverify_client.fetch_phone(target.query) or {}
+        return {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 def finalize_scan(target, result: dict, confidence: str = "CONFIRMED") -> bool:
     """Persist a freshly-fetched watchlist result and handle alerting.
 
