@@ -13,7 +13,7 @@ def index():
     action_types = [
         "login", "case.create", "case.delete",
         "investigation.run", "report.export",
-        "watchlist.add", "watchlist.remove",
+        "watchlist.add", "watchlist.remove", "watchlist.alert",
         "tracker.link_created",
     ]
     return render_template("audit/index.html", logs=logs,

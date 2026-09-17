@@ -60,6 +60,7 @@ def _investigation_before():
     if request.endpoint in ("investigation.graph_data", "investigation.map_data",
                             "investigation.watchlist", "investigation.watchlist_add",
                             "investigation.watchlist_remove", "investigation.watchlist_rescan",
+                            "investigation.watchlist_dismiss_alert",
                             "investigation.tag_investigation"):
         return
     # Require at least one case to exist
@@ -879,15 +880,14 @@ def watchlist_remove(target_id):
 @investigation_bp.route("/watchlist/<int:target_id>/rescan", methods=["POST"])
 @login_required
 def watchlist_rescan(target_id):
-    import hashlib
-    from app.repositories.watchlist_repository import get_target, update_checked
+    from app.repositories.watchlist_repository import get_target
+    from app.services.watchlist_scan_service import finalize_scan
     target = get_target(target_id)
     if not target or target.user_id != current_user.id:
         flash("Target not found.", "error")
         return redirect(url_for("investigation.watchlist"))
 
     result = {}
-    changed = False
     try:
         if target.kind == "ip":
             from app.services import ip_client, virustotal_client, shodan_client
@@ -919,20 +919,28 @@ def watchlist_rescan(target_id):
     except Exception as exc:
         result = {"error": str(exc)}
 
-    result_json = json.dumps(result)
-    new_hash = hashlib.sha256(result_json.encode()).hexdigest()[:16]
-    changed = new_hash != target.last_result_hash
-    update_checked(target_id, new_hash)
-
     conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
-    case_id = target.case_id
-    find_or_update_recent(kind=target.kind, query=target.query, result_json=result_json,
-                          user_id=current_user.id, case_id=case_id, confidence=conf)
+    # Hash-diff, persist, alert-flag, log, and notify — shared with the
+    # scheduler's automatic rescan so both paths behave identically
+    # (app/services/watchlist_scan_service.py).
+    changed = finalize_scan(target, result, confidence=conf)
 
     if changed:
         flash(f"Rescan complete — data changed since last check.", "success")
     else:
         flash(f"Rescan complete — no changes detected.", "info")
+    return redirect(url_for("investigation.watchlist"))
+
+
+@investigation_bp.route("/watchlist/<int:target_id>/dismiss-alert", methods=["POST"])
+@login_required
+def watchlist_dismiss_alert(target_id):
+    from app.repositories.watchlist_repository import get_target, clear_alert
+    target = get_target(target_id)
+    if not target or target.user_id != current_user.id:
+        flash("Target not found.", "error")
+        return redirect(url_for("investigation.watchlist"))
+    clear_alert(target_id)
     return redirect(url_for("investigation.watchlist"))
 
 

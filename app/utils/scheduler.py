@@ -1,14 +1,12 @@
 """Background scheduler — auto-rescan watchlist targets every 6 hours."""
-import hashlib
-import json
 import datetime
 
 
 def _rescan_all(app):
     with app.app_context():
         try:
-            from app.repositories.watchlist_repository import list_all_targets, update_checked, set_alert
-            from app.repositories.investigation_repository import find_or_update_recent
+            from app.repositories.watchlist_repository import list_all_targets
+            from app.services.watchlist_scan_service import finalize_scan
 
             targets = list_all_targets()
             cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=6)
@@ -41,20 +39,10 @@ def _rescan_all(app):
                 except Exception as exc:
                     result = {"error": str(exc)}
 
-                result_json = json.dumps(result, default=str)
-                new_hash = hashlib.sha256(result_json.encode()).hexdigest()[:16]
-                changed = bool(target.last_result_hash) and new_hash != target.last_result_hash
-
-                update_checked(target.id, new_hash)
-
-                if changed:
-                    set_alert(target.id, f"Data changed at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC")
-                    # Log a new investigation record so the change is traceable
-                    find_or_update_recent(
-                        kind=target.kind, query=target.query,
-                        result_json=result_json, user_id=target.user_id,
-                        case_id=target.case_id, confidence="CONFIRMED",
-                    )
+                # Hash-diff, persist, alert-flag, log, and notify — shared
+                # with the manual "Rescan" button so both paths behave
+                # identically (app/services/watchlist_scan_service.py).
+                finalize_scan(target, result)
         except Exception:
             pass  # scheduler jobs must never crash the process
 

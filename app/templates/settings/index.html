@@ -25,8 +25,22 @@
       </div>
 
       <form method="post" action="{{ url_for('settings.save') }}" class="space-y-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="service_name" value="{{ service.name }}">
 
+        {% if service.name == 'Notifications' %}
+        <div class="grid grid-cols-1 gap-3">
+          <input type="hidden" name="api_key" value="{{ cfg.api_key if cfg else '' }}">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Webhook URL</label>
+            <input type="text" name="base_url"
+              value="{{ cfg.base_url if cfg else service.default_url }}"
+              placeholder="https://ntfy.sh/your-topic"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+            <p class="text-xs text-gray-500 mt-1">Receives a JSON POST ({"subject", "body", ...}) whenever a watched target changes.</p>
+          </div>
+        </div>
+        {% else %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs text-gray-400 mb-1">API Key</label>
@@ -43,6 +57,7 @@
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
           </div>
         </div>
+        {% endif %}
 
         {% if service.name == 'SocialSearch' %}
           <div>

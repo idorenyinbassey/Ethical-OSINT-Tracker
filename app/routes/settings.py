@@ -33,6 +33,8 @@ SERVICES = [
     {"name": "NumVerify", "label": "NumVerify (phone validation)", "default_url": "http://apilayer.net/api"},
     {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},
     {"name": "IMEIService", "label": "IMEI Service", "default_url": "https://api.imei.info"},
+    # Outbound alerting
+    {"name": "Notifications", "label": "Notifications — webhook on watchlist change (ntfy.sh, Discord, Slack, etc.)", "default_url": ""},
 ]
 
 
