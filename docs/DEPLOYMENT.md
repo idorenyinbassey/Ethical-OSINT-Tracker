@@ -31,13 +31,18 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:3000", "run:app"]
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:3000", "app.wsgi:app"]
 ```
 
 > Provide `ADMIN_PASSWORD` (first run only), `SECRET_KEY`, and
 > `API_KEYS_FERNET_KEY` via the container environment / secrets — never bake them
 > into the image. Keep `SECRET_KEY` and `API_KEYS_FERNET_KEY` stable across
 > deploys.
+>
+> Keep `-w 1` unless `DB_URL` points at a real multi-connection database
+> (e.g. MySQL) — the default SQLite database allows only one writer at a
+> time, so extra workers race on the same file and intermittently fail
+> requests with "database is locked".
 
 ### docker-compose.yml
 
@@ -168,6 +173,9 @@ ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py   # first run on
 
 `/etc/systemd/system/osint-tracker.service`:
 
+Keep `--workers 1` unless `DB_URL` points at a real multi-connection
+database (e.g. MySQL) — see the SQLite locking note under Docker above.
+
 ```ini
 [Unit]
 Description=Ethical OSINT Tracker (Flask/Gunicorn)
@@ -179,10 +187,10 @@ Group=www-data
 WorkingDirectory=/opt/Ethical-OSINT-Tracker
 EnvironmentFile=/opt/Ethical-OSINT-Tracker/.env
 ExecStart=/opt/Ethical-OSINT-Tracker/.venv/bin/gunicorn \
-    --workers 4 \
+    --workers 1 \
     --bind unix:/run/osint-tracker.sock \
     -m 007 \
-    run:app
+    app.wsgi:app
 
 [Install]
 WantedBy=multi-user.target

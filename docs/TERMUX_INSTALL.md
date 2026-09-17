@@ -40,6 +40,15 @@ git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
 cd Ethical-OSINT-Tracker
 ```
 
+> **Fastest path:** run `./install_termux.sh` here and skip to
+> [Step 7](#step-7--run-the-app). It installs the system packages above,
+> prefers `pipx` over a manual venv (falling back automatically if pipx
+> isn't available), generates and persists `SECRET_KEY` /
+> `API_KEYS_FERNET_KEY` for you, and prompts for the admin password with
+> the terminal input hidden — nothing is typed inline or left in shell
+> history. Steps 4-6 below are the manual/troubleshooting equivalent of
+> what that script does.
+
 ### Step 4 — Create a virtual environment and install Python packages
 
 ```bash
@@ -71,37 +80,48 @@ pip install tzdata
 
 ### Step 5 — Set environment variables
 
-`.env` is **not** auto-loaded, so export the required variables. Generate the
-keys **once** and keep them stable (a changing `SECRET_KEY` logs you out; a
-changing `API_KEYS_FERNET_KEY` makes stored API keys undecryptable):
+`./start.sh` handles this automatically (recommended): it generates
+`SECRET_KEY` and `API_KEYS_FERNET_KEY` once on first run and persists them
+to `secrets.env`, loading that file on every subsequent run — so a
+restart never logs you out or breaks previously-saved API keys. `.env` is
+also auto-loaded if you prefer to manage it yourself (see `.env.example`).
 
+To do it fully by hand instead:
 ```bash
 cat > secrets.env <<'EOF'
-export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
-export API_KEYS_FERNET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+API_KEYS_FERNET_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
 EOF
-source secrets.env
+set -a && source secrets.env && set +a
 ```
 
 ### Step 6 — Initialise the database
 
-There is **no default password** — supply `ADMIN_PASSWORD` (min 8 chars):
+There is **no default password**. Running `./start.sh` (or
+`./start.sh --reset-admin`) without `ADMIN_PASSWORD` already set prompts
+for it interactively — hidden input, confirmed twice, never written to
+shell history:
 
+```bash
+python reset_admin.py
+# Set the admin account password (min. 8 characters).
+# Input is hidden and is never written to shell history.
+```
+
+For non-interactive/scripted setups the env-var form still works:
 ```bash
 ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
 Creates (or resets) the admin account:
 - **Username**: `admin` (fixed)
-- **Password**: the value of `ADMIN_PASSWORD`
+- **Password**: the value you entered / supplied
 
 ### Step 7 — Run the app
 
 ```bash
-source secrets.env
-FLASK_DEV=1 python run.py          # development server
-# or for the gunicorn (production) launcher:
-# ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
+./start.sh                  # preferred — pipx if available, .venv fallback, gunicorn
+FLASK_DEV=1 ./start.sh       # development server instead of gunicorn
 ```
 
 Open Chrome or Firefox on your device and go to:
@@ -109,16 +129,16 @@ Open Chrome or Firefox on your device and go to:
 http://localhost:3000
 ```
 
-Log in with `admin` and the password you set. To change it later:
+Log in with `admin` and the password you set. To change it later, hidden-prompt:
 ```bash
-ADMIN_PASSWORD='new-strong-password' python reset_admin.py
+./start.sh --reset-admin
 ```
 
 ## Running in the Background with tmux
 
 ```bash
 tmux new -s osint
-python run.py
+./start.sh
 # Detach (keep running): Ctrl+b then d
 # Reattach later:
 tmux attach -t osint
@@ -128,7 +148,7 @@ tmux attach -t osint
 
 ```bash
 termux-wake-lock
-python run.py
+./start.sh
 ```
 
 Release when done: `termux-wake-unlock`
@@ -169,21 +189,21 @@ mkdir -p ~/.termux/boot
 cat > ~/.termux/boot/start-osint.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 cd ~/Ethical-OSINT-Tracker
-source .venv/bin/activate
-nohup python run.py > /tmp/osint.log 2>&1 &
+nohup ./start.sh > /tmp/osint.log 2>&1 &
 EOF
 chmod +x ~/.termux/boot/start-osint.sh
 ```
+
+secrets.env and dev.db already exist by boot time (from initial setup), so
+`start.sh` starts straight into gunicorn with no interactive prompt.
 
 ## Updating
 
 ```bash
 cd ~/Ethical-OSINT-Tracker
 git pull origin main
-source .venv/bin/activate
-pip install -r requirements.txt --upgrade
-# Restart the app
-python run.py
+# Restart the app — start.sh reinstalls/updates dependencies (pipx or .venv) automatically
+./start.sh
 ```
 
 ## Troubleshooting

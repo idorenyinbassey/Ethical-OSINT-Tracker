@@ -17,11 +17,12 @@ def create_app():
     if not app.config.get("API_KEYS_FERNET_KEY"):
         import warnings
         warnings.warn(
-            "API_KEYS_FERNET_KEY not set — API keys will be stored unencrypted. "
-            "This is INSECURE for production. "
+            "API_KEYS_FERNET_KEY not set — saving an API key in Settings will fail "
+            "until this is configured (it stores unencrypted only in the unrelated "
+            "case where the 'cryptography' library itself fails to load). "
             "Generate a key with: python -c \"from cryptography.fernet import Fernet; "
-            "print(Fernet.generate_key().decode())\" "
-            "and set API_KEYS_FERNET_KEY environment variable.",
+            "print(Fernet.generate_key().decode())\" and set API_KEYS_FERNET_KEY. "
+            "start.sh / install_termux.sh generate and persist this for you automatically.",
             stacklevel=2,
         )
 

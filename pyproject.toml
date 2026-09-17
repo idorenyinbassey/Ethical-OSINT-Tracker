@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ethical-osint-tracker"
+version = "1.0.0"
+description = "Self-hosted OSINT investigation tracker (Flask)"
+requires-python = ">=3.9"
+dynamic = ["dependencies"]
+
+[project.scripts]
+osint-tracker = "app.cli:run_server"
+osint-tracker-reset-admin = "app.cli:reset_admin_cli"
+osint-tracker-init-db = "app.cli:init_db_cli"
+osint-tracker-gen-fernet-key = "app.cli:gen_fernet_key_cli"
+
+[tool.setuptools.dynamic]
+# Single source of truth for dependencies — read straight from
+# requirements.txt so the two never drift out of sync. setuptools strips
+# blank lines, full-line comments, and inline "# ..." comments here.
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*.html", "data/*.json"]

@@ -124,50 +124,55 @@ git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
 cd Ethical-OSINT-Tracker
 ```
 
-### 2. Create a virtual environment
+### 2. Run
 
+```bash
+./start.sh
+```
+
+That's it — no manual virtualenv or `pip install -r requirements.txt`
+needed. `start.sh` prefers [pipx](https://pipx.pypa.io) (installs it
+automatically if missing, isolated from your system Python) and falls
+back to a local `.venv` on its own if pipx isn't available. It also
+generates `SECRET_KEY` and `API_KEYS_FERNET_KEY` once and persists them to
+`secrets.env` — so restarts never invalidate sessions or break previously
+saved API keys.
+
+On a brand-new database it prompts you for the admin account password
+(minimum 8 characters) with the terminal input **hidden** — nothing is
+echoed to the screen, and it's never written to shell history:
+
+```
+Set the admin account password (min. 8 characters).
+Input is hidden and is never written to shell history.
+  Admin password:
+  Confirm password:
+```
+
+- **Username**: `admin` (fixed)
+- **Password**: whatever you enter at the prompt
+
+For non-interactive/scripted setups (CI, Docker) you can still supply it
+via the environment instead, which skips the prompt:
+```bash
+ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
+```
+
+> To change the password later, run `./start.sh --reset-admin` — see
+> [Resetting the admin password](#resetting-the-admin-password).
+
+**Prefer to do it by hand?** The manual venv method still works:
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
 pip install -r requirements.txt
-```
-
-### 4. Initialise the database & create admin
-
-The admin password is **not** hardcoded — you must supply it via the
-`ADMIN_PASSWORD` environment variable (minimum 8 characters). The script fails
-loudly if it is not set.
-
-```bash
 ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
-```
-
-Creates (or, if it already exists, resets the password of):
-- **Username**: `admin` (fixed)
-- **Password**: the value you passed in `ADMIN_PASSWORD`
-
-> The username is always `admin`. To change the password later, re-run the same
-> command (it resets the existing account in place) — see
-> [Resetting the admin password](#resetting-the-admin-password).
-
-### 5. Run
-
-**Production (default)** — `start.sh` runs gunicorn and, on a brand-new
-database, also creates the admin (so `ADMIN_PASSWORD` is required on first run):
-
-```bash
-ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
 **Development server** (Werkzeug, debug off unless enabled) — set `FLASK_DEV=1`:
 
 ```bash
-FLASK_DEV=1 python run.py         # debug stays OFF
+FLASK_DEV=1 ./start.sh            # debug stays OFF
 FLASK_DEV=1 FLASK_DEBUG=1 python run.py   # debug ON (never in production)
 ```
 
@@ -183,9 +188,9 @@ Open [http://localhost:3000](http://localhost:3000) and log in as `admin`.
 
 | Variable | Required? | Default | Description |
 |---|---|---|---|
-| `ADMIN_PASSWORD` | **Yes**, for `reset_admin.py` / first run | — | Admin password (min 8 chars). Never hardcoded; the script exits if unset. |
-| `SECRET_KEY` | Recommended | random per start | Flask session/CSRF signing key. **Set a fixed value** — if it changes between restarts, all sessions are invalidated and you get logged out. |
-| `API_KEYS_FERNET_KEY` | Recommended | — (warns) | Fernet key used to encrypt stored API keys at rest. If unset, keys are stored **unencrypted** and a warning is logged. Generate with the command below. |
+| `ADMIN_PASSWORD` | No | — | Admin password (min 8 chars). Only needed for non-interactive/scripted setups — `start.sh` (or `reset_admin.py` run directly) prompts for it (hidden input) if unset. |
+| `SECRET_KEY` | No | generated once, persisted | Flask session/CSRF signing key. `start.sh` generates and saves this to `secrets.env` on first run so it stays stable — set your own to pin a specific value. |
+| `API_KEYS_FERNET_KEY` | No | generated once, persisted | Fernet key used to encrypt stored API keys at rest. Same auto-generate-and-persist behavior as `SECRET_KEY`. Saving an API key in Settings fails until this is set (via start.sh or manually). |
 | `DB_URL` | No | `sqlite:///./dev.db` | SQLAlchemy database URL |
 | `REGISTRATION_ENABLED` | No | `False` | Set to `true` to allow public self-registration (rate-limited). Off by default. |
 | `RETENTION_DAYS` | No | `90` | Investigations older than this are purged by the daily job. Set `0` to disable. |
@@ -371,11 +376,11 @@ lsof -ti:3000 | xargs kill -9
 The username is always `admin`. Reset its password (works whether or not the
 database already exists):
 ```bash
-ADMIN_PASSWORD='new-strong-password' python reset_admin.py
-# or, via the startup script:
-ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
+./start.sh --reset-admin
+# prompts for the new password (hidden input, confirmed twice)
+# non-interactive form: ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
 ```
-A successful reset prints `✅ Admin password reset successfully / Username: admin`.
+A successful reset prints `✅ Admin account reset successfully / Username: admin`.
 Note that `./start.sh` (without `--reset-admin`) only creates the admin when
 `dev.db` does **not** already exist, so on an existing database you must use
 `--reset-admin`. Also confirm the password is exactly what you typed (no
@@ -383,13 +388,15 @@ surrounding quotes or trailing spaces).
 
 **Getting logged out after every restart**
 
-Your `SECRET_KEY` is changing between runs (the random fallback). Set a fixed
-`SECRET_KEY` in the environment and keep it stable.
+This shouldn't happen anymore if you're using `start.sh` — it generates
+`SECRET_KEY` once and persists it to `secrets.env`. If you're managing
+`SECRET_KEY` yourself (e.g. running `python run.py` directly without
+`start.sh`), make sure it's a fixed value, not regenerated per run.
 
 **Database reset (wipes all data)**
 ```bash
 rm dev.db
-ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
+./start.sh   # prompts for a new admin password (hidden input) since dev.db is gone
 ```
 
 **IMEI lookup fails**

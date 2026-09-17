@@ -73,17 +73,23 @@ Key dependencies:
 
 ### 5. Initialise the Database
 
-The admin password is supplied via the `ADMIN_PASSWORD` environment variable
-(minimum 8 characters). There is **no default password** — the script exits if
-`ADMIN_PASSWORD` is not set.
+There is **no default password**. Running `reset_admin.py` (or `start.sh`,
+see step 7) without `ADMIN_PASSWORD` set prompts for it interactively —
+hidden input, confirmed twice, never written to shell history:
 
+```bash
+python reset_admin.py
+```
+
+For non-interactive/scripted setups, supply it via the environment instead
+(this also skips the prompt):
 ```bash
 ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 ```
 
 Creates (or resets, if it already exists) the admin account:
 - **Username**: `admin` (fixed)
-- **Password**: the value of `ADMIN_PASSWORD`
+- **Password**: whatever you entered / supplied
 
 > To change the password later, re-run the same command — it resets the existing
 > `admin` account in place.
@@ -105,22 +111,28 @@ ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
 
 ### 6. Configure Environment
 
-> **`.env` is not auto-loaded** (no `python-dotenv` integration yet). Put these
-> variables in the actual environment — export them, use your process manager,
-> or `source` a file. Generate `SECRET_KEY` and `API_KEYS_FERNET_KEY` **once**
-> and keep them stable (a changing `SECRET_KEY` logs everyone out; a changing
-> `API_KEYS_FERNET_KEY` makes stored API keys undecryptable).
+`start.sh` (step 7) generates `SECRET_KEY` and `API_KEYS_FERNET_KEY` once
+and persists them to `secrets.env` automatically — a restart never
+invalidates sessions or breaks previously-saved API keys, and there's
+nothing to do here if you're using it.
+
+Running the app another way (`python run.py` directly, a process manager,
+Docker)? `.env` **is** auto-loaded (via `python-dotenv`), or export
+variables yourself / `source` a file:
 
 ```bash
-# Generate stable keys once and store them in a file you source (do not commit):
 cat > secrets.env <<'EOF'
-export SECRET_KEY="<paste a fixed random value, e.g. python -c 'import secrets;print(secrets.token_hex(32))'>"
-export API_KEYS_FERNET_KEY="<paste: python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())'>"
-# export DB_URL="sqlite:///./dev.db"   # optional; this is the default
+SECRET_KEY=<paste a fixed random value, e.g. python -c 'import secrets;print(secrets.token_hex(32))'>
+API_KEYS_FERNET_KEY=<paste: python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())'>
+# DB_URL=sqlite:///./dev.db   # optional; this is the default
 EOF
 
-source secrets.env
+set -a && source secrets.env && set +a
 ```
+
+Keep both values stable once generated — a changing `SECRET_KEY` logs
+everyone out, and a changing `API_KEYS_FERNET_KEY` makes stored API keys
+undecryptable.
 
 See the README's Environment Variables table for the full list
 (`REGISTRATION_ENABLED`, `RETENTION_DAYS`, `CACHE_MAX_SIZE`, `FLASK_DEV`,
@@ -128,11 +140,17 @@ See the README's Environment Variables table for the full list
 
 ### 7. Run the Application
 
-**Production (default)** — `start.sh` launches gunicorn and, on a brand-new
-database, creates the admin (so `ADMIN_PASSWORD` is required on first run):
 ```bash
 chmod +x start.sh
-source secrets.env
+./start.sh
+```
+
+No manual virtualenv needed — `start.sh` prefers
+[pipx](https://pipx.pypa.io) (installing it automatically if missing) and
+falls back to a local `.venv` if pipx isn't available. On a brand-new
+database it also prompts for the admin password (hidden input) — see
+step 5. For non-interactive/scripted setups:
+```bash
 ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
@@ -144,10 +162,13 @@ FLASK_DEV=1 python run.py
 
 Open http://localhost:3000 and log in as `admin`.
 
-**Production (gunicorn)**
+**Production (gunicorn), run directly instead of via start.sh**
 ```bash
-gunicorn -w 4 -b 0.0.0.0:3000 "run:app"
+gunicorn -w 1 -b 0.0.0.0:3000 "app.wsgi:app"
 ```
+Keep `-w 1` unless `DB_URL` points at a real multi-connection database
+(e.g. MySQL) — the default SQLite database allows only one writer, so
+extra workers intermittently fail requests with "database is locked".
 
 The app is available at [http://localhost:3000](http://localhost:3000).
 
@@ -202,20 +223,21 @@ lsof -ti:3000 | xargs kill -9
 The username is always `admin`. Reset the password (works whether or not the
 database exists):
 ```bash
-ADMIN_PASSWORD='new-strong-password' python reset_admin.py
-# or: ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
+./start.sh --reset-admin        # prompts for the new password, hidden input
+# non-interactive: ADMIN_PASSWORD='new-strong-password' ./start.sh --reset-admin
 ```
 Note: `./start.sh` without `--reset-admin` only creates the admin when `dev.db`
 does not already exist.
 
 **Getting logged out after every restart**
-Set a fixed `SECRET_KEY` in the environment — the random per-start fallback
-invalidates sessions on each restart.
+Shouldn't happen if you're using `start.sh` — it generates and persists a
+stable `SECRET_KEY` for you. If you're managing it yourself, make sure
+it's a fixed value, not regenerated per run.
 
 **Database reset (wipes all data)**
 ```bash
 rm dev.db
-ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py
+./start.sh   # prompts for a new admin password since dev.db is gone
 ```
 
 **Scheduler fails to start: `No time zone found with key ...`**
