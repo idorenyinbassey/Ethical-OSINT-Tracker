@@ -54,6 +54,9 @@ def fetch_target_data(target) -> dict:
         elif target.kind == "phone":
             from app.services import numverify_client
             return numverify_client.fetch_phone(target.query) or {}
+        elif target.kind == "typosquat":
+            from app.services import typosquat_client
+            return typosquat_client.scan_typosquats(target.query) or {}
         return {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
     except Exception as exc:
         return {"error": str(exc)}

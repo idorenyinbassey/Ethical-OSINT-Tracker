@@ -259,6 +259,22 @@ def _extract_findings(kind: str, result_json: str) -> list:
                 ))
 
     # ------------------------------------------------------------------
+    elif kind == "typosquat":
+        pairs.append(("Domain", g(d, "domain")))
+        pairs.append(("Permutations Checked", str(d.get("permutations_generated", 0))))
+        pairs.append(("Registered Lookalikes", str(d.get("registered_count", 0))))
+        for hit in (d.get("registered") or [])[:20]:
+            if isinstance(hit, dict):
+                label = hit.get("domain", "")
+                if hit.get("ip"):
+                    label += f" -> {hit['ip']}"
+                if hit.get("registrar"):
+                    label += f" ({hit['registrar']})"
+                pairs.append(("Registered Lookalike", label))
+            else:
+                pairs.append(("Registered Lookalike", _safe_str(hit)))
+
+    # ------------------------------------------------------------------
     elif kind == "email":
         pairs.append(("Email Address", g(d, "email", default=g(d, "address"))))
         breaches = d.get("breaches")
@@ -603,6 +619,13 @@ def _risk_notes(investigations):
                 notes.append(
                     f"Domain {inv.query} has {len(takeovers)} possible subdomain takeover(s) "
                     f"({services}) - verify and remediate dangling DNS records."
+                )
+        elif inv.kind == "typosquat":
+            registered_count = int(d.get("registered_count") or 0)
+            if registered_count > 0:
+                notes.append(
+                    f"Domain {inv.query} has {registered_count} registered lookalike domain(s) "
+                    f"- possible brand impersonation or phishing risk."
                 )
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")

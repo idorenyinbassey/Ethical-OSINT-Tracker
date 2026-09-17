@@ -169,6 +169,32 @@ def subdomain():
     return render_template("investigation/subdomain.html", cases=cases, result=result)
 
 
+# ── Domain Typosquat Monitor ───────────────────────────────────────────────────
+
+@investigation_bp.route("/typosquat", methods=["GET", "POST"])
+@login_required
+def typosquat():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        domain_name = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not domain_name:
+            flash("Domain is required.", "error")
+            return render_template("investigation/typosquat.html", cases=cases, result=None)
+
+        from app.services import typosquat_client
+        result = typosquat_client.scan_typosquats(domain_name)
+
+        conf = "CONFIRMED" if result.get("registered_count", 0) > 0 else "UNVERIFIED"
+        find_or_update_recent(kind="typosquat", query=domain_name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
+        flash(f"Typosquat scan complete for {domain_name} — "
+              f"{result.get('registered_count', 0)} registered lookalike(s) found.", "success")
+
+    return render_template("investigation/typosquat.html", cases=cases, result=result)
+
+
 # ── Email Analysis (HIBP + Hunter) ────────────────────────────────────────────
 
 @investigation_bp.route("/email", methods=["GET", "POST"])
@@ -863,7 +889,7 @@ def watchlist_add():
     kind = request.form.get("kind", "ip").strip()
     case_id = _safe_case_id(request.form.get("case_id"))
     notes = request.form.get("notes", "").strip()
-    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb"}
+    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb", "typosquat"}
     if not query or kind not in valid_kinds:
         flash("Query and a valid kind are required.", "error")
         return redirect(url_for("investigation.watchlist"))
@@ -918,6 +944,9 @@ def watchlist_rescan(target_id):
         elif target.kind == "crypto":
             from app.services import crypto_client
             result = crypto_client.lookup(target.query)
+        elif target.kind == "typosquat":
+            from app.services import typosquat_client
+            result = typosquat_client.scan_typosquats(target.query)
         else:
             result = {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
     except Exception as exc:
