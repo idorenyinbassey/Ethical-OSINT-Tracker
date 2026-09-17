@@ -57,6 +57,10 @@ def fetch_target_data(target) -> dict:
         elif target.kind == "typosquat":
             from app.services import typosquat_client
             return typosquat_client.scan_typosquats(target.query) or {}
+        elif target.kind == "paste_leak":
+            from app.services import paste_client
+            pastes = paste_client.check_pastes(target.query)
+            return {"query": target.query, "pastes": pastes if pastes is not None else []}
         return {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
     except Exception as exc:
         return {"error": str(exc)}

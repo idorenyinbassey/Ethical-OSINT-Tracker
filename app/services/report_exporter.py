@@ -275,6 +275,20 @@ def _extract_findings(kind: str, result_json: str) -> list:
                 pairs.append(("Registered Lookalike", _safe_str(hit)))
 
     # ------------------------------------------------------------------
+    elif kind == "paste_leak":
+        pairs.append(("Query", g(d, "query")))
+        pastes = d.get("pastes") or []
+        pairs.append(("Paste Hits", str(len(pastes))))
+        for p in pastes[:20]:
+            if isinstance(p, dict):
+                label = p.get("url", "")
+                if p.get("date"):
+                    label += f" ({p['date']})"
+                pairs.append(("Paste Hit", label))
+            else:
+                pairs.append(("Paste Hit", _safe_str(p)))
+
+    # ------------------------------------------------------------------
     elif kind == "email":
         pairs.append(("Email Address", g(d, "email", default=g(d, "address"))))
         breaches = d.get("breaches")
@@ -643,6 +657,12 @@ def _risk_notes(investigations):
                 notes.append(
                     f"Domain {inv.query} has {registered_count} registered lookalike domain(s) "
                     f"- possible brand impersonation or phishing risk."
+                )
+        elif inv.kind == "paste_leak":
+            pastes = d.get("pastes") or []
+            if pastes:
+                notes.append(
+                    f"'{inv.query}' found in {len(pastes)} paste-site hit(s) - possible credential/data exposure."
                 )
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")

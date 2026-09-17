@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Paste / Leak Monitor – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Paste-site / Leak Monitor</h1>
+<p class="text-sm text-yellow-500 mb-6">Searches unofficial paste-dump sites (psbdmp.ws by default) for a query — email, username, or domain. Must be enabled in Settings → PasteMonitor.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Query</label>
+        <input type="text" name="query" required placeholder="e.g. user@example.com"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Search Pastes
+      </button>
+    </form>
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if error %}
+      <div class="bg-yellow-900/20 border border-yellow-800 rounded-xl p-4 text-sm text-yellow-400">
+        {{ error }}
+      </div>
+    {% elif pastes is not none %}
+      {% if pastes %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <span class="text-sm font-medium text-white">{{ pastes|length }} paste hit(s) for "{{ query }}"</span>
+          </div>
+          <div class="divide-y divide-gray-800">
+            {% for p in pastes %}
+              <div class="px-4 py-3">
+                <div class="flex items-center justify-between mb-1">
+                  <a href="{{ p.url }}" target="_blank" rel="noopener" class="text-indigo-300 text-sm hover:underline">{{ p.url }}</a>
+                  <span class="text-xs text-gray-500">{{ p.date }}</span>
+                </div>
+                {% if p.snippet %}
+                  <p class="text-xs text-gray-400 break-all">{{ p.snippet }}</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          No paste hits found for "{{ query }}".
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a query to search paste-dump sites.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Uses psbdmp.ws by default — no API key required, but must be enabled in Settings.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -889,7 +889,7 @@ def watchlist_add():
     kind = request.form.get("kind", "ip").strip()
     case_id = _safe_case_id(request.form.get("case_id"))
     notes = request.form.get("notes", "").strip()
-    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb", "typosquat"}
+    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb", "typosquat", "paste_leak"}
     if not query or kind not in valid_kinds:
         flash("Query and a valid kind are required.", "error")
         return redirect(url_for("investigation.watchlist"))
@@ -947,6 +947,10 @@ def watchlist_rescan(target_id):
         elif target.kind == "typosquat":
             from app.services import typosquat_client
             result = typosquat_client.scan_typosquats(target.query)
+        elif target.kind == "paste_leak":
+            from app.services import paste_client
+            pastes = paste_client.check_pastes(target.query)
+            result = {"query": target.query, "pastes": pastes if pastes is not None else []}
         else:
             result = {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
     except Exception as exc:
@@ -1012,6 +1016,36 @@ def breach():
     return render_template("investigation/breach.html", email=email,
                            breaches=breaches, pwned_count=pwned_count,
                            error=error, cases=cases)
+
+
+# ── Paste-site / Leak Monitor ──────────────────────────────────────────────────
+
+@investigation_bp.route("/paste-monitor", methods=["GET", "POST"])
+@login_required
+def paste_monitor():
+    cases = _cases_for_select()
+    query = None
+    pastes = None
+    error = None
+    if request.method == "POST":
+        query = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not query:
+            flash("A query is required.", "error")
+            return render_template("investigation/paste_monitor.html", cases=cases, query=None, pastes=None)
+
+        from app.services import paste_client
+        pastes = paste_client.check_pastes(query)
+
+        if pastes is None:
+            error = "Paste monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
+        else:
+            conf = "CONFIRMED" if pastes else "UNVERIFIED"
+            find_or_update_recent(kind="paste_leak", query=query, result_json=json.dumps({"query": query, "pastes": pastes}),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Paste search complete for '{query}' — {len(pastes)} hit(s) found.", "success")
+
+    return render_template("investigation/paste_monitor.html", cases=cases, query=query, pastes=pastes, error=error)
 
 
 # ── Plugins ───────────────────────────────────────────────────────────────────
