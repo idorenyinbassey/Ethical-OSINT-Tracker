@@ -433,6 +433,23 @@ def _extract_findings(kind: str, result_json: str) -> list:
             pairs.append(("Revision", _safe_str(revision)))
 
     # ------------------------------------------------------------------
+    elif kind == "image":
+        pairs.append(("Recognition", g(d, "identified_person")))
+        pairs.append(("Confidence", g(d, "confidence")))
+        ris = d.get("reverse_image_search")
+        if isinstance(ris, dict):
+            status = ris.get("status")
+            if status == "ok":
+                pairs.append(("Reverse Image Matches", str(ris.get("match_count", 0))))
+                for m in (ris.get("matches") or [])[:10]:
+                    if isinstance(m, dict) and m.get("url"):
+                        pairs.append(("Reverse Image Match", m["url"]))
+            elif status == "api_error":
+                pairs.append(("Reverse Image Search", ris.get("error", "Failed")))
+            else:
+                pairs.append(("Reverse Image Search", "Not configured"))
+
+    # ------------------------------------------------------------------
     elif kind == "phone":
         pairs.append(("Phone Number", g(d, "phone_number", default=g(d, "number", default=g(d, "phone")))))
         valid = d.get("valid")

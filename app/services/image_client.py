@@ -4,6 +4,7 @@ import httpx
 from pathlib import Path
 from typing import Optional, Dict
 from app.repositories.api_config_repository import get_by_service
+from app.utils.proxy_config import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,40 @@ def validate_google_vision_key(api_key: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _call_tineye(image_path: Path, cfg) -> dict:
+    """Query TinEye's reverse image search for `image_path`. Isolated from
+    the surrounding merge/error-handling scaffold so a future correction
+    to TinEye's actual request/auth shape (its commercial API has changed
+    auth schemes historically, and this integration has not been verified
+    against current live docs) only touches this one function.
+
+    TinEye has no free tier — a paid account is required for this to
+    return real matches; that is surfaced in the Settings label and the
+    template, not hidden here.
+    """
+    base_url = (cfg.base_url or "https://api.tineye.com").rstrip("/")
+    with open(image_path, "rb") as f:
+        files = {"image": (image_path.name, f)}
+        with get_http_client(timeout=20) as client:
+            response = client.post(
+                f"{base_url}/rest/search/",
+                files=files,
+                params={"api_key": cfg.api_key},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+    results = (data.get("results") or {}).get("matches", []) if isinstance(data, dict) else []
+    matches = []
+    for m in results[:10]:
+        if isinstance(m, dict):
+            backlinks = m.get("backlinks") or []
+            url = backlinks[0].get("url") if backlinks and isinstance(backlinks[0], dict) else m.get("image_url")
+            matches.append({"url": url, "score": m.get("score")})
+
+    return {"status": "ok", "match_count": len(results), "matches": matches}
+
+
 def analyze_image(image_path: Path) -> Optional[Dict]:
     """Analyze an uploaded image: extract EXIF metadata and optionally call Google Cloud Vision."""
     raw_exif_data = extract_image_metadata(image_path)
@@ -163,7 +198,23 @@ def analyze_image(image_path: Path) -> Optional[Dict]:
         "media_mentions": [],
         "recent_posts": [],
         "exif": exif_data,
+        "reverse_image_search": {"status": "not_configured", "matches": []},
     }
+
+    tineye_cfg = get_by_service("TinEye")
+    if tineye_cfg and tineye_cfg.is_enabled and tineye_cfg.api_key:
+        try:
+            result["reverse_image_search"] = _call_tineye(image_path, tineye_cfg)
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            logger.error("TinEye HTTP %s for %s", status_code, image_path.name)
+            msg = {401: "Authentication Failed (401): Invalid TinEye API key.",
+                   403: "Access Denied (403): TinEye account lacks search access.",
+                   429: "Rate Limit Exceeded (429): Too many requests."}.get(status_code, f"HTTP Error ({status_code})")
+            result["reverse_image_search"] = {"status": "api_error", "error": msg, "matches": []}
+        except Exception:
+            logger.exception("TinEye reverse image search failed for %s", image_path.name)
+            result["reverse_image_search"] = {"status": "api_error", "error": "Reverse image search failed.", "matches": []}
 
     cfg = get_by_service("ImageRecognition")
     if cfg and cfg.is_enabled and cfg.api_key:

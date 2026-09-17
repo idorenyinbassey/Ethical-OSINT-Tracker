@@ -27,6 +27,7 @@ SERVICES = [
     {"name": "Hunter.io", "label": "Hunter.io (email deliverability)", "default_url": "https://api.hunter.io/v2"},
     {"name": "NumVerify", "label": "NumVerify (phone validation)", "default_url": "http://apilayer.net/api"},
     {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},
+    {"name": "TinEye", "label": "TinEye (reverse image search — requires paid TinEye account)", "default_url": "https://api.tineye.com"},
     {"name": "IMEIService", "label": "IMEI Service", "default_url": "https://api.imei.info"},
     # Outbound alerting
     {"name": "Notifications", "label": "Notifications — webhook on watchlist change (ntfy.sh, Discord, Slack, etc.)", "default_url": ""},
