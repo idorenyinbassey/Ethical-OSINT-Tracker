@@ -133,6 +133,22 @@
   </div>
 </div>
 
+<!-- Two-Factor Authentication -->
+<div class="mt-8 max-w-md">
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex items-center justify-between">
+    <div>
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">Two-Factor Authentication</h2>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+        {% if current_user.totp_enabled %}Enabled{% else %}Not enabled{% endif %}
+      </p>
+    </div>
+    <a href="{{ url_for('settings.two_factor') }}"
+       class="px-4 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors">
+      Manage
+    </a>
+  </div>
+</div>
+
 <!-- Change Password -->
 <div class="mt-8 max-w-md">
   <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">

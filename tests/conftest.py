@@ -117,5 +117,18 @@ def login(client, username, password=_PASSWORD):
     )
 
 
+def login_with_2fa(client, username, secret, password=_PASSWORD):
+    """Log a user in through /login then /login/verify-2fa, generating a
+    live TOTP code from `secret`. Mirrors login() for accounts with 2FA
+    enabled."""
+    import pyotp
+    client.post("/login", data={"username": username, "password": password})
+    return client.post(
+        "/login/verify-2fa",
+        data={"code": pyotp.TOTP(secret).now()},
+        follow_redirects=False,
+    )
+
+
 # Expose the shared password so individual tests can reference it.
 PASSWORD = _PASSWORD

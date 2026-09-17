@@ -3,10 +3,14 @@ from flask_login import login_required, current_user
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from app.repositories.api_config_repository import get_all_configs, create_or_update_config
-from app.repositories.user_repository import update_password, get_by_id
+from app.repositories.user_repository import (
+    update_password, get_by_id, set_totp_secret, enable_totp, disable_totp, set_recovery_codes,
+)
 from app.repositories.api_key_repository import create_api_key, list_active_keys, revoke_key
 from app.utils.validators import validate_base_url
 from app.utils.decorators import admin_required
+from app.utils.crypto import encrypt_secret, decrypt_secret
+from app.utils import totp as totp_utils
 
 ph = PasswordHasher()
 
@@ -144,4 +148,90 @@ def revoke_api_key_route(key_id):
         flash("API key revoked.", "success")
     else:
         flash("API key not found.", "error")
+    return redirect(url_for("settings.index"))
+
+
+# ── Two-factor authentication (TOTP) ────────────────────────────────────────────
+
+def _qr_data_uri(uri: str) -> str:
+    import io, base64
+    import qrcode
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+@settings_bp.route("/2fa")
+@login_required
+def two_factor():
+    user = get_by_id(current_user.id)
+    if user.totp_enabled:
+        return render_template("settings/2fa.html", enabled=True)
+
+    # Generate (and persist, encrypted) a pending secret if none exists yet,
+    # so reloading this page before scanning the QR shows the same code
+    # rather than silently invalidating it.
+    if not user.totp_secret:
+        secret = totp_utils.generate_secret()
+        set_totp_secret(current_user.id, encrypt_secret(secret))
+    else:
+        secret = decrypt_secret(user.totp_secret)
+
+    qr_data_uri = _qr_data_uri(totp_utils.provisioning_uri(secret, user.username))
+    return render_template("settings/2fa.html", enabled=False, secret=secret, qr_data_uri=qr_data_uri)
+
+
+@settings_bp.route("/2fa/confirm", methods=["POST"])
+@login_required
+def two_factor_confirm():
+    user = get_by_id(current_user.id)
+    if user.totp_enabled or not user.totp_secret:
+        flash("Start the 2FA setup again.", "error")
+        return redirect(url_for("settings.two_factor"))
+
+    code = request.form.get("code", "").strip()
+    secret = decrypt_secret(user.totp_secret)
+    if not totp_utils.verify_code(secret, code):
+        flash("Invalid code — check your authenticator app and try again.", "error")
+        return redirect(url_for("settings.two_factor"))
+
+    codes = totp_utils.generate_recovery_codes()
+    set_recovery_codes(current_user.id, totp_utils.hash_recovery_codes(codes))
+    enable_totp(current_user.id)
+    from app.utils.audit import log as audit_log
+    audit_log("account.2fa_enabled", entity_type="user", entity_id=current_user.id)
+    return render_template("settings/2fa_recovery_codes.html", codes=codes)
+
+
+@settings_bp.route("/2fa/regenerate-codes", methods=["POST"])
+@login_required
+def two_factor_regenerate_codes():
+    user = get_by_id(current_user.id)
+    if not user.totp_enabled:
+        flash("2FA is not enabled.", "error")
+        return redirect(url_for("settings.two_factor"))
+
+    codes = totp_utils.generate_recovery_codes()
+    set_recovery_codes(current_user.id, totp_utils.hash_recovery_codes(codes))
+    from app.utils.audit import log as audit_log
+    audit_log("account.2fa_recovery_regenerated", entity_type="user", entity_id=current_user.id)
+    return render_template("settings/2fa_recovery_codes.html", codes=codes)
+
+
+@settings_bp.route("/2fa/disable", methods=["POST"])
+@login_required
+def two_factor_disable():
+    password = request.form.get("password", "")
+    user = get_by_id(current_user.id)
+    try:
+        ph.verify(user.password_hash, password)
+    except VerifyMismatchError:
+        flash("Incorrect password.", "error")
+        return redirect(url_for("settings.two_factor"))
+
+    disable_totp(current_user.id)
+    from app.utils.audit import log as audit_log
+    audit_log("account.2fa_disabled", entity_type="user", entity_id=current_user.id)
+    flash("Two-factor authentication disabled.", "success")
     return redirect(url_for("settings.index"))

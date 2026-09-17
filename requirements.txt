@@ -23,6 +23,8 @@ PyMySQL==1.1.1          # MySQL driver; SQLite is used by default (no extra pack
 # ── Authentication & Security ─────────────────────────────────────────────────
 argon2-cffi==23.1.0     # Argon2id password hashing
 cryptography>=42.0.0    # Fernet symmetric encryption for stored API keys
+pyotp>=2.9.0            # TOTP two-factor authentication
+qrcode[pil]>=7.4.0      # Provisioning QR code for 2FA setup (Pillow is already a dependency)
 
 # ── HTTP Client ───────────────────────────────────────────────────────────────
 # [socks] extra enables SOCKS5 proxy / Tor routing via httpx
