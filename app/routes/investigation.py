@@ -565,13 +565,9 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         domain = data.get("domain") or inv.query
         _reg("domain", domain)
     elif kind == "paste_leak":
+        from app.utils.validators import classify_query_kind
         query = data.get("query") or inv.query
-        if "@" in query:
-            _reg("email", query)
-        elif "." in query and " " not in query:
-            _reg("domain", query)
-        else:
-            _reg("username", query)
+        _reg(classify_query_kind(query), query)
 
 
 @investigation_bp.route("/graph/data")
@@ -1087,7 +1083,10 @@ def breach():
                            error=error, cases=cases)
 
 
-# ── Paste-site / Leak Monitor ──────────────────────────────────────────────────
+# ── Leak Monitor (Hudson Rock infostealer intelligence) ───────────────────────
+# Route/kind names kept as "paste_monitor"/"paste_leak" for backward
+# compatibility with existing investigation/watchlist records and
+# bookmarked URLs from before the provider switch off psbdmp.ws.
 
 @investigation_bp.route("/paste-monitor", methods=["GET", "POST"])
 @login_required
@@ -1107,12 +1106,12 @@ def paste_monitor():
         pastes = paste_client.check_pastes(query)
 
         if pastes is None:
-            error = "Paste monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
+            error = "Leak monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
         else:
             conf = "CONFIRMED" if pastes else "UNVERIFIED"
             find_or_update_recent(kind="paste_leak", query=query, result_json=json.dumps({"query": query, "pastes": pastes}),
                                   user_id=current_user.id, case_id=case_id, confidence=conf)
-            flash(f"Paste search complete for '{query}' — {len(pastes)} hit(s) found.", "success")
+            flash(f"Leak search complete for '{query}' — {len(pastes)} hit(s) found.", "success")
 
     return render_template("investigation/paste_monitor.html", cases=cases, query=query, pastes=pastes, error=error)
 

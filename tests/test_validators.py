@@ -1,7 +1,7 @@
 """SSRF URL validation (Issue #8) and social username validation (Issue #12)."""
 import pytest
 
-from app.utils.validators import validate_base_url
+from app.utils.validators import validate_base_url, classify_query_kind
 from app.routes.investigation import USERNAME_PATTERN
 
 
@@ -39,6 +39,19 @@ def test_invalid_usernames_rejected(bad):
 @pytest.mark.parametrize("good", ["valid_user123", "john.doe", "a-b_c", "X"])
 def test_valid_usernames_accepted(good):
     assert USERNAME_PATTERN.match(good)
+
+
+@pytest.mark.parametrize("query,expected", [
+    ("someone@example.com", "email"),
+    ("user.name+tag@sub.example.co", "email"),
+    ("example.com", "domain"),
+    ("sub.example.co.uk", "domain"),
+    ("plainusername", "username"),
+    ("john doe", "username"),  # has a space, so not treated as a domain
+    ("", "username"),  # empty falls through to the default bucket
+])
+def test_classify_query_kind(query, expected):
+    assert classify_query_kind(query) == expected
 
 
 def test_social_route_rejects_bad_username(client, user_a, case_of_a):
