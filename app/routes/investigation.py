@@ -64,8 +64,11 @@ def _investigation_before():
                             "investigation.watchlist_dismiss_alert",
                             "investigation.tag_investigation"):
         return
-    # Require at least one case to exist
-    cases = _cases_for_select()
+    # Require at least one case to exist (owned, or shared via a team —
+    # a team-only member must not be locked out of every investigation
+    # page just because they don't own any case themselves).
+    from app.repositories.case_repository import list_cases_for_user
+    cases = list_cases_for_user(current_user.id)
     if not cases:
         flash("Please create a case first before running investigations.", "error")
         return redirect(url_for('cases.new'))
@@ -512,7 +515,8 @@ def darkweb():
 @investigation_bp.route("/graph")
 @login_required
 def graph():
-    return render_template("investigation/graph.html")
+    from app.repositories.case_repository import list_cases_for_user
+    return render_template("investigation/graph.html", cases=list_cases_for_user(current_user.id))
 
 
 def _register_entity(entity_map: dict, node_id: str, etype: str, val) -> None:
@@ -648,31 +652,54 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
 def graph_data():
     """Return JSON graph data: nodes + edges for vis.js.
 
-    With ?case_id=<id>, scopes to just that case (any team member's
-    investigations, per can_access_case) — used by the case report
-    snapshot capture as well as an optional case-scoped view in the UI.
+    With one ?case_id=<id>, scopes to just that case (any team member's
+    investigations, per can_access_case) — the default view a user reaches
+    from a case's own page, and what the report snapshot capture uses.
+
+    With multiple ?case_id=<id>&case_id=<id2>..., scopes to the UNION of
+    exactly those cases — an investigator's deliberate, explicit multi-case
+    comparison, not a silent account-wide default. Each case's own bubble
+    node + case_inv edges (built below) keep every case's investigations
+    visually anchored to their case, so comparing never blends them.
+
+    With no case_id at all, scopes to the current user's own ad-hoc
+    (case_id IS NULL) investigations and tracking links only — never to
+    every case the user owns. There is no way to see more than one case's
+    data at once without explicitly listing each case_id: that's what
+    keeps this from becoming the account-wide, cross-case-bleeding
+    default the single/no-arg forms used to silently fall back to.
     """
-    from app.repositories.investigation_repository import list_all, list_by_case
-    from app.repositories.case_repository import list_cases, get_case
-    from app.repositories.tracking_repository import list_links, list_links_by_case, list_hits
+    from app.repositories.investigation_repository import list_by_case, list_all
+    from app.repositories.case_repository import get_case
+    from app.repositories.tracking_repository import list_links_by_case, list_links, list_hits
     from app.utils.authz import can_access_case
 
-    case_id = request.args.get("case_id", type=int)
+    # Order-preserving de-dup: a repeated ?case_id=1&case_id=1 must not
+    # double every node/edge for that case.
+    requested_case_ids = list(dict.fromkeys(
+        cid for cid in request.args.getlist("case_id", type=int) if cid is not None
+    ))
 
-    if case_id is not None:
-        target_case = get_case(case_id)
-        if not target_case or not can_access_case(target_case, current_user, action="read"):
-            abort(403)
-        cases = [target_case]
-        invs = list_by_case(case_id)
-        # Same read-access check above already gates this — any team
-        # member's tracking links on this case are visible here exactly
-        # like their investigations are, not just the current user's own.
-        tracking_links = list_links_by_case(case_id)
+    cases = []
+    invs = []
+    tracking_links = []
+    if requested_case_ids:
+        for cid in requested_case_ids:
+            target_case = get_case(cid)
+            if not target_case or not can_access_case(target_case, current_user, action="read"):
+                abort(403)
+            cases.append(target_case)
+            invs.extend(list_by_case(cid))
+            # Same read-access check above already gates this — any team
+            # member's tracking links on this case are visible here exactly
+            # like their investigations are, not just the current user's own.
+            tracking_links.extend(list_links_by_case(cid))
     else:
-        cases = list_cases(owner_user_id=current_user.id)
-        invs = list_all(user_id=current_user.id)
-        tracking_links = list_links(user_id=current_user.id)
+        invs = [i for i in list_all(user_id=current_user.id) if i.case_id is None]
+        tracking_links = [l for l in list_links(user_id=current_user.id) if l.case_id is None]
+
+    comparing_multiple = len(cases) > 1
+    case_title_lookup = {c.id: c.title for c in cases}
 
     nodes = []
     edges = []
@@ -698,11 +725,14 @@ def graph_data():
         inv_node_id = f"inv-{inv.id}"
         query_str = inv.query or ""
         label = f"{query_str[:20]}\n({inv.kind.replace('_', ' ')})"
+        node_title = f"Type: {inv.kind}\nQuery: {query_str}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}"
+        if comparing_multiple and inv.case_id in case_title_lookup:
+            node_title += f"\nCase: {case_title_lookup[inv.case_id]}"
         nodes.append({
             "id": inv_node_id,
             "label": label,
             "group": inv.kind,
-            "title": f"Type: {inv.kind}\nQuery: {query_str}\nDate: {inv.created_at.strftime('%Y-%m-%d') if inv.created_at else ''}",
+            "title": node_title,
         })
         if inv.case_id and inv.case_id in case_ids:
             edges.append({
@@ -775,12 +805,28 @@ def graph_data():
     # that same address — exactly like any Investigation-sourced entity.
     for link in tracking_links:
         link_node_id = f"track-link-{link.id}"
+        link_title = f"Tracking link: {link.label}\nDecoy: {link.decoy_mode}"
+        hit_case_suffix = ""
+        if comparing_multiple and link.case_id in case_title_lookup:
+            case_label = case_title_lookup[link.case_id]
+            link_title += f"\nCase: {case_label}"
+            hit_case_suffix = f"\nCase: {case_label}"
         nodes.append({
             "id": link_node_id,
             "label": link.label[:28] or "(tracking link)",
             "group": "tracking_link",
-            "title": f"Tracking link: {link.label}\nDecoy: {link.decoy_mode}",
+            "title": link_title,
         })
+        # Anchor the link to its case bubble exactly like investigations
+        # are (case_inv edges above) — without this, tracking links from
+        # different cases in a multi-case comparison are visually
+        # indistinguishable from each other.
+        if link.case_id and link.case_id in case_ids:
+            edges.append({
+                "from": f"case-{link.case_id}",
+                "to": link_node_id,
+                "edge_type": "case_inv",
+            })
         for hit in list_hits(link.id):
             if not hit.ip:
                 continue
@@ -790,7 +836,7 @@ def graph_data():
                 "label": hit.ip,
                 "group": "tracking_hit",
                 "title": f"Tracked hit ({hit.hit_type})\nIP: {hit.ip}\n"
-                         f"Location: {hit.city or '?'}, {hit.country or '?'}",
+                         f"Location: {hit.city or '?'}, {hit.country or '?'}{hit_case_suffix}",
             })
             edges.append({
                 "from": link_node_id,
@@ -933,7 +979,8 @@ def vehicle():
 @investigation_bp.route("/map")
 @login_required
 def location_map():
-    return render_template("investigation/map.html")
+    from app.repositories.case_repository import list_cases_for_user
+    return render_template("investigation/map.html", cases=list_cases_for_user(current_user.id))
 
 
 _KIND_LABEL = {
@@ -958,28 +1005,46 @@ _KIND_LABEL = {
 def map_data():
     """Return JSON markers extracted from geo-tagged investigations.
 
-    With ?case_id=<id>, scopes to that case's investigations (any team
+    With one ?case_id=<id>, scopes to that case's investigations (any team
     member's, per can_access_case) instead of the account-wide default —
-    used by the case report snapshot capture as well as an optional
-    case-scoped view in the UI.
+    the default view reached from a case's own page, and what the case
+    report snapshot capture uses.
+
+    With multiple ?case_id=<id>&case_id=<id2>..., scopes to the UNION of
+    exactly those cases (an explicit multi-case comparison) — each marker's
+    popup already shows its case name, so markers from different cases
+    stay distinguishable rather than blending together.
+
+    With no case_id at all, scopes to the current user's own ad-hoc
+    (case_id IS NULL) investigations only — never to every case the user
+    owns. Seeing more than one case at once requires explicitly listing
+    each case_id: that's what keeps this from becoming the account-wide,
+    cross-case-bleeding default the single/no-arg forms used to silently
+    fall back to.
     """
-    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.investigation_repository import list_by_case, list_all
     from app.repositories.case_repository import list_cases, get_case
     from app.utils.authz import can_access_case
 
-    case_id = request.args.get("case_id", type=int)
+    # Order-preserving de-dup: a repeated ?case_id=1&case_id=1 must not
+    # double every marker for that case.
+    case_ids = list(dict.fromkeys(
+        cid for cid in request.args.getlist("case_id", type=int) if cid is not None
+    ))
 
     # Build case_id → title lookup (scoped to current user's cases)
     case_lookup = {c.id: c.title for c in list_cases(owner_user_id=current_user.id)}
 
-    if case_id is not None:
-        case = get_case(case_id)
-        if not case or not can_access_case(case, current_user, action="read"):
-            abort(403)
-        case_lookup.setdefault(case.id, case.title)
-        invs = list_by_case(case_id)
+    if case_ids:
+        invs = []
+        for cid in case_ids:
+            case = get_case(cid)
+            if not case or not can_access_case(case, current_user, action="read"):
+                abort(403)
+            case_lookup.setdefault(case.id, case.title)
+            invs.extend(list_by_case(cid))
     else:
-        invs = list_all(user_id=current_user.id)
+        invs = [i for i in list_all(user_id=current_user.id) if i.case_id is None]
 
     markers = []
 
@@ -1257,11 +1322,22 @@ def plugin_run(plugin_name):
             try:
                 result = plugin.run(query)
             except Exception as exc:
+                # An uncaught exception replaces `result` with a bare
+                # {"error": ...} blob that carries none of a plugin's
+                # normal result shape — persisting that via the upsert
+                # below would destroy a previously-stored successful
+                # result for this same case/query. A plugin's own
+                # normal return value (even one that legitimately
+                # includes an "error" key, e.g. a DNS lookup failure) is
+                # still persisted as before, matching every other tool
+                # route's convention.
                 result = {"error": str(exc)}
-            create_investigation(kind=f"plugin_{plugin.name}", query=query,
-                                 result_json=json.dumps(result),
-                                 user_id=current_user.id, case_id=case_id)
-            flash(f"Plugin '{plugin.label}' completed.", "success")
+                flash(f"Plugin '{plugin.label}' failed: {exc}", "error")
+            else:
+                find_or_update_recent(kind=f"plugin_{plugin.name}", query=query,
+                                      result_json=json.dumps(result),
+                                      user_id=current_user.id, case_id=case_id)
+                flash(f"Plugin '{plugin.label}' completed.", "success")
 
     return render_template("investigation/plugin_run.html",
                            plugin=plugin, cases=cases, result=result)

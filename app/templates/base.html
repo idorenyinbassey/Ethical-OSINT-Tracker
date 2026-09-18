@@ -202,19 +202,19 @@
       </a>
 
       <p class="px-4 pt-3 pb-1 text-xs text-gray-500 uppercase tracking-wider">Visualise</p>
-      <a href="{{ url_for('investigation.location_map') }}"
+      <a href="{{ url_for('investigation.location_map', case_id=active_case.id if active_case else None) }}"
          class="sidebar-link {% if request.endpoint == 'investigation.location_map' %}active{% endif %}">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
         </svg>
-        Location Map
+        Location Map{% if active_case %} <span class="text-xs text-gray-400">({{ active_case.title[:16] }})</span>{% endif %}
       </a>
-      <a href="{{ url_for('investigation.graph') }}"
+      <a href="{{ url_for('investigation.graph', case_id=active_case.id if active_case else None) }}"
          class="sidebar-link {% if request.endpoint == 'investigation.graph' %}active{% endif %}">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/>
         </svg>
-        Network Graph
+        Network Graph{% if active_case %} <span class="text-xs text-gray-400">({{ active_case.title[:16] }})</span>{% endif %}
       </a>
       <a href="{{ url_for('investigation.plugins') }}"
          class="sidebar-link {% if 'investigation.plugin' in (request.endpoint or '') %}active{% endif %}">

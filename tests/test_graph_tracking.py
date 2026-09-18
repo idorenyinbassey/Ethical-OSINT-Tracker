@@ -99,7 +99,7 @@ def test_graph_data_links_tracking_hit_ip_to_ip_investigation(app, client, user_
                              result_json=json.dumps({"ip": "203.0.113.77", "geo": {}}),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -107,3 +107,42 @@ def test_graph_data_links_tracking_hit_ip_to_ip_investigation(app, client, user_
     assert len(entity_nodes) == 1
     entity_edges = [e for e in data["edges"] if e["to"] == entity_nodes[0]["id"]]
     assert len(entity_edges) == 2
+
+
+def test_graph_data_anchors_tracking_link_to_its_case_bubble(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    link = _seed_link_and_hit(app, user_a, case=case_of_a, ip="203.0.113.88")
+
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+
+    link_node_id = f"track-link-{link.id}"
+    case_inv_edges = [
+        e for e in data["edges"]
+        if e["edge_type"] == "case_inv" and e["from"] == f"case-{case_of_a.id}" and e["to"] == link_node_id
+    ]
+    assert len(case_inv_edges) == 1
+
+
+def test_graph_data_multi_case_tracking_link_tooltip_shows_case_title(app, client, user_a, case_of_a):
+    """When comparing 2+ cases, a tracking link (and its hits) must name
+    its case, same as investigation nodes — otherwise links/hits with the
+    same label/IP from different selected cases are indistinguishable."""
+    from app.repositories.case_repository import create_case
+
+    login(client, user_a.username)
+    _seed_link_and_hit(app, user_a, case=case_of_a, ip="203.0.113.99")
+    with app.app_context():
+        other_case = create_case("Other Case Tracking", "", owner_user_id=user_a.id)
+
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}&case_id={other_case.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+
+    link_nodes = [n for n in data["nodes"] if n["group"] == "tracking_link"]
+    hit_nodes = [n for n in data["nodes"] if n["group"] == "tracking_hit"]
+    assert len(link_nodes) == 1
+    assert len(hit_nodes) == 1
+    assert f"Case: {case_of_a.title}" in link_nodes[0]["title"]
+    assert f"Case: {case_of_a.title}" in hit_nodes[0]["title"]

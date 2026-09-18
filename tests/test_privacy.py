@@ -55,6 +55,63 @@ def test_purge_disabled_when_non_positive(app):
         assert purge_old_investigations(retention_days=-5) == 0
 
 
+def test_purge_spares_a_row_refreshed_after_the_cutoff(app, user_a):
+    """find_or_update_recent() deliberately leaves created_at at a row's
+    original first-run timestamp forever, with no age limit on matching —
+    so a long-lived case's investigation that was refreshed today, but
+    first created a year ago, must survive the purge. Purging on
+    created_at alone would silently delete live, current data out from
+    under an active case."""
+    with app.app_context():
+        inv = create_investigation("ip", "8.8.4.4", "{}", user_id=user_a.id)
+        from app.db import get_session
+        from app.models.investigation import Investigation
+        session = get_session()
+        try:
+            row = session.get(Investigation, inv.id)
+            row.created_at = datetime.utcnow() - timedelta(days=400)
+            row.updated_at = datetime.utcnow()  # refreshed today
+            session.add(row)
+            session.commit()
+        finally:
+            session.close()
+
+        purge_old_investigations(retention_days=90)
+
+        session = get_session()
+        try:
+            assert session.get(Investigation, inv.id) is not None
+        finally:
+            session.close()
+
+
+def test_purge_deletes_a_row_whose_last_update_is_still_stale(app, user_a):
+    """A row that WAS refreshed, but not recently enough, is still fair
+    game for the purge — coalescing to created_at only matters when
+    updated_at was never set at all."""
+    with app.app_context():
+        inv = create_investigation("ip", "8.8.4.5", "{}", user_id=user_a.id)
+        from app.db import get_session
+        from app.models.investigation import Investigation
+        session = get_session()
+        try:
+            row = session.get(Investigation, inv.id)
+            row.created_at = datetime.utcnow() - timedelta(days=400)
+            row.updated_at = datetime.utcnow() - timedelta(days=200)
+            session.add(row)
+            session.commit()
+        finally:
+            session.close()
+
+        purge_old_investigations(retention_days=90)
+
+        session = get_session()
+        try:
+            assert session.get(Investigation, inv.id) is None
+        finally:
+            session.close()
+
+
 def test_count_by_kind_scoped_to_user(app, user_a, user_b):
     with app.app_context():
         create_investigation("mac", "aa:bb:cc:dd:ee:ff", "{}", user_id=user_a.id)

@@ -6,8 +6,6 @@ from app.models.investigation import Investigation
 from app.models.user import User  # noqa: F401
 from app.repositories.base import session_scope
 
-DEDUPE_WINDOW = timedelta(hours=1)
-
 
 def _detach(inv: Investigation) -> Investigation:
     """Return a plain detached copy with all fields copied."""
@@ -34,18 +32,33 @@ def create_investigation(kind: str, query: str, result_json: str,
 def find_or_update_recent(kind: str, query: str, result_json: str,
                            user_id: int | None, case_id: int | None = None,
                            confidence: str = "UNVERIFIED") -> Investigation:
-    """Upsert: update existing row if same kind+query+case within 1 hour, else create new."""
+    """Upsert: re-running the same tool/query in the same case, as the same
+    user, always updates the existing row in place rather than creating a
+    sibling — no age limit, so this holds regardless of how long ago the
+    original run was. `created_at` is left untouched (it's the case's own
+    "first investigated" timestamp); `updated_at` records the refresh.
+
+    Matching requires `user_id` too, so two different users running the
+    same query in a case they both have access to don't silently overwrite
+    each other's result. `query` is compared case/whitespace-insensitively
+    (mirroring find_related_cases()'s normalization below) so
+    "8.8.8.8 " or "Example.com" don't spawn a sibling row next to an
+    existing "8.8.8.8"/"example.com".
+
+    Investigations not attached to a case (case_id is None) are never
+    deduped — each run is a fully separate, ad-hoc row.
+    """
     if case_id is None:
         return create_investigation(kind=kind, query=query, result_json=result_json,
                                     user_id=user_id, case_id=None, confidence=confidence)
-    cutoff = datetime.utcnow() - DEDUPE_WINDOW
+    normalized_query = query.strip().lower()
     with session_scope() as session:
         existing = session.exec(
             select(Investigation)
             .where(Investigation.case_id == case_id)
+            .where(Investigation.user_id == user_id)
             .where(Investigation.kind == kind)
-            .where(Investigation.query == query)
-            .where(Investigation.created_at >= cutoff)
+            .where(func.lower(func.trim(Investigation.query)) == normalized_query)
             .order_by(Investigation.created_at.desc())
         ).first()
         if existing:
@@ -126,19 +139,29 @@ def count_by_kind(user_id: int | None = None) -> Dict[str, int]:
 
 
 def purge_old_investigations(retention_days: int) -> int:
-    """Delete investigations older than `retention_days` (Issue #15 retention).
+    """Delete investigations not touched in `retention_days` (Issue #15
+    retention).
 
     Returns the number of rows deleted. A non-positive retention_days disables
     purging (returns 0) so operators can opt out by setting RETENTION_DAYS<=0.
+
+    Purges on the more recent of `created_at`/`updated_at`, not `created_at`
+    alone: find_or_update_recent() deliberately leaves `created_at` at the
+    row's original first-run timestamp forever (with no age limit on
+    matching), so a long-lived case's investigation that was refreshed
+    today, but first created a year ago, must not be swept away at the
+    next purge just because its `created_at` predates the cutoff.
     """
     if retention_days is None or retention_days <= 0:
         return 0
-    # created_at is naive UTC (see Investigation model default).
+    # created_at/updated_at are naive UTC (see Investigation model default).
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     with session_scope() as session:
         # Single bulk DELETE rather than loading and deleting row-by-row.
         result = session.exec(
-            delete(Investigation).where(Investigation.created_at < cutoff)
+            delete(Investigation).where(
+                func.coalesce(Investigation.updated_at, Investigation.created_at) < cutoff
+            )
         )
         return result.rowcount or 0
 
