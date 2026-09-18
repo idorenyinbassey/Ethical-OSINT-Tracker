@@ -9,7 +9,7 @@ The application is pre-configured to support the following services. Most offer 
 | Service | Purpose | Default URL | Docs Link |
 |---|---|---|---|
 | **WhoisXML API** | Domain WHOIS & DNS | `https://www.whoisxmlapi.com/...` | [Docs](https://whoisxmlapi.com/documentation) |
-| **Have I Been Pwned** | Email Breach Database | `https://haveibeenpwned.com/api/v3` | [Docs](https://haveibeenpwned.com/API/v3) |
+| **Have I Been Pwned** | Email Breach Database — optional paid key; free via XposedOrNot when unconfigured | `https://haveibeenpwned.com/api/v3` | [Docs](https://haveibeenpwned.com/API/v3) |
 | **IPInfo.io** | IP Geolocation & ASN | `https://ipinfo.io` | [Docs](https://ipinfo.io/developers) |
 | **Shodan** | Device Search Engine | `https://api.shodan.io` | [Docs](https://developer.shodan.io/api) |
 | **VirusTotal** | Threat Analysis | `https://www.virustotal.com/api/v3` | [Docs](https://developers.virustotal.com/reference/overview) |

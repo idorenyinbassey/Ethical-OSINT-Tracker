@@ -1067,7 +1067,7 @@ def breach():
         if email:
             breaches = check_breaches(email)
             if breaches is None:
-                error = "HIBP API key not configured or disabled. Add it in Settings → HIBP."
+                error = "Breach checking is disabled, or the lookup failed — see Settings → HIBP."
             audit_log("investigation.run", entity_type="investigation",
                       detail=f"breach check — {email}")
             result_json = json.dumps({"breaches": breaches})
