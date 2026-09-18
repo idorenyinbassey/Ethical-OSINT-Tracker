@@ -118,6 +118,13 @@ echo "Using database: $DB_URL"
 # if DB_URL points at a real multi-connection database (e.g. MySQL).
 export GUNICORN_WORKERS="${GUNICORN_WORKERS:-1}"
 
+# gunicorn's own default worker timeout is 30s, which some scans legitimately
+# exceed (e.g. Social Search checks up to 273 sites; a handful of slow/dead
+# ones can each burn their full per-request timeout, especially on mobile
+# networks) — gunicorn then SIGKILLs the worker mid-request, dropping the
+# connection (browser shows an empty response, not a proper error page).
+export GUNICORN_TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+
 # ─────────────────────────────────────────────────────────────────────────
 # Admin account: reset explicitly, first-run init, or just ensure tables
 # ─────────────────────────────────────────────────────────────────────────
@@ -157,6 +164,6 @@ else
     else
         echo "Starting Flask application with gunicorn on http://0.0.0.0:${FLASK_PORT:-3000} (production, ${GUNICORN_WORKERS} worker(s))"
         echo ""
-        exec "$PYTHON" -m gunicorn -w "$GUNICORN_WORKERS" -b "0.0.0.0:${FLASK_PORT:-3000}" "app.wsgi:app"
+        exec "$PYTHON" -m gunicorn -w "$GUNICORN_WORKERS" -t "$GUNICORN_TIMEOUT" -b "0.0.0.0:${FLASK_PORT:-3000}" "app.wsgi:app"
     fi
 fi

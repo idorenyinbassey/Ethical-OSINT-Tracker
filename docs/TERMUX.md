@@ -127,6 +127,7 @@ Uploaded images are saved to `app/uploads/` inside the project directory.
 | App killed by Android | Run `termux-wake-lock` before starting |
 | SSL errors from httpx | `pkg install ca-certificates` |
 | Case reports have no map/graph images | Expected on Termux — `playwright` (used to render those snapshots) ships no Android wheels, so `requirements.txt` skips it there. Everything else about report generation is unaffected. |
+| Scan (e.g. Social Search) shows "This page isn't working" / empty response | Gunicorn killed the worker for taking too long — Social Search checks up to 273 sites and can exceed the default 120s timeout on slow mobile data. Raise it further: `GUNICORN_TIMEOUT=300 ./start.sh`. |
 
 ## 10. Keeping the App Alive
 
