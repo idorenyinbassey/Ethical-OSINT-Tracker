@@ -67,24 +67,44 @@ def test_check_and_notify_never_raises_if_notify_itself_fails():
 
 
 def test_check_darkweb_fails_on_zero_results():
-    with patch("app.services.darkweb_client.search_ahmia", return_value={"total": 0, "results": []}):
+    # Patches .__wrapped__ (the real, undecorated function), not
+    # search_ahmia itself, since _check_darkweb() deliberately calls
+    # .__wrapped__ to bypass search_ahmia's 30-minute cache.
+    with patch("app.services.darkweb_client.search_ahmia.__wrapped__", return_value={"total": 0, "results": []}):
         ok, detail = scraper_health._check_darkweb()
     assert ok is False
     assert "0" in detail
 
 
 def test_check_darkweb_passes_on_results():
-    with patch("app.services.darkweb_client.search_ahmia", return_value={"total": 3, "results": [1, 2, 3]}):
+    with patch("app.services.darkweb_client.search_ahmia.__wrapped__", return_value={"total": 3, "results": [1, 2, 3]}):
         ok, detail = scraper_health._check_darkweb()
     assert ok is True
 
 
 def test_check_darkweb_fails_on_error_key():
-    with patch("app.services.darkweb_client.search_ahmia",
+    with patch("app.services.darkweb_client.search_ahmia.__wrapped__",
                return_value={"error": "timed out", "error_type": "timeout", "results": []}):
         ok, detail = scraper_health._check_darkweb()
     assert ok is False
     assert "timed out" in detail
+
+
+def test_check_darkweb_bypasses_the_result_cache():
+    # Prime search_ahmia's real 30-minute cache with a successful result —
+    # exactly what a real user's recent identical "market" query would
+    # leave behind — then confirm the canary still detects a concurrent
+    # parser failure instead of reading back that stale cached success.
+    from app.services import cache as cache_module
+    key = ("app.services.darkweb_client", "search_ahmia", ("market",), ())
+    cache_module._set(key, {"total": 99, "results": [{}] * 99}, ttl=1800)
+    try:
+        with patch("app.services.darkweb_client.search_ahmia.__wrapped__",
+                   return_value={"total": 0, "results": []}):
+            ok, detail = scraper_health._check_darkweb()
+    finally:
+        cache_module._CACHE.pop(key, None)
+    assert ok is False
 
 
 class _FakeSherlockResponse:

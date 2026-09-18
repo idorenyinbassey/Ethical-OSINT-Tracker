@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
 
 def _check_darkweb() -> tuple:
     from app.services.darkweb_client import search_ahmia
-    result = search_ahmia("market")
+    # search_ahmia() is @cached(ttl=1800) for real users, which would let a
+    # broken parser hide behind a real user's recent identical query for up
+    # to 30 minutes — .__wrapped__ (set by functools.wraps in the cache
+    # decorator) calls the real, undecorated function so this canary always
+    # makes a genuinely fresh request.
+    result = search_ahmia.__wrapped__("market")
     if result.get("error"):
         return False, f"error: {result['error']}"
     total = result.get("total", 0)
