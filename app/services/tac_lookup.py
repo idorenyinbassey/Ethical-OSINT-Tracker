@@ -48,6 +48,16 @@ def _parse_db_file(path: Path) -> Dict[str, Dict[str, str]]:
         with gzip.open(path, mode="rt", encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
                 tac = (row.get("TAC") or "").strip()
+                if tac.isdigit() and 0 < len(tac) < 8 and int(tac) != 0:
+                    # A handful of entries (older/legacy TACs, ~6.6k rows)
+                    # lost a leading zero somewhere upstream — likely an
+                    # Excel-export artifact treating the column as numeric.
+                    # lookup_tac() always keys on the IMEI's first 8 digits,
+                    # so left-pad back to that width or these rows can never
+                    # match anything. Excludes a bare "0" (a junk/placeholder
+                    # row, not a real TAC) so it can't collide with a
+                    # legitimate all-zero lookup key.
+                    tac = tac.zfill(8)
                 if tac and tac not in db:
                     db[tac] = {
                         "brand": (row.get("Brand") or "").strip(),
@@ -159,6 +169,10 @@ def lookup_tac(imei_or_tac: str) -> dict:
         result["brand"] = entry["brand"]
         result["model"] = entry["specs"]
     else:
+        # No device was actually identified — the caller (investigation.py's
+        # imei() route) must not record this as a CONFIRMED result just
+        # because there's no "error" key.
+        result["unverified"] = True
         result["note"] = (
             "TAC not found in the offline database. Blacklist, stolen, and "
             "warranty status are never free — configure a paid IMEIService "

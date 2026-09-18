@@ -73,6 +73,25 @@ def test_lookup_tac_reports_unknown_tac():
     assert result["tac"] == "00000000"
     assert "brand" not in result
     assert "note" in result
+    # An unmatched TAC must not be mistaken for a confirmed identification
+    # by callers (app/routes/investigation.py's imei() confidence check).
+    assert result["unverified"] is True
+
+
+def test_lookup_tac_pads_legacy_short_tac(tmp_path):
+    # ~6.6k entries in the real bundled CSV have a leading zero missing
+    # (likely stripped by an upstream Excel export) — e.g. a stored 7-digit
+    # "1620200" for what should be TAC "01620200". Without zero-padding on
+    # load, these rows can never match an IMEI's first-8-digits lookup key.
+    writable = tmp_path / "tac_database.csv.gz"
+    with gzip.open(writable, mode="wt", encoding="utf-8") as f:
+        f.write("Brand,TAC,SPECS\nTCL,1620200,TCL FLIP 2\n")
+
+    with patch.object(tac_lookup, "_writable_db_path", return_value=writable):
+        result = tac_lookup.lookup_tac("016202001234567")
+
+    assert result["tac"] == "01620200"
+    assert result["brand"] == "TCL"
 
 
 def test_lookup_tac_strips_non_digits():

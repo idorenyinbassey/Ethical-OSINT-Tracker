@@ -13,8 +13,8 @@ from app.services import tac_lookup
 
 def fetch_imei(imei: str, timeout: float = 10.0) -> Dict[str, Any]:
     digits = re.sub(r"\D", "", imei or "")
-    if not (14 <= len(digits) <= 16):
-        return {"error": "Enter a valid IMEI number (14-16 digits)."}
+    if len(digits) != 15:
+        return {"error": "Enter a valid IMEI number (15 digits)."}
 
     cfg = get_by_service("IMEIService")
     if cfg and cfg.is_enabled and cfg.api_key and cfg.base_url:

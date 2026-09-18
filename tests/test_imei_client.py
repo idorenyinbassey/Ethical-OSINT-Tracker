@@ -48,6 +48,19 @@ def test_fetch_imei_rejects_bad_format():
     assert "error" in result
 
 
+def test_fetch_imei_rejects_14_digit_input():
+    # 14 digits (no Luhn check digit) or 16 (IMEISV) are not a real IMEI —
+    # only an exact 15-digit IMEI is accepted, matching the form's own
+    # "15 digits" label and letting Luhn validation always apply.
+    result = imei_client.fetch_imei("86302407323751")
+    assert "error" in result
+
+
+def test_fetch_imei_rejects_16_digit_input():
+    result = imei_client.fetch_imei("8630240732375180")
+    assert "error" in result
+
+
 def test_fetch_imei_uses_offline_fallback_when_not_configured():
     with patch.object(imei_client, "get_by_service", return_value=None):
         result = imei_client.fetch_imei(VALID_IMEI)
