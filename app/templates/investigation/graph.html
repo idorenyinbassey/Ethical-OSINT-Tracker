@@ -48,7 +48,9 @@
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-pink-500 inline-block"></span> Crypto hub</span>
 </div>
 
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<!-- vis-network — vendored locally (not loaded from a CDN); see map.html
+     for why. -->
+<script src="{{ url_for('static', filename='vendor/vis-network/vis-network.min.js') }}"></script>
 <script>
 const COLOR_MAP = {
   case:         { background: "#6366f1", border: "#4f46e5", font: { color: "#fff" } },
@@ -124,13 +126,25 @@ function makeEdge(e) {
   };
 }
 
-fetch("{{ url_for('investigation.graph_data') }}")
+const CASE_ID = new URLSearchParams(window.location.search).get("case_id");
+const GRAPH_DATA_URL = "{{ url_for('investigation.graph_data') }}" + (CASE_ID ? ("?case_id=" + encodeURIComponent(CASE_ID)) : "");
+
+// Set by report_snapshot.py's headless capture to know when it's safe to
+// screenshot — true once the graph has stabilized (or we know there's no
+// data), with __graphNodeCount telling the capture whether to bother
+// embedding.
+window.__graphReady = false;
+window.__graphNodeCount = 0;
+
+fetch(GRAPH_DATA_URL)
   .then(r => r.json())
   .then(data => {
     document.getElementById("graph-loading").style.display = "none";
+    window.__graphNodeCount = data.nodes.length;
     if (!data.nodes.length) {
       document.getElementById("graph-loading").textContent = "No data yet — run some investigations first.";
       document.getElementById("graph-loading").style.display = "flex";
+      window.__graphReady = true;
       return;
     }
 
@@ -169,10 +183,12 @@ fetch("{{ url_for('investigation.graph_data') }}")
     // Fit after stabilisation
     network.once("stabilizationIterationsDone", () => {
       network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+      setTimeout(() => { window.__graphReady = true; }, 800);
     });
   })
   .catch(err => {
     document.getElementById("graph-loading").textContent = "Failed to load graph: " + err.message;
+    window.__graphReady = true;
   });
 </script>
 {% endblock %}

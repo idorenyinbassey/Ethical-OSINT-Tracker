@@ -77,15 +77,20 @@ def create_app():
         """Add HTTP security headers to every response (Issue #17).
 
         The CSP intentionally allows the CDN/inline resources the UI already
-        depends on (Tailwind CDN, unpkg for Leaflet/vis-network, OpenStreetMap
-        tiles, DuckDuckGo favicons) while still constraining everything else to
-        'self'. img-src allows https: so map tiles and remote favicons load.
+        depends on (Tailwind CDN, OpenStreetMap tiles, DuckDuckGo favicons)
+        while still constraining everything else to 'self'. Leaflet and
+        vis-network are vendored locally (app/static/vendor/) rather than
+        loaded from unpkg, both so the map/graph still work in
+        network-restricted deployments and so the headless report-snapshot
+        renderer (app/services/report_snapshot.py) doesn't need outbound
+        internet access just to draw the page. img-src allows https: so
+        map tiles and remote favicons load.
         """
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
             "img-src 'self' data: https:; "
             "font-src 'self' data:; "
             "connect-src 'self' https://cdn.tailwindcss.com; "

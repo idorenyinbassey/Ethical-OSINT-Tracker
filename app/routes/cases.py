@@ -3,7 +3,7 @@ import csv
 import json
 import hashlib
 import datetime
-from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session, current_app
 from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
@@ -169,7 +169,9 @@ def export_pdf(case_id):
     case = result["case"]
     investigations = result["investigations"]
     try:
-        pdf_bytes = report_exporter.export_pdf(case, investigations)
+        pdf_bytes = report_exporter.export_pdf(
+            case, investigations, app=current_app._get_current_object(), snapshot_user_id=current_user.id
+        )
     except RuntimeError as e:
         flash(str(e), "error")
         return redirect(url_for("cases.detail", case_id=case_id))
@@ -191,7 +193,9 @@ def export_docx(case_id):
     case = result["case"]
     investigations = result["investigations"]
     try:
-        docx_bytes = report_exporter.export_docx(case, investigations)
+        docx_bytes = report_exporter.export_docx(
+            case, investigations, app=current_app._get_current_object(), snapshot_user_id=current_user.id
+        )
     except Exception as e:
         flash(str(e), "error")
         return redirect(url_for("cases.detail", case_id=case_id))
@@ -214,7 +218,9 @@ def export_html(case_id):
         return redirect(url_for("cases.index"))
     case = result["case"]
     investigations = result["investigations"]
-    html_str = report_exporter.export_html(case, investigations)
+    html_str = report_exporter.export_html(
+        case, investigations, app=current_app._get_current_object(), snapshot_user_id=current_user.id
+    )
     safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
     filename = f"osint-report-{safe_title or case_id}.html"
     return send_file(io.BytesIO(html_str.encode('utf-8')), mimetype="text/html",
@@ -284,18 +290,20 @@ import threading, tempfile, uuid as _uuid
 _report_jobs: dict = {}  # job_id -> {status, fmt, path, filename, mimetype, error}
 
 
-def _run_report_job(job_id: str, fmt: str, case, investigations):
+def _run_report_job(job_id: str, fmt: str, case, investigations, app=None, snapshot_user_id=None):
     try:
         if fmt == "pdf":
-            data = report_exporter.export_pdf(case, investigations)
+            data = report_exporter.export_pdf(case, investigations, app=app, snapshot_user_id=snapshot_user_id)
             mime = "application/pdf"
             ext = "pdf"
         elif fmt == "docx":
-            data = report_exporter.export_docx(case, investigations)
+            data = report_exporter.export_docx(case, investigations, app=app, snapshot_user_id=snapshot_user_id)
             mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ext = "docx"
         elif fmt == "html":
-            data = report_exporter.export_html(case, investigations).encode("utf-8")
+            data = report_exporter.export_html(
+                case, investigations, app=app, snapshot_user_id=snapshot_user_id
+            ).encode("utf-8")
             mime = "text/html"
             ext = "html"
         elif fmt == "xlsx":
@@ -339,7 +347,11 @@ def export_start(case_id):
     _report_jobs[job_id] = {"status": "running", "fmt": fmt, "path": None,
                              "filename": None, "mimetype": None, "error": None,
                              "user_id": current_user.id}
-    t = threading.Thread(target=_run_report_job, args=(job_id, fmt, case, investigations), daemon=True)
+    t = threading.Thread(
+        target=_run_report_job,
+        args=(job_id, fmt, case, investigations, current_app._get_current_object(), current_user.id),
+        daemon=True,
+    )
     t.start()
     from flask import jsonify
     return jsonify({"job_id": job_id})

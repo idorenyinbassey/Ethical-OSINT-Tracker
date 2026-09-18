@@ -4,7 +4,7 @@ import re
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session, abort
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -577,12 +577,27 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
 @investigation_bp.route("/graph/data")
 @login_required
 def graph_data():
-    """Return JSON graph data: nodes + edges for vis.js."""
-    from app.repositories.investigation_repository import list_all
-    from app.repositories.case_repository import list_cases
+    """Return JSON graph data: nodes + edges for vis.js.
 
-    cases = list_cases(owner_user_id=current_user.id)
-    invs = list_all(user_id=current_user.id)
+    With ?case_id=<id>, scopes to just that case (any team member's
+    investigations, per can_access_case) — used by the case report
+    snapshot capture as well as an optional case-scoped view in the UI.
+    """
+    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.case_repository import list_cases, get_case
+    from app.utils.authz import can_access_case
+
+    case_id = request.args.get("case_id", type=int)
+
+    if case_id is not None:
+        target_case = get_case(case_id)
+        if not target_case or not can_access_case(target_case, current_user, action="read"):
+            abort(403)
+        cases = [target_case]
+        invs = list_by_case(case_id)
+    else:
+        cases = list_cases(owner_user_id=current_user.id)
+        invs = list_all(user_id=current_user.id)
 
     nodes = []
     edges = []
@@ -834,14 +849,31 @@ _KIND_LABEL = {
 @investigation_bp.route("/map/data")
 @login_required
 def map_data():
-    """Return JSON markers extracted from geo-tagged investigations."""
-    from app.repositories.investigation_repository import list_all
-    from app.repositories.case_repository import list_cases
+    """Return JSON markers extracted from geo-tagged investigations.
+
+    With ?case_id=<id>, scopes to that case's investigations (any team
+    member's, per can_access_case) instead of the account-wide default —
+    used by the case report snapshot capture as well as an optional
+    case-scoped view in the UI.
+    """
+    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.case_repository import list_cases, get_case
+    from app.utils.authz import can_access_case
+
+    case_id = request.args.get("case_id", type=int)
 
     # Build case_id → title lookup (scoped to current user's cases)
     case_lookup = {c.id: c.title for c in list_cases(owner_user_id=current_user.id)}
 
-    invs = list_all(user_id=current_user.id)
+    if case_id is not None:
+        case = get_case(case_id)
+        if not case or not can_access_case(case, current_user, action="read"):
+            abort(403)
+        case_lookup.setdefault(case.id, case.title)
+        invs = list_by_case(case_id)
+    else:
+        invs = list_all(user_id=current_user.id)
+
     markers = []
 
     for inv in invs:
