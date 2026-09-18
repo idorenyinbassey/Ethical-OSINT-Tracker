@@ -76,14 +76,14 @@ Discovers subdomains using two techniques — no API key required:
 
 ### Email Analysis (`/investigate/email`)
 
-- **Have I Been Pwned** — lists breaches the address appeared in
+- **Breach detection** — lists breaches the address appeared in (free via XposedOrNot by default; richer per-breach detail if a paid HIBP key is configured in Settings)
 - **Hunter.io** — deliverability, disposable flag, webmail flag, score
 
 ### Breach & Password Check (`/investigate/breach`)
 
 Standalone breach checker with two inputs:
 
-- **Email address** — queries HIBP for all known data breaches
+- **Email address** — checks for known data breaches (XposedOrNot by default, HIBP if configured)
 - **Password (optional)** — k-anonymity check via pwnedpasswords.com; only the first 5 characters of the SHA-1 hash are sent — the full password never leaves your server
 
 ### Email Header Analyser (`/investigate/email-header`)
@@ -421,7 +421,7 @@ Navigate to **Settings → API Settings**. Keys are stored encrypted in the data
 | `IPInfo` | IP Lookup — enrichment | Optional |
 | `Shodan` | IP Lookup — port scan | Optional |
 | `VirusTotal` | IP Lookup — threat intel | Optional |
-| `HIBP` | Email Analysis, Breach Check | Optional |
+| `HIBP` | Email Analysis, Breach Check | Optional (free via XposedOrNot when unconfigured) |
 | `Hunter.io` | Email Analysis | Optional |
 | `NumVerify` | Phone Lookup | Yes |
 | `IMEIService` | IMEI Lookup (URL: `https://dash.imei.info/api`) | Yes |

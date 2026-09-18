@@ -23,7 +23,7 @@ SERVICES = [
     {"name": "IPInfo", "label": "IPInfo.io (optional — ip-api.com is used free by default)", "default_url": "https://ipinfo.io"},
     {"name": "Shodan", "label": "Shodan (port scans & CVEs)", "default_url": "https://api.shodan.io"},
     {"name": "VirusTotal", "label": "VirusTotal (threat intelligence)", "default_url": "https://www.virustotal.com/api/v3"},
-    {"name": "HIBP", "label": "Have I Been Pwned (breach data)", "default_url": "https://haveibeenpwned.com/api/v3"},
+    {"name": "HIBP", "label": "Have I Been Pwned (breach data — optional paid key; free via XposedOrNot when left unconfigured)", "default_url": "https://haveibeenpwned.com/api/v3"},
     {"name": "Hunter.io", "label": "Hunter.io (email deliverability)", "default_url": "https://api.hunter.io/v2"},
     {"name": "NumVerify", "label": "NumVerify (phone validation)", "default_url": "http://apilayer.net/api"},
     {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},

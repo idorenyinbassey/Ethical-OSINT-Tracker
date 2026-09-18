@@ -21,9 +21,9 @@ Tools marked **zero-key** work without any API configuration out of the box.
 | **IP Lookup** | ip-api.com geolocation (free primary); optional enrichment via VirusTotal threat scoring and Shodan port scan | Zero-key (enrichment optional) |
 | **Domain WHOIS** | Registration data, nameservers, status, creation/expiry via public RDAP (rdap.org + IANA fallback) | Zero-key |
 | **Subdomain Scanner** | crt.sh Certificate Transparency log enumeration + DNS wordlist bruteforce (75 prefixes) + `socket` resolution | Zero-key |
-| **Email Analysis** | Breach detection (Have I Been Pwned) + deliverability check (Hunter.io) | Optional |
+| **Email Analysis** | Breach detection (free via XposedOrNot by default, richer detail with an optional paid HIBP key) + deliverability check (Hunter.io) | Zero-key (enrichment optional) |
 | **Email Header Analyser** | Parse raw email headers: full Received chain, originating IP extraction, SPF/DKIM/DMARC detection, relay hop visualisation | Zero-key |
-| **Breach & Password Check** | Standalone HIBP email breach lookup + k-anonymity password check via pwnedpasswords.com — password never leaves the server in full | HIBP key for email; Zero-key for passwords |
+| **Breach & Password Check** | Standalone breach lookup (free via XposedOrNot, or HIBP if a paid key is configured) + k-anonymity password check via pwnedpasswords.com — password never leaves the server in full | Zero-key |
 | **MAC Vendor Lookup** | OUI prefix to manufacturer resolution via macvendors.com | Zero-key |
 
 #### People & Entities
@@ -275,7 +275,7 @@ Navigate to **Settings → API Settings** to configure external services. No res
 | `IPInfo` | ipinfo.io | IP geolocation enrichment |
 | `Shodan` | shodan.io | Port scan / open service discovery |
 | `VirusTotal` | virustotal.com | IP threat intelligence |
-| `HIBP` | haveibeenpwned.com | Email breach detection |
+| `HIBP` | haveibeenpwned.com | Email breach detection — optional paid key for richer detail; free via XposedOrNot when left unconfigured |
 | `Hunter.io` | hunter.io | Email deliverability verification |
 | `NumVerify` | numverify.com | Phone number validation |
 | `IMEIService` | dash.imei.info | IMEI device lookup (base URL: `https://dash.imei.info/api`) |
