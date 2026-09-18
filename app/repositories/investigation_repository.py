@@ -143,6 +143,12 @@ def purge_old_investigations(retention_days: int) -> int:
         return result.rowcount or 0
 
 
+def get_investigation(inv_id: int) -> Optional[Investigation]:
+    with session_scope() as session:
+        inv = session.get(Investigation, inv_id)
+        return _detach(inv) if inv else None
+
+
 def list_by_case(case_id: int) -> List[Investigation]:
     with session_scope() as session:
         stmt = select(Investigation).where(Investigation.case_id == case_id).order_by(Investigation.id.desc())

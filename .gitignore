@@ -12,6 +12,11 @@ venv/
 .env
 secrets.env
 
+# Python packaging build artifacts (pyproject.toml makes the repo pip/pipx-installable)
+build/
+dist/
+*.egg-info/
+
 # Sensitive files and user uploads
 .api_keys_key
 .fernet_key

@@ -65,6 +65,28 @@
           </dl>
         </div>
       {% endif %}
+
+      {% if result.reverse_image_search %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Reverse Image Search (TinEye)</h2>
+          {% if result.reverse_image_search.status == 'not_configured' %}
+            <p class="text-xs text-gray-500">Not configured — TinEye requires a paid account. Add an API key under Settings to enable reverse image search.</p>
+          {% elif result.reverse_image_search.status == 'api_error' %}
+            <div class="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded p-2">
+              {{ result.reverse_image_search.error }}
+            </div>
+          {% elif result.reverse_image_search.status == 'ok' %}
+            <p class="text-sm text-white mb-2">{{ result.reverse_image_search.match_count }} match(es) found.</p>
+            {% if result.reverse_image_search.matches %}
+              <ul class="space-y-1 text-xs">
+                {% for m in result.reverse_image_search.matches %}
+                  <li class="text-indigo-300 break-all">{{ m.url }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          {% endif %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
         Upload an image to extract EXIF metadata and run analysis.

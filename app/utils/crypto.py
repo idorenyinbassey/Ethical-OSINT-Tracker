@@ -133,3 +133,10 @@ def decrypt_api_key(ciphertext: str) -> str:
         raise
     except Exception as e:
         raise RuntimeError(f"Failed to decrypt API key: {e}") from e
+
+
+# Generic aliases — same Fernet infrastructure and API_KEYS_FERNET_KEY,
+# just a name that doesn't imply "API key" for other secret classes (e.g.
+# a user's TOTP 2FA secret). No new key management needed.
+encrypt_secret = encrypt_api_key
+decrypt_secret = decrypt_api_key

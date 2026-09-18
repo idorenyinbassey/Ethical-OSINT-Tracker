@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Recovery Codes – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Your Recovery Codes</h1>
+<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+  Save these somewhere safe — <strong>they are shown only once</strong>. Each one can be used
+  a single time to log in if you lose access to your authenticator app.
+</p>
+
+<div class="max-w-md bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
+  <div class="grid grid-cols-2 gap-2 font-mono text-sm text-gray-900 dark:text-white">
+    {% for code in codes %}
+    <div class="px-3 py-2 bg-gray-100 dark:bg-gray-900 rounded-lg text-center">{{ code }}</div>
+    {% endfor %}
+  </div>
+</div>
+
+<a href="{{ url_for('settings.index') }}"
+   class="inline-block px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
+  I've saved these — Continue
+</a>
+{% endblock %}

@@ -4,7 +4,7 @@ import re
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session, abort
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -60,6 +60,7 @@ def _investigation_before():
     if request.endpoint in ("investigation.graph_data", "investigation.map_data",
                             "investigation.watchlist", "investigation.watchlist_add",
                             "investigation.watchlist_remove", "investigation.watchlist_rescan",
+                            "investigation.watchlist_dismiss_alert",
                             "investigation.tag_investigation"):
         return
     # Require at least one case to exist
@@ -159,9 +160,39 @@ def subdomain():
         conf = "CONFIRMED" if result.get("subdomains_found", 0) > 0 else "UNVERIFIED"
         find_or_update_recent(kind="subdomain", query=domain_name, result_json=json.dumps(result),
                               user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found.", "success")
+        msg = f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found."
+        takeover_count = result.get("takeover_count", 0)
+        if takeover_count > 0:
+            msg += f" {takeover_count} possible takeover(s) detected — verify manually."
+        flash(msg, "success")
 
     return render_template("investigation/subdomain.html", cases=cases, result=result)
+
+
+# ── Domain Typosquat Monitor ───────────────────────────────────────────────────
+
+@investigation_bp.route("/typosquat", methods=["GET", "POST"])
+@login_required
+def typosquat():
+    cases = _cases_for_select()
+    result = None
+    if request.method == "POST":
+        domain_name = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not domain_name:
+            flash("Domain is required.", "error")
+            return render_template("investigation/typosquat.html", cases=cases, result=None)
+
+        from app.services import typosquat_client
+        result = typosquat_client.scan_typosquats(domain_name)
+
+        conf = "CONFIRMED" if result.get("registered_count", 0) > 0 else "UNVERIFIED"
+        find_or_update_recent(kind="typosquat", query=domain_name, result_json=json.dumps(result),
+                              user_id=current_user.id, case_id=case_id, confidence=conf)
+        flash(f"Typosquat scan complete for {domain_name} — "
+              f"{result.get('registered_count', 0)} registered lookalike(s) found.", "success")
+
+    return render_template("investigation/typosquat.html", cases=cases, result=result)
 
 
 # ── Email Analysis (HIBP + Hunter) ────────────────────────────────────────────
@@ -527,17 +558,46 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         sender = data.get("from") or data.get("From") or ""
         if "@" in sender:
             _reg("email", sender)
+    elif kind == "subdomain":
+        domain = data.get("domain") or inv.query
+        _reg("domain", domain)
+    elif kind == "typosquat":
+        domain = data.get("domain") or inv.query
+        _reg("domain", domain)
+    elif kind == "paste_leak":
+        query = data.get("query") or inv.query
+        if "@" in query:
+            _reg("email", query)
+        elif "." in query and " " not in query:
+            _reg("domain", query)
+        else:
+            _reg("username", query)
 
 
 @investigation_bp.route("/graph/data")
 @login_required
 def graph_data():
-    """Return JSON graph data: nodes + edges for vis.js."""
-    from app.repositories.investigation_repository import list_all
-    from app.repositories.case_repository import list_cases
+    """Return JSON graph data: nodes + edges for vis.js.
 
-    cases = list_cases(owner_user_id=current_user.id)
-    invs = list_all(user_id=current_user.id)
+    With ?case_id=<id>, scopes to just that case (any team member's
+    investigations, per can_access_case) — used by the case report
+    snapshot capture as well as an optional case-scoped view in the UI.
+    """
+    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.case_repository import list_cases, get_case
+    from app.utils.authz import can_access_case
+
+    case_id = request.args.get("case_id", type=int)
+
+    if case_id is not None:
+        target_case = get_case(case_id)
+        if not target_case or not can_access_case(target_case, current_user, action="read"):
+            abort(403)
+        cases = [target_case]
+        invs = list_by_case(case_id)
+    else:
+        cases = list_cases(owner_user_id=current_user.id)
+        invs = list_all(user_id=current_user.id)
 
     nodes = []
     edges = []
@@ -597,6 +657,29 @@ def graph_data():
                             "from": inv_node_id,
                             "to": sub_node_id,
                             "edge_type": "subdomain",
+                        })
+            except Exception:
+                pass
+
+        # Expand typosquat results as child nodes (registered lookalikes only —
+        # the other ~99 checked-but-unregistered permutations aren't graphed)
+        if inv.kind == "typosquat" and inv.result_json:
+            try:
+                ts_data = json.loads(inv.result_json)
+                for i, hit in enumerate(ts_data.get("registered", [])[:50]):
+                    hit_domain = hit.get("domain", "")
+                    if hit_domain:
+                        hit_node_id = f"typosquat-{inv.id}-{i}"
+                        nodes.append({
+                            "id": hit_node_id,
+                            "label": hit_domain[:28],
+                            "group": "typosquat_hit",
+                            "title": f"Registered lookalike: {hit_domain}\nIP: {hit.get('ip', 'unknown')}\nRegistrar: {hit.get('registrar') or 'unknown'}",
+                        })
+                        edges.append({
+                            "from": inv_node_id,
+                            "to": hit_node_id,
+                            "edge_type": "typosquat",
                         })
             except Exception:
                 pass
@@ -766,14 +849,31 @@ _KIND_LABEL = {
 @investigation_bp.route("/map/data")
 @login_required
 def map_data():
-    """Return JSON markers extracted from geo-tagged investigations."""
-    from app.repositories.investigation_repository import list_all
-    from app.repositories.case_repository import list_cases
+    """Return JSON markers extracted from geo-tagged investigations.
+
+    With ?case_id=<id>, scopes to that case's investigations (any team
+    member's, per can_access_case) instead of the account-wide default —
+    used by the case report snapshot capture as well as an optional
+    case-scoped view in the UI.
+    """
+    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.case_repository import list_cases, get_case
+    from app.utils.authz import can_access_case
+
+    case_id = request.args.get("case_id", type=int)
 
     # Build case_id → title lookup (scoped to current user's cases)
     case_lookup = {c.id: c.title for c in list_cases(owner_user_id=current_user.id)}
 
-    invs = list_all(user_id=current_user.id)
+    if case_id is not None:
+        case = get_case(case_id)
+        if not case or not can_access_case(case, current_user, action="read"):
+            abort(403)
+        case_lookup.setdefault(case.id, case.title)
+        invs = list_by_case(case_id)
+    else:
+        invs = list_all(user_id=current_user.id)
+
     markers = []
 
     for inv in invs:
@@ -858,7 +958,7 @@ def watchlist_add():
     kind = request.form.get("kind", "ip").strip()
     case_id = _safe_case_id(request.form.get("case_id"))
     notes = request.form.get("notes", "").strip()
-    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb"}
+    valid_kinds = {"ip", "domain", "email", "social", "crypto", "phone", "darkweb", "typosquat", "paste_leak"}
     if not query or kind not in valid_kinds:
         flash("Query and a valid kind are required.", "error")
         return redirect(url_for("investigation.watchlist"))
@@ -879,15 +979,14 @@ def watchlist_remove(target_id):
 @investigation_bp.route("/watchlist/<int:target_id>/rescan", methods=["POST"])
 @login_required
 def watchlist_rescan(target_id):
-    import hashlib
-    from app.repositories.watchlist_repository import get_target, update_checked
+    from app.repositories.watchlist_repository import get_target
+    from app.services.watchlist_scan_service import finalize_scan
     target = get_target(target_id)
     if not target or target.user_id != current_user.id:
         flash("Target not found.", "error")
         return redirect(url_for("investigation.watchlist"))
 
     result = {}
-    changed = False
     try:
         if target.kind == "ip":
             from app.services import ip_client, virustotal_client, shodan_client
@@ -914,25 +1013,40 @@ def watchlist_rescan(target_id):
         elif target.kind == "crypto":
             from app.services import crypto_client
             result = crypto_client.lookup(target.query)
+        elif target.kind == "typosquat":
+            from app.services import typosquat_client
+            result = typosquat_client.scan_typosquats(target.query)
+        elif target.kind == "paste_leak":
+            from app.services import paste_client
+            pastes = paste_client.check_pastes(target.query)
+            result = {"query": target.query, "pastes": pastes if pastes is not None else []}
         else:
             result = {"error": f"Auto-rescan not supported for kind '{target.kind}'."}
     except Exception as exc:
         result = {"error": str(exc)}
 
-    result_json = json.dumps(result)
-    new_hash = hashlib.sha256(result_json.encode()).hexdigest()[:16]
-    changed = new_hash != target.last_result_hash
-    update_checked(target_id, new_hash)
-
     conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
-    case_id = target.case_id
-    find_or_update_recent(kind=target.kind, query=target.query, result_json=result_json,
-                          user_id=current_user.id, case_id=case_id, confidence=conf)
+    # Hash-diff, persist, alert-flag, log, and notify — shared with the
+    # scheduler's automatic rescan so both paths behave identically
+    # (app/services/watchlist_scan_service.py).
+    changed = finalize_scan(target, result, confidence=conf)
 
     if changed:
         flash(f"Rescan complete — data changed since last check.", "success")
     else:
         flash(f"Rescan complete — no changes detected.", "info")
+    return redirect(url_for("investigation.watchlist"))
+
+
+@investigation_bp.route("/watchlist/<int:target_id>/dismiss-alert", methods=["POST"])
+@login_required
+def watchlist_dismiss_alert(target_id):
+    from app.repositories.watchlist_repository import get_target, clear_alert
+    target = get_target(target_id)
+    if not target or target.user_id != current_user.id:
+        flash("Target not found.", "error")
+        return redirect(url_for("investigation.watchlist"))
+    clear_alert(target_id)
     return redirect(url_for("investigation.watchlist"))
 
 
@@ -971,6 +1085,36 @@ def breach():
     return render_template("investigation/breach.html", email=email,
                            breaches=breaches, pwned_count=pwned_count,
                            error=error, cases=cases)
+
+
+# ── Paste-site / Leak Monitor ──────────────────────────────────────────────────
+
+@investigation_bp.route("/paste-monitor", methods=["GET", "POST"])
+@login_required
+def paste_monitor():
+    cases = _cases_for_select()
+    query = None
+    pastes = None
+    error = None
+    if request.method == "POST":
+        query = request.form.get("query", "").strip()
+        case_id = _safe_case_id(request.form.get("case_id"))
+        if not query:
+            flash("A query is required.", "error")
+            return render_template("investigation/paste_monitor.html", cases=cases, query=None, pastes=None)
+
+        from app.services import paste_client
+        pastes = paste_client.check_pastes(query)
+
+        if pastes is None:
+            error = "Paste monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
+        else:
+            conf = "CONFIRMED" if pastes else "UNVERIFIED"
+            find_or_update_recent(kind="paste_leak", query=query, result_json=json.dumps({"query": query, "pastes": pastes}),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Paste search complete for '{query}' — {len(pastes)} hit(s) found.", "success")
+
+    return render_template("investigation/paste_monitor.html", cases=cases, query=query, pastes=pastes, error=error)
 
 
 # ── Plugins ───────────────────────────────────────────────────────────────────

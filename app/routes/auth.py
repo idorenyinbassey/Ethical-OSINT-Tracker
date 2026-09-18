@@ -1,5 +1,5 @@
 from urllib.parse import urlparse
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -45,20 +45,78 @@ def login():
             flash("Invalid username or password.", "error")
             return render_template("auth/login.html")
 
+        next_page = request.args.get("next", "")
+        # Only allow relative redirects to prevent open-redirect attacks
+        parsed = urlparse(next_page)
+        if parsed.scheme or parsed.netloc:
+            next_page = ""
+
+        if user.totp_enabled:
+            # Don't call login_user() yet — stash identity + the
+            # already-sanitized next_page and require a second factor
+            # first (see verify_2fa below).
+            session["pending_2fa_user_id"] = user.id
+            session["pending_2fa_next"] = next_page
+            return redirect(url_for("auth.verify_2fa"))
+
         login_user(user)
         try:
             from app.utils.audit import log as audit_log
             audit_log("login", detail=f"user {username}")
         except Exception:
             pass
-        next_page = request.args.get("next", "")
-        # Only allow relative redirects to prevent open-redirect attacks
-        parsed = urlparse(next_page)
-        if parsed.scheme or parsed.netloc:
-            next_page = ""
         return redirect(next_page or url_for("dashboard.index"))
 
     return render_template("auth/login.html")
+
+
+@auth_bp.route("/login/verify-2fa", methods=["GET", "POST"])
+def verify_2fa():
+    """Second step of login for accounts with TOTP 2FA enabled. Reached
+    only via the pending_2fa_user_id stashed by login() above — never
+    calls login_user() until a valid TOTP code or recovery code is
+    presented."""
+    user_id = session.get("pending_2fa_user_id")
+    if not user_id:
+        return redirect(url_for("auth.login"))
+
+    if request.method == "POST":
+        # Tighter than login's 10/60s — this is the second factor on an
+        # already-password-verified account.
+        allowed, _ = check_rate_limit(key=f"2fa:{user_id}", max_requests=5, window_seconds=60)
+        if not allowed:
+            flash("Too many attempts. Please try again in a moment.", "error")
+            return render_template("auth/verify_2fa.html"), 429
+
+        from app.repositories.user_repository import get_by_id
+        user = get_by_id(user_id)
+        if not user or not user.totp_enabled:
+            session.pop("pending_2fa_user_id", None)
+            session.pop("pending_2fa_next", None)
+            return redirect(url_for("auth.login"))
+
+        code = request.form.get("code", "").strip()
+        from app.utils.totp import verify_totp_or_recovery_code
+        if not verify_totp_or_recovery_code(user, code):
+            try:
+                from app.utils.audit import log as audit_log
+                audit_log("login.2fa_failed", user_id=user.id, username=user.username)
+            except Exception:
+                pass
+            flash("Invalid code.", "error")
+            return render_template("auth/verify_2fa.html")
+
+        next_page = session.pop("pending_2fa_next", "")
+        session.pop("pending_2fa_user_id", None)
+        login_user(user)
+        try:
+            from app.utils.audit import log as audit_log
+            audit_log("login.2fa_success", detail=f"user {user.username}")
+        except Exception:
+            pass
+        return redirect(next_page or url_for("dashboard.index"))
+
+    return render_template("auth/verify_2fa.html")
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])

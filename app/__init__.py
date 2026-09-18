@@ -17,11 +17,12 @@ def create_app():
     if not app.config.get("API_KEYS_FERNET_KEY"):
         import warnings
         warnings.warn(
-            "API_KEYS_FERNET_KEY not set — API keys will be stored unencrypted. "
-            "This is INSECURE for production. "
+            "API_KEYS_FERNET_KEY not set — saving an API key in Settings will fail "
+            "until this is configured (it stores unencrypted only in the unrelated "
+            "case where the 'cryptography' library itself fails to load). "
             "Generate a key with: python -c \"from cryptography.fernet import Fernet; "
-            "print(Fernet.generate_key().decode())\" "
-            "and set API_KEYS_FERNET_KEY environment variable.",
+            "print(Fernet.generate_key().decode())\" and set API_KEYS_FERNET_KEY. "
+            "start.sh / install_termux.sh generate and persist this for you automatically.",
             stacklevel=2,
         )
 
@@ -44,6 +45,8 @@ def create_app():
     from app.routes.search import search_bp
     from app.routes.audit import audit_bp
     from app.routes.admin import admin_bp
+    from app.routes.teams import teams_bp
+    from app.routes.api_v1 import api_v1_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -54,11 +57,16 @@ def create_app():
     app.register_blueprint(search_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(teams_bp)
+    app.register_blueprint(api_v1_bp)
 
     # Public tracking endpoints have no session — exempt from CSRF
     csrf.exempt(land)
     csrf.exempt(pixel)
     csrf.exempt(collect_fingerprint)
+    # The whole /api/v1 surface is stateless (API-key auth, no cookies) —
+    # exempt the entire blueprint rather than each view individually.
+    csrf.exempt(api_v1_bp)
 
     # Start background watchlist rescan scheduler
     from app.utils.scheduler import start_scheduler
@@ -69,15 +77,20 @@ def create_app():
         """Add HTTP security headers to every response (Issue #17).
 
         The CSP intentionally allows the CDN/inline resources the UI already
-        depends on (Tailwind CDN, unpkg for Leaflet/vis-network, OpenStreetMap
-        tiles, DuckDuckGo favicons) while still constraining everything else to
-        'self'. img-src allows https: so map tiles and remote favicons load.
+        depends on (Tailwind CDN, OpenStreetMap tiles, DuckDuckGo favicons)
+        while still constraining everything else to 'self'. Leaflet and
+        vis-network are vendored locally (app/static/vendor/) rather than
+        loaded from unpkg, both so the map/graph still work in
+        network-restricted deployments and so the headless report-snapshot
+        renderer (app/services/report_snapshot.py) doesn't need outbound
+        internet access just to draw the page. img-src allows https: so
+        map tiles and remote favicons load.
         """
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
             "img-src 'self' data: https:; "
             "font-src 'self' data:; "
             "connect-src 'self' https://cdn.tailwindcss.com; "

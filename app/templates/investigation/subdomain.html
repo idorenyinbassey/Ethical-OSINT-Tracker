@@ -41,7 +41,52 @@
           <p class="text-xs text-gray-400">From CT Logs</p>
           <p class="text-2xl font-bold text-white">{{ result.ct_subdomains }}</p>
         </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-xs text-gray-400">HTTP Live</p>
+          <p class="text-2xl font-bold text-white">{{ result.http_probed_count }}</p>
+        </div>
+        <div class="{{ 'bg-red-900/30 border border-red-800' if result.takeover_count else 'bg-gray-800' }} rounded-lg p-3">
+          <p class="text-xs {{ 'text-red-400' if result.takeover_count else 'text-gray-400' }}">Takeovers</p>
+          <p class="text-2xl font-bold {{ 'text-red-300' if result.takeover_count else 'text-white' }}">{{ result.takeover_count }}</p>
+        </div>
       </div>
+
+      {% if result.takeovers %}
+        <div class="mt-4 bg-red-900/20 border border-red-800 rounded-lg overflow-hidden">
+          <div class="px-3 py-2 border-b border-red-800">
+            <span class="text-xs font-medium text-red-300 uppercase">Possible Takeovers</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-red-800/50">
+                  <th class="px-3 py-1.5 text-left text-red-400 uppercase">Hostname</th>
+                  <th class="px-3 py-1.5 text-left text-red-400 uppercase">CNAME</th>
+                  <th class="px-3 py-1.5 text-left text-red-400 uppercase">Service</th>
+                  <th class="px-3 py-1.5 text-left text-red-400 uppercase">Confidence</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-red-800/30">
+                {% for t in result.takeovers %}
+                  <tr>
+                    <td class="px-3 py-1.5 text-white font-mono">{{ t.hostname }}</td>
+                    <td class="px-3 py-1.5 text-gray-300 font-mono">{{ t.cname }}</td>
+                    <td class="px-3 py-1.5 text-gray-300">{{ t.service }}</td>
+                    <td class="px-3 py-1.5">
+                      <span class="px-2 py-0.5 rounded font-mono {% if t.confidence == 'HIGH' %}bg-red-900/60 text-red-300{% else %}bg-yellow-900/50 text-yellow-300{% endif %}">
+                        {{ t.confidence }}
+                      </span>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="px-3 py-2 text-xs text-gray-500 border-t border-red-800/50">
+            These are candidate signals based on CNAME + HTTP status matching, not confirmed takeovers — verify manually before reporting.
+          </div>
+        </div>
+      {% endif %}
 
       {% if result.dns %}
         <div class="mt-4 bg-gray-800 rounded-lg p-3 text-sm space-y-1">
@@ -82,6 +127,8 @@
                 <tr class="border-b border-gray-800">
                   <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Hostname</th>
                   <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">IP Address</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Server / Title</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-800">
@@ -89,6 +136,23 @@
                   <tr class="hover:bg-gray-800/50">
                     <td class="px-4 py-2 text-indigo-300 font-mono text-xs">{{ sub.hostname }}</td>
                     <td class="px-4 py-2 text-gray-300 font-mono text-xs">{{ sub.ip }}</td>
+                    <td class="px-4 py-2 text-xs">
+                      {% if sub.http %}
+                        <span class="px-2 py-0.5 rounded font-mono
+                          {% if sub.http.status_code < 300 %}bg-green-900/50 text-green-300
+                          {% elif sub.http.status_code < 400 %}bg-yellow-900/50 text-yellow-300
+                          {% else %}bg-red-900/50 text-red-300{% endif %}">
+                          {{ sub.http.status_code }}
+                        </span>
+                      {% else %}
+                        <span class="text-gray-600">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-gray-400 text-xs max-w-xs truncate">
+                      {% if sub.http %}
+                        {{ sub.http.server }}{% if sub.http.server and sub.http.title %} · {% endif %}{{ sub.http.title }}
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>

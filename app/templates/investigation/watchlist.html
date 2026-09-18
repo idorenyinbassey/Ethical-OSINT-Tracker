@@ -32,6 +32,8 @@
             <option value="crypto">Crypto Address</option>
             <option value="phone">Phone</option>
             <option value="darkweb">Dark Web Query</option>
+            <option value="typosquat">Domain Typosquat Monitor</option>
+            <option value="paste_leak">Paste / Leak Monitor</option>
           </select>
         </div>
         <div>
@@ -75,6 +77,15 @@
             </div>
             {% if t.notes %}
             <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t.notes }}</p>
+            {% endif %}
+            {% if t.has_alert %}
+            <div class="mb-2 px-3 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3">
+              <span class="text-xs text-amber-800 dark:text-amber-300">⚠ {{ t.alert_message }}</span>
+              <form method="post" action="{{ url_for('investigation.watchlist_dismiss_alert', target_id=t.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="text-xs text-amber-700 dark:text-amber-400 underline whitespace-nowrap">Dismiss</button>
+              </form>
+            </div>
             {% endif %}
             <div class="flex flex-wrap items-center gap-3 text-xs text-gray-500">
               <span>Added {{ t.created_at.strftime('%Y-%m-%d') }}</span>

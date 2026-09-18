@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template
 from flask_login import login_required, current_user
 from app.repositories.investigation_repository import count_all, count_by_kind, list_recent
-from app.repositories.case_repository import list_cases
+from app.repositories.case_repository import list_cases_for_user
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -12,7 +12,10 @@ def index():
     total_investigations = count_all(user_id=current_user.id)
     by_kind = count_by_kind(user_id=current_user.id)
     recent = list_recent(10, user_id=current_user.id)
-    all_cases = list_cases(owner_user_id=current_user.id)
+    # Includes cases shared with any team the user belongs to, not just
+    # cases they personally own (app/utils/authz.py has the permission
+    # matrix for what a team member may do with a shared case).
+    all_cases = list_cases_for_user(current_user.id)
     case_stats = {
         "total": len(all_cases),
         "open": sum(1 for c in all_cases if c.status == "open"),

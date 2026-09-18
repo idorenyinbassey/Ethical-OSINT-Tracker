@@ -26,6 +26,7 @@ from app import create_app  # noqa: E402
 from app.db import init_db  # noqa: E402
 from app.repositories.user_repository import create_user, set_admin  # noqa: E402
 from app.repositories.case_repository import create_case  # noqa: E402
+from app.repositories.team_repository import create_team, add_team_member  # noqa: E402
 from app.utils import rate_limiter  # noqa: E402
 
 _ph = PasswordHasher()
@@ -89,6 +90,15 @@ def case_of_a(app, user_a):
 
 
 @pytest.fixture()
+def team_a(app, user_a):
+    """A team owned by user_a, with user_a as its 'owner' member."""
+    with app.app_context():
+        team = create_team("Team A", "created for tests", owner_user_id=user_a.id)
+        add_team_member(team.id, user_a.id, role="owner")
+        return team
+
+
+@pytest.fixture()
 def synthetic_image(tmp_path):
     """A Pillow-generated PNG — used instead of committing real photos (Issue #9)."""
     from PIL import Image
@@ -103,6 +113,19 @@ def login(client, username, password=_PASSWORD):
     return client.post(
         "/login",
         data={"username": username, "password": password},
+        follow_redirects=False,
+    )
+
+
+def login_with_2fa(client, username, secret, password=_PASSWORD):
+    """Log a user in through /login then /login/verify-2fa, generating a
+    live TOTP code from `secret`. Mirrors login() for accounts with 2FA
+    enabled."""
+    import pyotp
+    client.post("/login", data={"username": username, "password": password})
+    return client.post(
+        "/login/verify-2fa",
+        data={"code": pyotp.TOTP(secret).now()},
         follow_redirects=False,
     )
 

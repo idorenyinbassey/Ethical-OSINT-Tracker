@@ -23,21 +23,37 @@
 
 <div id="marker-count" class="mt-3 text-sm text-gray-500 dark:text-gray-400"></div>
 
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet — vendored locally (not loaded from a CDN) so the map still
+     renders in network-restricted deployments and for the headless
+     report-snapshot renderer, which has no reason to reach the open
+     internet just to draw the page. -->
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}"/>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 
 <script>
 const KIND_COLOR = { ip: "#3b82f6", file_forensics: "#22c55e" };
+const CASE_ID = new URLSearchParams(window.location.search).get("case_id");
+const MAP_DATA_URL = "{{ url_for('investigation.map_data') }}" + (CASE_ID ? ("?case_id=" + encodeURIComponent(CASE_ID)) : "");
 
-fetch("{{ url_for('investigation.map_data') }}")
+// Set by report_snapshot.py's headless capture to know when it's safe to
+// screenshot — true once markers are plotted (or we know there are none),
+// with __mapMarkerCount telling the capture whether to bother embedding.
+window.__mapReady = false;
+window.__mapMarkerCount = 0;
+
+function markMapReady() {
+  window.__mapReady = true;
+}
+
+fetch(MAP_DATA_URL)
   .then(r => r.json())
   .then(data => {
     document.getElementById("map-loading").style.display = "none";
     const markers = data.markers || [];
+    window.__mapMarkerCount = markers.length;
 
     const map = L.map("map").setView([20, 0], 2);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 18,
     }).addTo(map);
@@ -45,6 +61,8 @@ fetch("{{ url_for('investigation.map_data') }}")
     if (!markers.length) {
       document.getElementById("marker-count").textContent =
         "No geo-tagged investigations yet. Run IP lookups or upload GPS-tagged images.";
+      tileLayer.once("load", markMapReady);
+      setTimeout(markMapReady, 2000);
       return;
     }
 
@@ -71,9 +89,16 @@ fetch("{{ url_for('investigation.map_data') }}")
 
     document.getElementById("marker-count").textContent =
       `${markers.length} location${markers.length !== 1 ? "s" : ""} plotted from your investigations.`;
+
+    // Tiles reflow after fitBounds — wait for the (possibly new) visible
+    // tiles to finish loading before declaring the map screenshot-ready,
+    // but never wait indefinitely if a tile server is unreachable.
+    tileLayer.once("load", markMapReady);
+    setTimeout(markMapReady, 3000);
   })
   .catch(err => {
     document.getElementById("map-loading").textContent = "Failed to load map data: " + err.message;
+    markMapReady();
   });
 </script>
 {% endblock %}

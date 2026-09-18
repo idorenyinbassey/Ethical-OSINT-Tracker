@@ -1,6 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Ethical OSINT Tracker — Termux Installation Script
 # For Android devices using the Termux terminal emulator
+#
+# Handles Termux-specific system setup only (native packages, storage
+# permission). The actual Python install (pipx-preferred, venv fallback),
+# secret generation, and admin account setup are all delegated to
+# start.sh, which is identical on Termux and desktop Linux — see
+# scripts/secrets_bootstrap.sh for why that logic lives in one place.
 
 set -e
 
@@ -37,10 +43,11 @@ pkg install -y \
     patchelf \
     rust
 
-# Python runtime
+# Python runtime + pipx (avoids a manual venv — see start.sh)
 pkg install -y \
     python \
     python-pip
+pkg install -y python-pipx 2>/dev/null || true   # not on every Termux mirror; start.sh falls back if missing
 
 # Image libraries — required by Pillow for JPEG/PNG/TIFF/WebP/GIF forensics
 pkg install -y \
@@ -65,7 +72,8 @@ pkg install -y \
 # Utilities
 pkg install -y \
     git \
-    tmux
+    tmux \
+    psmisc  # provides fuser, used by run_termux.sh to free a stuck port
 
 echo "System packages installed."
 echo ""
@@ -88,70 +96,28 @@ if [ ! -f "requirements.txt" ]; then
     exit 1
 fi
 
-VENV_DIR=".venv"
-PIP="$VENV_DIR/bin/pip"
-PYTHON_VENV="$VENV_DIR/bin/python"
-
-# Create virtual environment
-echo "Creating Python virtual environment..."
-python -m venv "$VENV_DIR"
-echo "Virtual environment created at $VENV_DIR"
+echo "Handing off to start.sh for the Python install, secrets, and admin setup..."
 echo ""
+chmod +x start.sh
+./start.sh --install-only
 
-# Install into venv using explicit venv pip — no source/activate needed for installation
-echo "Upgrading pip inside venv..."
-"$PIP" install --upgrade pip
-
-echo "Installing Python packages (this may take a few minutes on Termux)..."
-"$PIP" install -r requirements.txt
-echo "Python packages installed."
-echo ""
-
-# Initialise database and admin user using venv Python
-echo "Initialising database..."
-"$PYTHON_VENV" reset_admin.py
-echo ""
-
-# Optional environment config file
-echo "Creating environment configuration..."
-if [ ! -f ".env" ]; then
-    cat > .env << 'EOF'
-# Optional overrides — the app works without these
-# SECRET_KEY=your-secret-key-here
-# DB_URL=sqlite:///./dev.db
-EOF
-    echo ".env file created."
-else
-    echo ".env file already exists — skipping."
-fi
-echo ""
-
-# Convenience launch script (uses source/activate for the runtime session)
+# Convenience launch script — a thin wrapper around start.sh with a couple
+# of Termux-specific niceties (wake lock reminder, freeing a stuck port).
 echo "Creating launch script..."
 cat > run_termux.sh << 'LAUNCH'
 #!/data/data/com.termux/files/usr/bin/bash
-# Launch Ethical OSINT Tracker on Termux
-
+# Launch Ethical OSINT Tracker on Termux.
 cd "$(dirname "$0")"
 
-VENV_DIR=".venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Virtual environment not found. Run install_termux.sh first."
-    exit 1
-fi
-
-# Activate for the runtime session so Flask and all imports resolve correctly
-source "$VENV_DIR/bin/activate"
-
-# Kill any existing process on port 3000
-fuser -k 3000/tcp 2>/dev/null || true
+# Kill any existing process on the target port (a previous run left hanging).
+fuser -k "${FLASK_PORT:-3000}/tcp" 2>/dev/null || true
 
 echo "Starting Ethical OSINT Tracker..."
-echo "Open http://localhost:3000 in your browser"
+echo "Open http://localhost:${FLASK_PORT:-3000} in your browser"
 echo "Press Ctrl+C to stop"
 echo ""
 
-python run.py
+exec ./start.sh
 LAUNCH
 
 chmod +x run_termux.sh
@@ -165,8 +131,7 @@ echo ""
 echo "Quick Start:"
 echo "  1. Launch the app:  ./run_termux.sh"
 echo "  2. Open browser:    http://localhost:3000"
-echo "  3. Login:           admin / changeme"
-echo "  4. Change password immediately in Settings"
+echo "  3. Log in with the admin username/password you set during install"
 echo ""
 echo "Tips:"
 echo "  - Run 'termux-wake-lock' before starting to prevent Android killing the app"

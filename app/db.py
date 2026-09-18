@@ -27,6 +27,7 @@ def init_db():
     from app.models.tracking_link import TrackingLink  # noqa: F401
     from app.models.tracking_hit import TrackingHit  # noqa: F401
     from app.models.audit_log import AuditLog  # noqa: F401
+    from app.models.api_key import ApiKey  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
     # Idempotent column additions for existing tables
@@ -42,6 +43,12 @@ def init_db():
         _add_column_if_missing(conn, "auditlog", "ip", "TEXT NOT NULL DEFAULT ''")
         # user: admin flag
         _add_column_if_missing(conn, "user", "is_admin", "INTEGER NOT NULL DEFAULT 0")
+        # case: optional team sharing (nullable — personal cases unaffected)
+        _add_column_if_missing(conn, "case", "team_id", "INTEGER")
+        # user: TOTP two-factor auth (all nullable/off by default)
+        _add_column_if_missing(conn, "user", "totp_secret", "TEXT")
+        _add_column_if_missing(conn, "user", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "user", "totp_recovery_codes", "TEXT NOT NULL DEFAULT ''")
 
 def get_session():
     return Session(engine)

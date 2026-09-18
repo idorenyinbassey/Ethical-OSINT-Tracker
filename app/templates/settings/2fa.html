@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Two-Factor Authentication – OSINT Tracker{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('settings.index') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-white text-sm mb-4 inline-block">← Settings</a>
+<h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">Two-Factor Authentication</h1>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="mb-4 px-4 py-3 rounded-lg text-sm {% if cat == 'error' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300{% endif %}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="max-w-xl bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+  {% if enabled %}
+    <div class="flex items-center gap-2 mb-4">
+      <span class="px-2 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300">Enabled</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
+      Your account requires a code from your authenticator app at login.
+    </p>
+
+    <form method="post" action="{{ url_for('settings.two_factor_regenerate_codes') }}" class="mb-6">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-4 py-2 rounded-lg">
+        Regenerate recovery codes
+      </button>
+      <p class="text-xs text-gray-400 mt-2">Invalidates your existing recovery codes and shows a new set once.</p>
+    </form>
+
+    <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
+      <h2 class="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">Disable 2FA</h2>
+      <form method="post" action="{{ url_for('settings.two_factor_disable') }}" class="flex items-end gap-3"
+            onsubmit="return confirm('Disable two-factor authentication?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Confirm your password</label>
+          <input type="password" name="password" required autocomplete="current-password"
+                 class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56">
+        </div>
+        <button type="submit" class="text-xs bg-red-900/40 hover:bg-red-900/60 text-red-300 px-4 py-2 rounded-lg border border-red-800">Disable 2FA</button>
+      </form>
+    </div>
+
+  {% else %}
+    <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
+      Scan this QR code with an authenticator app (Google Authenticator, Aegis, 1Password, etc.), or enter the key manually. Then confirm with a code to finish enabling it.
+    </p>
+    <img src="{{ qr_data_uri }}" alt="2FA QR code" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 w-48 h-48">
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-6">
+      Manual key: <code class="font-mono bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded">{{ secret }}</code>
+    </p>
+
+    <form method="post" action="{{ url_for('settings.two_factor_confirm') }}" class="flex items-end gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Enter the 6-digit code to confirm</label>
+        <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code"
+               class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-40 tracking-widest"
+               placeholder="123456">
+      </div>
+      <button type="submit" class="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
+        Enable 2FA
+      </button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

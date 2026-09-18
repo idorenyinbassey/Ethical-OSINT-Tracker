@@ -128,6 +128,28 @@ def _img_data_uri(url: str) -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def _capture_snapshots(case, app, snapshot_user_id) -> dict:
+    """Headless-browser PNG screenshots of the case's location map and
+    relationship graph, for embedding into the report. Optional on both
+    ends: skipped entirely if the caller didn't pass `app`/`snapshot_user_id`
+    (e.g. CSV/XLSX exports, or callers that don't wire this up), and each
+    individual capture already degrades to None internally if Playwright
+    isn't installed or the case has no geo/graph data to show. Never raises.
+    """
+    if not app or not snapshot_user_id:
+        return {"map": None, "graph": None}
+    try:
+        from app.services import report_snapshot
+        if not report_snapshot.PLAYWRIGHT_AVAILABLE:
+            return {"map": None, "graph": None}
+        return {
+            "map": report_snapshot.capture_map_snapshot(app, snapshot_user_id, case.id),
+            "graph": report_snapshot.capture_graph_snapshot(app, snapshot_user_id, case.id),
+        }
+    except Exception:
+        return {"map": None, "graph": None}
+
+
 # ---------------------------------------------------------------------------
 # Per-kind findings extractor
 # ---------------------------------------------------------------------------
@@ -242,9 +264,51 @@ def _extract_findings(kind: str, result_json: str) -> list:
             if isinstance(item, dict):
                 host = item.get("hostname") or item.get("subdomain") or ""
                 ip = item.get("ip") or item.get("ip_address") or ""
-                pairs.append(("Subdomain", f"{host} -> {ip}" if ip else host))
+                label = f"{host} -> {ip}" if ip else host
+                http = item.get("http")
+                if isinstance(http, dict) and http.get("status_code"):
+                    label += f" [{http['status_code']}]"
+                pairs.append(("Subdomain", label))
             else:
                 pairs.append(("Subdomain", _safe_str(item)))
+        takeovers = d.get("takeovers") or []
+        pairs.append(("Possible Takeovers", str(len(takeovers))))
+        for t in takeovers[:20]:
+            if isinstance(t, dict):
+                pairs.append((
+                    "Possible Takeover",
+                    f"{t.get('hostname', '')} -> {t.get('service', '')} ({t.get('confidence', '')})",
+                ))
+
+    # ------------------------------------------------------------------
+    elif kind == "typosquat":
+        pairs.append(("Domain", g(d, "domain")))
+        pairs.append(("Permutations Checked", str(d.get("permutations_generated", 0))))
+        pairs.append(("Registered Lookalikes", str(d.get("registered_count", 0))))
+        for hit in (d.get("registered") or [])[:20]:
+            if isinstance(hit, dict):
+                label = hit.get("domain", "")
+                if hit.get("ip"):
+                    label += f" -> {hit['ip']}"
+                if hit.get("registrar"):
+                    label += f" ({hit['registrar']})"
+                pairs.append(("Registered Lookalike", label))
+            else:
+                pairs.append(("Registered Lookalike", _safe_str(hit)))
+
+    # ------------------------------------------------------------------
+    elif kind == "paste_leak":
+        pairs.append(("Query", g(d, "query")))
+        pastes = d.get("pastes") or []
+        pairs.append(("Paste Hits", str(len(pastes))))
+        for p in pastes[:20]:
+            if isinstance(p, dict):
+                label = p.get("url", "")
+                if p.get("date"):
+                    label += f" ({p['date']})"
+                pairs.append(("Paste Hit", label))
+            else:
+                pairs.append(("Paste Hit", _safe_str(p)))
 
     # ------------------------------------------------------------------
     elif kind == "email":
@@ -403,6 +467,23 @@ def _extract_findings(kind: str, result_json: str) -> list:
             pairs.append(("Document Author", _safe_str(author)))
         if revision:
             pairs.append(("Revision", _safe_str(revision)))
+
+    # ------------------------------------------------------------------
+    elif kind == "image":
+        pairs.append(("Recognition", g(d, "identified_person")))
+        pairs.append(("Confidence", g(d, "confidence")))
+        ris = d.get("reverse_image_search")
+        if isinstance(ris, dict):
+            status = ris.get("status")
+            if status == "ok":
+                pairs.append(("Reverse Image Matches", str(ris.get("match_count", 0))))
+                for m in (ris.get("matches") or [])[:10]:
+                    if isinstance(m, dict) and m.get("url"):
+                        pairs.append(("Reverse Image Match", m["url"]))
+            elif status == "api_error":
+                pairs.append(("Reverse Image Search", ris.get("error", "Failed")))
+            else:
+                pairs.append(("Reverse Image Search", "Not configured"))
 
     # ------------------------------------------------------------------
     elif kind == "phone":
@@ -584,6 +665,27 @@ def _risk_notes(investigations):
             confirmed = int(d.get("confirmed_count") or 0)
             if confirmed > 5:
                 notes.append(f"Username '{inv.query}' confirmed on {confirmed} platforms - broad digital footprint.")
+        elif inv.kind == "subdomain":
+            takeovers = d.get("takeovers") or []
+            if takeovers:
+                services = ", ".join(sorted({t.get("service", "?") for t in takeovers if isinstance(t, dict)}))
+                notes.append(
+                    f"Domain {inv.query} has {len(takeovers)} possible subdomain takeover(s) "
+                    f"({services}) - verify and remediate dangling DNS records."
+                )
+        elif inv.kind == "typosquat":
+            registered_count = int(d.get("registered_count") or 0)
+            if registered_count > 0:
+                notes.append(
+                    f"Domain {inv.query} has {registered_count} registered lookalike domain(s) "
+                    f"- possible brand impersonation or phishing risk."
+                )
+        elif inv.kind == "paste_leak":
+            pastes = d.get("pastes") or []
+            if pastes:
+                notes.append(
+                    f"'{inv.query}' found in {len(pastes)} paste-site hit(s) - possible credential/data exposure."
+                )
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")
     return notes
@@ -593,8 +695,14 @@ def _risk_notes(investigations):
 # PDF EXPORT
 # ===========================================================================
 
-def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
-    """Return PDF bytes for a case and its investigations."""
+def export_pdf(case, investigations, investigator: str = "Unknown", app=None, snapshot_user_id=None) -> bytes:
+    """Return PDF bytes for a case and its investigations.
+
+    `app` and `snapshot_user_id`, when both provided, enable embedding a
+    headless-browser snapshot of the case's location map and relationship
+    graph (see _capture_snapshots). Omitting either simply skips that
+    section — everything else about the report is unaffected.
+    """
     try:
         from fpdf import FPDF
     except ImportError:
@@ -774,6 +882,41 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
         pdf.ln()
     pdf.ln(6)
 
+    # --------------------------------------------------------------- VISUALIZATIONS
+    snapshots = _capture_snapshots(case, app, snapshot_user_id)
+    viz_items = [("Location Map", snapshots.get("map")), ("Relationship Graph", snapshots.get("graph"))]
+    if any(png for _, png in viz_items):
+        section_heading("VISUALIZATIONS")
+        for title, png_bytes in viz_items:
+            if not png_bytes:
+                continue
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(*NAVY)
+            pdf.cell(w(), 6, _pdf_safe(title), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1)
+
+            img_w_mm = w()
+            try:
+                from PIL import Image as _PILImage
+                im = _PILImage.open(io.BytesIO(png_bytes))
+                img_h_mm = img_w_mm * im.height / im.width
+            except Exception:
+                img_h_mm = img_w_mm * 0.6
+            max_h_mm = 140
+            if img_h_mm > max_h_mm:
+                img_w_mm = img_w_mm * (max_h_mm / img_h_mm)
+                img_h_mm = max_h_mm
+
+            if pdf.get_y() + img_h_mm > pdf.h - pdf.b_margin:
+                pdf.add_page()
+            x0, y0 = pdf.l_margin, pdf.get_y()
+            try:
+                pdf.image(io.BytesIO(png_bytes), x=x0, y=y0, w=img_w_mm, h=img_h_mm)
+                pdf.set_y(y0 + img_h_mm + 5)
+            except Exception:
+                pass
+        pdf.ln(2)
+
     # --------------------------------------------------------- PER INVESTIGATION
     for inv in investigations:
         pdf.add_page()
@@ -884,15 +1027,36 @@ def export_pdf(case, investigations, investigator: str = "Unknown") -> bytes:
 # HTML EXPORT
 # ===========================================================================
 
-def export_html(case, investigations, investigator: str = "Unknown") -> str:
-    """Return a standalone HTML report with professional dark-accented styling."""
+def export_html(case, investigations, investigator: str = "Unknown", app=None, snapshot_user_id=None) -> str:
+    """Return a standalone HTML report with professional dark-accented styling.
+
+    `app` and `snapshot_user_id`, when both provided, enable embedding a
+    headless-browser snapshot of the case's location map and relationship
+    graph (see _capture_snapshots). Omitting either simply skips that
+    section — everything else about the report is unaffected.
+    """
     import html as _html
+    import base64 as _base64
     esc = lambda s: _html.escape(str(s) if s is not None else "")
 
     summary = _build_executive_summary(case, investigations)
     risk_notes = _risk_notes(investigations)
     img_cache = _prefetch_images(investigations)
     fingerprint = _report_fingerprint(case, investigations)
+
+    # ---- Visualizations (map + graph snapshots)
+    snapshots = _capture_snapshots(case, app, snapshot_user_id)
+    viz_html = ""
+    for title, png_bytes in (("Location Map", snapshots.get("map")), ("Relationship Graph", snapshots.get("graph"))):
+        if not png_bytes:
+            continue
+        b64 = _base64.b64encode(png_bytes).decode("ascii")
+        viz_html += (
+            f'<div style="margin-bottom:1.5rem">'
+            f'<h3 style="font-size:0.85rem;color:#1e293b;margin:0 0 .5rem">{esc(title)}</h3>'
+            f'<img src="data:image/png;base64,{b64}" style="max-width:100%;border:1px solid #e2e8f0;border-radius:6px">'
+            f'</div>'
+        )
 
     # ---- Cover / header metadata table
     meta_rows_html = ""
@@ -1233,6 +1397,14 @@ code {{ font-family: 'Courier New', monospace; font-size: 0.85em; }}
   </div>
 </div>
 
+{f'''<!-- VISUALIZATIONS -->
+<div class="section">
+  <div class="section-hdr">Visualizations</div>
+  <div class="section-body">
+    {viz_html}
+  </div>
+</div>''' if viz_html else ''}
+
 <!-- INVESTIGATIONS -->
 <div class="section-hdr" style="border-radius:8px 8px 0 0;margin-bottom:0">Per-Investigation Findings</div>
 {inv_cards}
@@ -1251,10 +1423,16 @@ code {{ font-family: 'Courier New', monospace; font-size: 0.85em; }}
 # DOCX EXPORT
 # ===========================================================================
 
-def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
-    """Return DOCX bytes with professional PI report structure."""
+def export_docx(case, investigations, investigator: str = "Unknown", app=None, snapshot_user_id=None) -> bytes:
+    """Return DOCX bytes with professional PI report structure.
+
+    `app` and `snapshot_user_id`, when both provided, enable embedding a
+    headless-browser snapshot of the case's location map and relationship
+    graph (see _capture_snapshots). Omitting either simply skips that
+    section — everything else about the report is unaffected.
+    """
     from docx import Document
-    from docx.shared import Pt, RGBColor, Cm
+    from docx.shared import Pt, RGBColor, Cm, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
@@ -1427,6 +1605,21 @@ def export_docx(case, investigations, investigator: str = "Unknown") -> bytes:
         for cell in row.cells:
             for run in cell.paragraphs[0].runs:
                 run.font.size = Pt(8)
+
+    # -------------------------------------------------------- Visualizations
+    snapshots = _capture_snapshots(case, app, snapshot_user_id)
+    viz_items = [("Location Map", snapshots.get("map")), ("Relationship Graph", snapshots.get("graph"))]
+    if any(png for _, png in viz_items):
+        doc.add_page_break()
+        add_heading("VISUALIZATIONS", level=1)
+        for title, png_bytes in viz_items:
+            if not png_bytes:
+                continue
+            add_heading(title, level=2)
+            try:
+                doc.add_picture(io.BytesIO(png_bytes), width=Inches(6.0))
+            except Exception:
+                pass
 
     # -------------------------------------------------------- Per Investigation
     doc.add_page_break()

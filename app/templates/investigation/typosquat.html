@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Typosquat Monitor – OSINT Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-white mb-2">Domain Typosquat Monitor</h1>
+<p class="text-sm text-yellow-500 mb-6">Generates lookalike domain permutations (omission, duplication, adjacent-key, transposition, homoglyph, TLD-swap) and checks which are registered. No API key required. Only scan domains you own or are authorised to test.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Domain</label>
+        <input type="text" name="query" required placeholder="e.g. example.com"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+      </div>
+      {% if cases %}
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
+          <select name="case_id"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
+            <option value="">— None —</option>
+            {% for case in cases %}
+              <option value="{{ case.id }}">{{ case.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Scan for Lookalikes
+      </button>
+    </form>
+
+    {% if result %}
+      <div class="mt-5 grid grid-cols-2 gap-2 text-center text-sm">
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="text-xs text-gray-400">Permutations Checked</p>
+          <p class="text-2xl font-bold text-white">{{ result.permutations_generated }}</p>
+        </div>
+        <div class="{{ 'bg-red-900/30 border border-red-800' if result.registered_count else 'bg-gray-800' }} rounded-lg p-3">
+          <p class="text-xs {{ 'text-red-400' if result.registered_count else 'text-gray-400' }}">Registered</p>
+          <p class="text-2xl font-bold {{ 'text-red-300' if result.registered_count else 'text-white' }}">{{ result.registered_count }}</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="lg:col-span-2">
+    {% if result %}
+      {% if result.registered %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <span class="text-sm font-medium text-white">Registered lookalikes of {{ result.domain }}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Domain</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">IP Address</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Registrar</th>
+                  <th class="px-4 py-2 text-left text-xs text-gray-400 uppercase">Created</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for hit in result.registered %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="px-4 py-2 text-red-300 font-mono text-xs">{{ hit.domain }}</td>
+                    <td class="px-4 py-2 text-gray-300 font-mono text-xs">{{ hit.ip }}</td>
+                    <td class="px-4 py-2 text-gray-400 text-xs">{{ hit.registrar or '—' }}</td>
+                    <td class="px-4 py-2 text-gray-400 text-xs">{{ hit.created or '—' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% else %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          No registered lookalike domains found for {{ result.domain }}.
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+        Enter a domain to check for typosquatted lookalikes.<br>
+        <span class="text-xs text-gray-600 mt-2 block">Generates up to 100 permutations and DNS-resolves each. No API key required.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

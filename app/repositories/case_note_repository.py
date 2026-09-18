@@ -29,12 +29,16 @@ def list_notes(case_id: int) -> List[CaseNote]:
         return [_detach(n) for n in results]
 
 
-def delete_note(note_id: int, user_id: int | None) -> bool:
+def delete_note(note_id: int, user_id: int | None, force: bool = False) -> bool:
+    """Delete a note. Only the author may delete their own note, unless
+    `force` is True (the caller has already verified the requester holds
+    a privileged role — e.g. the case owner or a team owner/admin on a
+    shared case — via app.utils.authz.can_access_case)."""
     with session_scope() as session:
         note = session.get(CaseNote, note_id)
         if not note:
             return False
-        if user_id and note.user_id and note.user_id != user_id:
+        if not force and user_id and note.user_id and note.user_id != user_id:
             return False
         session.delete(note)
         return True

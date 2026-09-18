@@ -26,6 +26,15 @@ pkg install -y mariadb
 ```bash
 git clone https://github.com/idorenyinbassey/Ethical-OSINT-Tracker.git
 cd Ethical-OSINT-Tracker
+./install_termux.sh
+```
+
+`install_termux.sh` installs the packages from step 2 for you, then hands
+off to `start.sh`, which prefers `pipx` (an isolated install with no
+manual venv or `pip install -r requirements.txt`) and falls back to a
+local `.venv` automatically if pipx isn't available. Prefer to do it by
+hand instead?
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
@@ -34,11 +43,24 @@ pip install -r requirements.txt
 
 ## 4. Database Initialisation
 
-The admin password comes from `ADMIN_PASSWORD` (min 8 chars); there is no
-default. Username is always `admin`.
+There is no default admin password. `./start.sh` prompts for one
+interactively on first run — hidden input, confirmed twice, never written
+to shell history:
 
 ```bash
-ADMIN_PASSWORD='choose-a-strong-password' python reset_admin.py  # creates tables + admin
+./start.sh
+# Set the admin account password (min. 8 characters).
+# Input is hidden and is never written to shell history.
+```
+
+`SECRET_KEY` and `API_KEYS_FERNET_KEY` are generated once and saved to
+`secrets.env` automatically at the same time, so they stay stable across
+restarts — no manual export needed.
+
+For scripted/non-interactive setups, `ADMIN_PASSWORD` can still be
+supplied via the environment instead:
+```bash
+ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
 If `cryptography` won't import or the scheduler reports a timezone error, see
@@ -48,7 +70,7 @@ If `cryptography` won't import or the scheduler reports a timezone error, see
 ## 5. Running the App
 
 ```bash
-python run.py
+./start.sh
 ```
 
 Open Chrome/Firefox on your device and go to `http://localhost:3000`.
@@ -57,7 +79,7 @@ To keep the server running when Termux loses focus, use `tmux`:
 
 ```bash
 tmux new -s osint
-python run.py
+./start.sh
 # Detach: Ctrl+b then d
 # Reattach later:
 tmux attach -t osint
@@ -106,7 +128,7 @@ Uploaded images are saved to `app/uploads/` inside the project directory.
 
 ```bash
 termux-wake-lock
-python run.py
+./start.sh
 ```
 
 Release when done:
@@ -123,20 +145,20 @@ mkdir -p ~/.termux/boot
 cat > ~/.termux/boot/start-osint.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 cd ~/Ethical-OSINT-Tracker
-source .venv/bin/activate
-nohup python run.py > /tmp/osint.log 2>&1 &
+nohup ./start.sh > /tmp/osint.log 2>&1 &
 EOF
 chmod +x ~/.termux/boot/start-osint.sh
 ```
+
+secrets.env and dev.db already exist by boot time, so this starts straight
+into gunicorn with no interactive prompt.
 
 ## 12. Updating
 
 ```bash
 cd ~/Ethical-OSINT-Tracker
 git pull origin main
-source .venv/bin/activate
-pip install -r requirements.txt --upgrade
-python run.py
+./start.sh   # reinstalls/updates dependencies (pipx or .venv) automatically
 ```
 
 ## 13. Ethics Reminder
