@@ -22,7 +22,13 @@ PyMySQL==1.1.1          # MySQL driver; SQLite is used by default (no extra pack
 
 # ── Authentication & Security ─────────────────────────────────────────────────
 argon2-cffi==23.1.0     # Argon2id password hashing
-cryptography>=42.0.0    # Fernet symmetric encryption for stored API keys
+# Fernet symmetric encryption for stored API keys. Excluded on Termux/Android
+# — confirmed via a real device that PyPI's cryptography package (wheel OR
+# built from source) fails to dlopen against Termux's Python ("cannot locate
+# symbol PyModule_Type"). start.sh instead uses a --system-site-packages
+# venv there, sharing in Termux's own working `pkg install
+# python-cryptography` build. See docs/TERMUX.md.
+cryptography>=42.0.0; sys_platform != "android" and platform_system != "Android"
 pyotp>=2.9.0            # TOTP two-factor authentication
 qrcode[pil]>=7.4.0      # Provisioning QR code for 2FA setup (Pillow is already a dependency)
 

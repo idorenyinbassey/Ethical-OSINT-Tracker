@@ -64,10 +64,17 @@ pkg install -y \
     libxml2 \
     libxslt
 
-# Crypto — libffi required by argon2-cffi (password hashing)
+# Crypto — libffi required by argon2-cffi (password hashing).
+# python-cryptography is Termux's own build of `cryptography`; PyPI's
+# wheel (and even a from-source pip build) fails to dlopen against
+# Termux's Python (confirmed on a real device: "cannot locate symbol
+# PyModule_Type"). start.sh shares this into the install venv via
+# --system-site-packages instead of letting pip install it — see
+# requirements.txt and docs/TERMUX.md.
 pkg install -y \
     libffi \
-    openssl
+    openssl \
+    python-cryptography
 
 # Utilities
 pkg install -y \
