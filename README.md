@@ -92,7 +92,7 @@ Generate unique tracking links and 1×1 email pixels that silently capture:
 | Feature | Description |
 |---------|-------------|
 | **Location Intelligence Map** | OpenStreetMap via Leaflet.js — auto-aggregates GPS from IP lookups and EXIF; colour-coded markers |
-| **Network Graph** | vis.js relationship map across all cases; entity hub nodes link shared IPs/emails/domains across multiple investigations; star-shaped hub nodes in purple |
+| **Network Graph** | vis.js relationship map across all cases; entity hub nodes link shared IPs/emails/domains/orgs/crypto addresses across multiple investigations (including bio-scraped social contacts, crypto transaction counterparties, subdomain-resolved IPs, Shodan-discovered orgs/hostnames, dark web `.onion` domains, and company registry contact info) and Link Tracker (IP Grabber) hits; star-shaped hub nodes in purple |
 
 ### Search & Audit
 

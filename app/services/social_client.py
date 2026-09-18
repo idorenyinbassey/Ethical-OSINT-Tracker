@@ -11,8 +11,10 @@ For each site we define:
 """
 import json
 import logging
+import re
 import time
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.proxy_config import get_http_client
 
@@ -1571,6 +1573,85 @@ def _extract_profile_meta(html: str) -> dict:
     return meta
 
 
+# Domain part requires a final all-letter TLD segment so a sentence-ending
+# period (or comma, etc.) right after the address is never swallowed into
+# the match — "Contact alice@example.com." matches only "alice@example.com".
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}")
+
+
+def _extract_contact_info(html: str, bio: str = "") -> dict:
+    """Best-effort extraction of contact-relevant signals from an already-
+    fetched, confirmed-found profile page — no extra HTTP request, so this
+    costs nothing beyond what _extract_profile_meta already parses.
+
+    Deliberately narrow in scope (unlike Maigret's per-site ID-extraction
+    plugins): only two high-signal, low-noise targets —
+
+      - emails: mailto: links (explicit intent to be a contact address) and
+        a plain email regex applied only to the OG/Twitter description text
+        already captured as `bio`, never the raw HTML — scanning full page
+        markup pulls in tracking-pixel/analytics-script noise that merely
+        looks like an email.
+      - linked_domains: the domain of any <a rel="me" href="..."> link —
+        the actual IndieWeb/Mastodon/GitHub convention for a verified
+        cross-link to another identity, so far higher confidence than
+        pattern-matching arbitrary URLs in body text.
+
+    Phone-number extraction is intentionally left out: a general regex over
+    arbitrary page HTML matches version strings, dates, and IDs far more
+    often than real phone numbers, and this project would rather return
+    nothing than a graph full of false positives. This will also miss
+    anything only rendered client-side by JavaScript, since we only ever
+    see the initial server response.
+    """
+    info: dict = {}
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html[:60000], "html.parser")
+
+        emails: list = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.lower().startswith("mailto:"):
+                # urlparse().path isolates the address from any "?subject="
+                # query string; unquote() reverses percent-encoding some
+                # pages apply to mailto: links (e.g. "john%2Edoe%40example.com").
+                addr = unquote(urlparse(href).path).strip().lower()
+                if addr and addr not in emails:
+                    emails.append(addr)
+        if bio:
+            for m in _EMAIL_RE.findall(bio):
+                addr = m.lower()
+                if addr not in emails:
+                    emails.append(addr)
+        if emails:
+            info["emails"] = emails[:3]
+
+        linked_domains: list = []
+        for a in soup.find_all("a", rel=True, href=True):
+            rel = a["rel"]
+            rel_values = rel if isinstance(rel, list) else rel.split()
+            if "me" not in [v.lower() for v in rel_values]:
+                continue
+            parsed = urlparse(a["href"])
+            if parsed.scheme not in ("http", "https"):
+                continue
+            if "@" in (parsed.netloc or ""):
+                # netloc contains userinfo (user:pass@host) — never trust or
+                # register a credential-bearing value as a graph entity.
+                continue
+            # .hostname (not .netloc) strips any port and is pre-lowercased,
+            # so "example.com:8443" still hub-links with a plain "example.com".
+            domain = parsed.hostname or ""
+            if domain and domain not in linked_domains:
+                linked_domains.append(domain)
+        if linked_domains:
+            info["linked_domains"] = linked_domains[:5]
+    except Exception:
+        pass
+    return info
+
+
 def _check_site(name: str, defn: dict, username: str) -> dict:
     url_template = defn["url"]
     url = url_template.replace("{username}", username)
@@ -1635,9 +1716,18 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             else:
                 result["status"] = "not_found"
 
-        # For any found result, scrape Open Graph / Twitter Card metadata
+        # For any found result, scrape Open Graph / Twitter Card metadata.
         if result["found"]:
             result.update(_extract_profile_meta(r.text))
+            # Contact extraction feeds the entity graph, so it's restricted
+            # to high-confidence results only — a "low"-confidence found
+            # result (e.g. an unverified redirect target) can be a generic
+            # page whose own contact info has nothing to do with this
+            # username, and would otherwise create a misleading graph pivot.
+            if result["confidence"] == "high":
+                contact = _extract_contact_info(r.text, bio=result.get("bio", ""))
+                if contact:
+                    result.update(contact)
 
     except Exception:
         # Log the full exception server-side; do NOT surface internal details

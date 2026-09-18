@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, session, abort
 from flask_login import login_required, current_user
@@ -514,15 +515,30 @@ def graph():
     return render_template("investigation/graph.html")
 
 
+def _register_entity(entity_map: dict, node_id: str, etype: str, val) -> None:
+    """Register a (etype, value) pair as sourced from node_id — shared by
+    _extract_entities() (per-investigation extraction) and graph_data()
+    (used directly for non-Investigation sources, e.g. Link Tracker hits),
+    so both feed the same entity-hub linking loop in graph_data()."""
+    val = str(val).strip().lower()
+    if val and val != "n/a" and len(val) > 2:
+        key = (etype, val)
+        entity_map.setdefault(key, [])
+        if node_id not in entity_map[key]:
+            entity_map[key].append(node_id)
+
+
+def _domain_of(url_or_host: str) -> str:
+    """Best-effort domain/netloc extraction from a URL or bare hostname."""
+    if "://" not in url_or_host:
+        url_or_host = f"//{url_or_host}"
+    return urlparse(url_or_host, scheme="http").netloc
+
+
 def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> None:
     """Extract entity values from result data and register them in the hub map."""
     def _reg(etype, val):
-        val = str(val).strip().lower()
-        if val and val != "n/a" and len(val) > 2:
-            key = (etype, val)
-            entity_map.setdefault(key, [])
-            if inv_node_id not in entity_map[key]:
-                entity_map[key].append(inv_node_id)
+        _register_entity(entity_map, inv_node_id, etype, val)
 
     kind = inv.kind
     if kind == "ip":
@@ -532,6 +548,16 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         org = geo.get("org") or geo.get("as") or ""
         if org:
             _reg("org", org[:40])
+        # Shodan's own org/hostnames — a separate source from geo's ASN
+        # org, so an infrastructure org Shodan identifies can hub-link with
+        # a Company Registry search on the same name, and a Shodan hostname
+        # can hub-link with a plain domain investigation on the same host.
+        shodan = data.get("shodan") or {}
+        shodan_org = shodan.get("organization") or ""
+        if shodan_org and shodan_org != "Unknown":
+            _reg("org", shodan_org[:40])
+        for hostname in shodan.get("hostnames", []):
+            _reg("domain", hostname)
     elif kind == "domain":
         domain = data.get("domain") or data.get("ldhName") or inv.query
         _reg("domain", domain)
@@ -545,9 +571,23 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
     elif kind == "social":
         username = data.get("username") or inv.query
         _reg("username", username)
+        # Emails/rel="me" cross-links scraped from confirmed profile pages
+        # (app.services.social_client._extract_contact_info) — same entity
+        # kinds as every other tool, so they hub with any other
+        # investigation that references the same address/domain.
+        for site_result in data.get("results", []):
+            for email in site_result.get("emails", []):
+                _reg("email", email)
+            for domain in site_result.get("linked_domains", []):
+                _reg("domain", domain)
     elif kind == "crypto":
         addr = data.get("address") or inv.query
         _reg("crypto", addr)
+        # Sender/recipient addresses pulled from the same transaction data
+        # already fetched by app.services.crypto_client — lets two wallets
+        # that have transacted with each other show up linked.
+        for cp in data.get("counterparties", []):
+            _reg("crypto", cp)
     elif kind == "phone":
         phone = data.get("phone_number") or inv.query
         _reg("phone", phone)
@@ -561,6 +601,13 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
     elif kind == "subdomain":
         domain = data.get("domain") or inv.query
         _reg("domain", domain)
+        # Each subdomain's already-resolved IP (app.services.subdomain_client's
+        # socket.gethostbyname() step) — lets a subdomain scan hub-link with
+        # an unrelated IP Lookup investigation that hit the same address.
+        for sub in data.get("subdomains", []):
+            ip = sub.get("ip")
+            if ip:
+                _reg("ip", ip)
     elif kind == "typosquat":
         domain = data.get("domain") or inv.query
         _reg("domain", domain)
@@ -568,6 +615,32 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         from app.utils.validators import classify_query_kind
         query = data.get("query") or inv.query
         _reg(classify_query_kind(query), query)
+    elif kind == "darkweb":
+        # Each hit's .onion host, parsed out of its URL — AHMIA's result
+        # items carry no separate domain field (app.services.darkweb_client).
+        for site_result in data.get("results", []):
+            onion_host = _domain_of(site_result.get("url", ""))
+            if onion_host:
+                _reg("domain", onion_host)
+    elif kind == "company":
+        # The searched company name itself, so it can hub-link with a
+        # Shodan-discovered org or another registry search on the same name.
+        query = data.get("query") or inv.query
+        if query:
+            _reg("org", query[:40])
+        # DuckDuckGo's Instant Answer "Infobox" is the only company-registry
+        # source with genuine contact fields — none of the 5 statutory
+        # registries (SEC EDGAR, UK Companies House, CAC Nigeria, Corporations
+        # Canada, Cyprus DRCOR) expose officer emails/phones.
+        ddg_info = ((data.get("results") or {}).get("duckduckgo") or {}).get("info", {})
+        if ddg_info.get("email"):
+            _reg("email", ddg_info["email"])
+        if ddg_info.get("website"):
+            domain = _domain_of(ddg_info["website"])
+            if domain:
+                _reg("domain", domain)
+        if ddg_info.get("phone"):
+            _reg("phone", ddg_info["phone"])
 
 
 @investigation_bp.route("/graph/data")
@@ -581,6 +654,7 @@ def graph_data():
     """
     from app.repositories.investigation_repository import list_all, list_by_case
     from app.repositories.case_repository import list_cases, get_case
+    from app.repositories.tracking_repository import list_links, list_links_by_case, list_hits
     from app.utils.authz import can_access_case
 
     case_id = request.args.get("case_id", type=int)
@@ -591,9 +665,14 @@ def graph_data():
             abort(403)
         cases = [target_case]
         invs = list_by_case(case_id)
+        # Same read-access check above already gates this — any team
+        # member's tracking links on this case are visible here exactly
+        # like their investigations are, not just the current user's own.
+        tracking_links = list_links_by_case(case_id)
     else:
         cases = list_cases(owner_user_id=current_user.id)
         invs = list_all(user_id=current_user.id)
+        tracking_links = list_links(user_id=current_user.id)
 
     nodes = []
     edges = []
@@ -687,6 +766,38 @@ def graph_data():
                 _extract_entities(inv, d, inv_node_id, entity_inv_map)
             except Exception:
                 pass
+
+    # Link Tracker hits — a separate data model from Investigation (see
+    # app/models/tracking_link.py / tracking_hit.py), so it's folded in here
+    # rather than through _extract_entities(). Each hit's captured IP is
+    # registered into the same entity_inv_map used above, so a tracked
+    # visitor's IP can hub-link with an unrelated IP Lookup investigation on
+    # that same address — exactly like any Investigation-sourced entity.
+    for link in tracking_links:
+        link_node_id = f"track-link-{link.id}"
+        nodes.append({
+            "id": link_node_id,
+            "label": link.label[:28] or "(tracking link)",
+            "group": "tracking_link",
+            "title": f"Tracking link: {link.label}\nDecoy: {link.decoy_mode}",
+        })
+        for hit in list_hits(link.id):
+            if not hit.ip:
+                continue
+            hit_node_id = f"track-hit-{hit.id}"
+            nodes.append({
+                "id": hit_node_id,
+                "label": hit.ip,
+                "group": "tracking_hit",
+                "title": f"Tracked hit ({hit.hit_type})\nIP: {hit.ip}\n"
+                         f"Location: {hit.city or '?'}, {hit.country or '?'}",
+            })
+            edges.append({
+                "from": link_node_id,
+                "to": hit_node_id,
+                "edge_type": "tracking_hit",
+            })
+            _register_entity(entity_inv_map, hit_node_id, "ip", hit.ip)
 
     # Build entity hub nodes for entities shared across 2+ investigations
     for entity_key, inv_ids in entity_inv_map.items():

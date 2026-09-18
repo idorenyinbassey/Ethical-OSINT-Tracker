@@ -6,7 +6,7 @@ from app.services.cache import cached
 logger = logging.getLogger(__name__)
 
 
-def _rdap_parse(data: dict) -> dict:
+def _rdap_parse(data: dict, domain: str) -> dict:
     registrar = None
     if "entities" in data:
         for ent in data["entities"]:
@@ -38,6 +38,7 @@ def _rdap_parse(data: dict) -> dict:
             expires = ev.get("eventDate")
 
     return {
+        "domain": domain,
         "registrar": registrar or "Unknown Registrar",
         "status": status or "active",
         "ns": nservers,
@@ -60,7 +61,7 @@ def fetch_domain(domain: str) -> Optional[Dict]:
                     r = client.get(url)
                     r.raise_for_status()
                     data = r.json()
-                    return _rdap_parse(data)
+                    return _rdap_parse(data, domain)
                 except (httpx.HTTPStatusError, httpx.RequestError):
                     continue
     except httpx.TimeoutException:
