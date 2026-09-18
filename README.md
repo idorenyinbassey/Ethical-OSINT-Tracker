@@ -184,6 +184,45 @@ Open [http://localhost:3000](http://localhost:3000) and log in as `admin`.
 
 ---
 
+## CLI Commands
+
+`./start.sh` (or a manual `pipx install .`) installs four console-script
+commands onto your `PATH`. `start.sh` wraps `osint-tracker` with secrets
+persistence and interactive admin-password setup — calling these commands
+directly skips that, so read the caveats below before relying on them
+standalone.
+
+| Command | Does |
+|---|---|
+| `osint-tracker` | Launches the server. Honors `FLASK_DEV`, `FLASK_HOST`, `FLASK_PORT`, `GUNICORN_WORKERS` — same environment variables `start.sh` uses. |
+| `osint-tracker-reset-admin` | Creates the `admin` user if absent, or resets its password. Requires `ADMIN_PASSWORD` in the environment — no interactive prompt (use `./start.sh --reset-admin` for that). |
+| `osint-tracker-init-db` | Creates database tables without touching credentials. |
+| `osint-tracker-gen-fernet-key` | Prints a fresh Fernet key, for `API_KEYS_FERNET_KEY`. |
+
+**Calling `osint-tracker` directly (without `start.sh`) skips three things
+it normally handles for you:**
+- No persisted `SECRET_KEY` — a random one is generated every start, which
+  invalidates all sessions (and logs everyone out) on restart.
+- No `API_KEYS_FERNET_KEY` — saving an API key in Settings fails until one
+  is set.
+- No admin account — `osint-tracker` only creates database tables; it
+  never creates the `admin` user.
+
+A one-off manual launch that avoids all three:
+```bash
+export SECRET_KEY='...'
+export API_KEYS_FERNET_KEY="$(osint-tracker-gen-fernet-key)"
+ADMIN_PASSWORD='choose-a-strong-password' osint-tracker-reset-admin
+osint-tracker
+```
+
+Prefer `./start.sh` for anything beyond a quick smoke test — it does all
+of the above for you, persists the secrets between restarts, and prompts
+for the admin password interactively instead of requiring it in
+plaintext in your shell history.
+
+---
+
 ## Environment Variables
 
 | Variable | Required? | Default | Description |
