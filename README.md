@@ -33,7 +33,7 @@ Tools marked **zero-key** work without any API configuration out of the box.
 | **Person Search** | Generates 12 curated investigative dork links (Google, LinkedIn, news, court records, Nairaland, SEC EDGAR officers, Scholar, Twitter) + up to 8 plausible username guesses | Zero-key |
 | **Company Registry** | Searches **5 jurisdictions in parallel**: US SEC EDGAR, UK Companies House, CAC Nigeria, Corporations Canada, Cyprus DRCOR | Zero-key (UK key optional) |
 | **Phone Lookup** | Carrier and country validation via NumVerify | Optional |
-| **IMEI Lookup** | Device identification via dash.imei.info API | Optional |
+| **IMEI Lookup** | Brand/model via a bundled 255k-entry offline TAC database (free, no key, never runs out); optional dash.imei.info key adds blacklist/stolen/warranty status | Zero-key |
 
 #### Vehicle & Assets
 | Tool | Description | Key required? |
@@ -278,7 +278,7 @@ Navigate to **Settings → API Settings** to configure external services. No res
 | `HIBP` | haveibeenpwned.com | Email breach detection — optional paid key for richer detail; free via XposedOrNot when left unconfigured |
 | `Hunter.io` | hunter.io | Email deliverability verification |
 | `NumVerify` | numverify.com | Phone number validation |
-| `IMEIService` | dash.imei.info | IMEI device lookup (base URL: `https://dash.imei.info/api`) |
+| `IMEIService` | dash.imei.info | IMEI device lookup — optional; brand/model works free offline without it (base URL: `https://dash.imei.info/api`) |
 | `ImageRecognition` | Google Cloud Vision | Face / label detection on images |
 | `TorProxy` | Tor / any HTTP proxy | Route all HTTP through Tor (`socks5://127.0.0.1:9050`) |
 
@@ -440,9 +440,9 @@ rm dev.db
 ./start.sh   # prompts for a new admin password (hidden input) since dev.db is gone
 ```
 
-**IMEI lookup fails**
-- Ensure the base URL in Settings is `https://dash.imei.info/api`
-- The imei.info API requires a funded account balance (minimum $5) to process requests
+**IMEI lookup only shows brand/model, no blacklist/stolen status**
+- Brand/model comes from a bundled offline TAC database and always works free, with no key and no account balance.
+- Blacklist, stolen, and warranty status require a paid IMEIService key (dash.imei.info) in Settings — once its credits run out, IMEI Lookup automatically falls back to the free offline data instead of failing outright.
 
 **Scheduler fails to start: `No time zone found with key ...`**
 

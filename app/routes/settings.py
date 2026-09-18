@@ -28,7 +28,7 @@ SERVICES = [
     {"name": "NumVerify", "label": "NumVerify (phone validation)", "default_url": "http://apilayer.net/api"},
     {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},
     {"name": "TinEye", "label": "TinEye (reverse image search — requires paid TinEye account)", "default_url": "https://api.tineye.com"},
-    {"name": "IMEIService", "label": "IMEI Service", "default_url": "https://api.imei.info"},
+    {"name": "IMEIService", "label": "IMEI Service (brand/model lookup works free, offline, no key; optional paid key adds blacklist/stolen/warranty status)", "default_url": "https://dash.imei.info/api"},
     {"name": "PasteMonitor", "label": "Leak Monitor (Hudson Rock infostealer intelligence by default — free, no key required; optional API key for alternate providers)", "default_url": "https://cavalier.hudsonrock.com/api/json/v2/osint-tools"},
     # Outbound alerting
     {"name": "Notifications", "label": "Notifications — webhook on watchlist change (ntfy.sh, Discord, Slack, etc.)", "default_url": ""},

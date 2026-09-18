@@ -1,4 +1,5 @@
 # Ensures non-Python assets are included in sdists/wheels (pipx/pip installs).
 recursive-include app/templates *.html
 recursive-include app/data *.json
+recursive-include app/data *.csv.gz
 recursive-include app/static *

@@ -25,4 +25,4 @@ dependencies = { file = ["requirements.txt"] }
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["templates/**/*.html", "data/*.json", "static/**/*"]
+app = ["templates/**/*.html", "data/*.json", "data/*.csv.gz", "static/**/*"]

@@ -4,6 +4,7 @@
 {% block content %}
 <h1 class="text-2xl font-bold text-white mb-2">IMEI Device Lookup</h1>
 <p class="text-sm text-yellow-500 mb-6">Only investigate IMEI numbers with proper legal authorization.</p>
+<p class="text-sm text-gray-400 mb-6">Brand/model lookup works free and offline (no API key). An optional paid IMEIService key in Settings adds blacklist, stolen, and warranty status.</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
@@ -37,7 +38,7 @@
     {% if result %}
       {% if result.error %}
         <div class="bg-gray-900 border border-yellow-800 rounded-xl p-4 text-yellow-400 text-sm">
-          {{ result.error }} — Configure IMEI Service in <a href="{{ url_for('settings.index') }}" class="underline">Settings</a>.
+          {{ result.error }}
         </div>
       {% else %}
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
