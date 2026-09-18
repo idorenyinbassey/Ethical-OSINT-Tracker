@@ -19,8 +19,23 @@ echo "Starting Ethical OSINT Tracker (Flask)..."
 # ─────────────────────────────────────────────────────────────────────────
 # Preferred path: pipx (no manual venv / pip install -r requirements.txt)
 # ─────────────────────────────────────────────────────────────────────────
+# Termux/Android never uses pipx: PyPI's `cryptography` package cannot
+# dlopen against Termux's Python in any form pip can produce ("cannot
+# locate symbol PyModule_Type" — confirmed on a real device, wheel and
+# from-source build both fail identically). Only Termux's own `pkg
+# install python-cryptography` works, and pipx's isolated venvs can't see
+# it. The plain-venv fallback below is created with --system-site-packages
+# on Termux specifically so it can.
+IS_TERMUX=false
+if [ -d "/data/data/com.termux" ]; then
+    IS_TERMUX=true
+fi
+
 USE_PIPX=false
-if command -v pipx >/dev/null 2>&1; then
+if $IS_TERMUX; then
+    echo "Termux detected — using a .venv install (not pipx) so Termux's own"
+    echo "python-cryptography package can be shared in via --system-site-packages."
+elif command -v pipx >/dev/null 2>&1; then
     USE_PIPX=true
 elif command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1; then
     echo "pipx not found — installing it (one-time, isolated, no system packages touched)..."
@@ -66,7 +81,14 @@ if ! $PIPX_RAN; then
 
     if [ ! -d "$VENV_DIR" ]; then
         echo "Creating virtual environment..."
-        python3 -m venv "$VENV_DIR"
+        if $IS_TERMUX; then
+            # --system-site-packages so this venv can see Termux's own
+            # `pkg install python-cryptography` — see the IS_TERMUX note
+            # above for why PyPI's cryptography can't be used instead.
+            python3 -m venv --system-site-packages "$VENV_DIR"
+        else
+            python3 -m venv "$VENV_DIR"
+        fi
     fi
 
     echo "Installing/updating dependencies in venv..."

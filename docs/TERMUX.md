@@ -13,7 +13,7 @@ This guide explains how to run Ethical OSINT Tracker inside [Termux](https://ter
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python git clang libffi openssl libjpeg-turbo zlib freetype libxml2 libxslt tmux
+pkg install -y python git clang libffi openssl python-cryptography libjpeg-turbo zlib freetype libxml2 libxslt tmux
 ```
 
 Optional (MySQL instead of SQLite):
@@ -29,13 +29,14 @@ cd Ethical-OSINT-Tracker
 ./install_termux.sh
 ```
 
-`install_termux.sh` installs the packages from step 2 for you, then hands
-off to `start.sh`, which prefers `pipx` (an isolated install with no
-manual venv or `pip install -r requirements.txt`) and falls back to a
-local `.venv` automatically if pipx isn't available. Prefer to do it by
-hand instead?
+`install_termux.sh` installs the packages from step 2 for you (including
+`python-cryptography` — PyPI's `cryptography` can't be used on Termux,
+see below), then hands off to `start.sh`. On Termux specifically,
+`start.sh` always uses a `--system-site-packages` venv rather than pipx,
+so the app can see that system-installed `python-cryptography`. Prefer
+to do it by hand instead?
 ```bash
-python -m venv .venv
+python -m venv --system-site-packages .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -63,9 +64,10 @@ supplied via the environment instead:
 ADMIN_PASSWORD='choose-a-strong-password' ./start.sh
 ```
 
-If `cryptography` won't import or the scheduler reports a timezone error, see
-[TERMUX_INSTALL.md](./TERMUX_INSTALL.md) (install `python-cryptography` and
-`tzdata`).
+If `cryptography` won't import (only possible doing it by hand without
+`--system-site-packages`) or the scheduler reports a timezone error, see
+[TERMUX_INSTALL.md](./TERMUX_INSTALL.md#step-4--create-a-virtual-environment-and-install-python-packages)
+(`pkg install python-cryptography` + `tzdata`).
 
 ## 5. Running the App
 
@@ -118,6 +120,7 @@ Uploaded images are saved to `app/uploads/` inside the project directory.
 | Issue | Fix |
 |-------|-----|
 | `argon2-cffi` compile errors | `pkg install clang libffi` then `pip install argon2-cffi --no-binary=:all:` |
+| `cryptography` import fails (`dlopen ... PyModule_Type`) | PyPI's build is incompatible with Termux's Python — `pkg install python-cryptography` and make sure your venv has `--system-site-packages` (already handled if installed via `start.sh`). Never `pip install cryptography` on Termux — it shadows the working system package. |
 | Pillow build fails | `pkg install libjpeg-turbo zlib freetype && pip install Pillow` |
 | `lxml` / `python-docx` build fails | `pkg install libxml2 libxslt` then retry `pip install -r requirements.txt` |
 | Port 3000 in use | `fuser -k 3000/tcp` |
@@ -159,7 +162,7 @@ into gunicorn with no interactive prompt.
 ```bash
 cd ~/Ethical-OSINT-Tracker
 git pull origin main
-./start.sh   # reinstalls/updates dependencies (pipx or .venv) automatically
+./start.sh   # reinstalls/updates dependencies (always .venv on Termux) automatically
 ```
 
 ## 13. Ethics Reminder

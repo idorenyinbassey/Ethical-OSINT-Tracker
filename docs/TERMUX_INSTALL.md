@@ -19,7 +19,7 @@ Complete guide for installing and running Ethical OSINT Tracker on Android using
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python git clang libffi openssl libjpeg-turbo zlib freetype libxml2 libxslt tmux
+pkg install -y python git clang libffi openssl python-cryptography libjpeg-turbo zlib freetype libxml2 libxslt tmux
 ```
 
 > No Node.js or Rust required — Flask has no frontend build step.
@@ -41,35 +41,41 @@ cd Ethical-OSINT-Tracker
 ```
 
 > **Fastest path:** run `./install_termux.sh` here and skip to
-> [Step 7](#step-7--run-the-app). It installs the system packages above,
-> prefers `pipx` over a manual venv (falling back automatically if pipx
-> isn't available), generates and persists `SECRET_KEY` /
-> `API_KEYS_FERNET_KEY` for you, and prompts for the admin password with
-> the terminal input hidden — nothing is typed inline or left in shell
-> history. Steps 4-6 below are the manual/troubleshooting equivalent of
-> what that script does.
+> [Step 7](#step-7--run-the-app). It installs the system packages above
+> (including `python-cryptography`), uses a `--system-site-packages` venv
+> on Termux instead of pipx (pipx's isolated venvs can't see Termux's own
+> `cryptography` build — see Step 4 below for why that matters),
+> generates and persists `SECRET_KEY` / `API_KEYS_FERNET_KEY` for you, and
+> prompts for the admin password with the terminal input hidden — nothing
+> is typed inline or left in shell history. Steps 4-6 below are the
+> manual/troubleshooting equivalent of what that script does.
 
 ### Step 4 — Create a virtual environment and install Python packages
 
+`cryptography` (used for Fernet-encrypted API keys) cannot be installed
+from PyPI on Termux — confirmed on a real device: neither the prebuilt
+wheel nor a from-source rebuild can `dlopen` against Termux's Python
+(`ImportError: dlopen failed: cannot locate symbol "PyModule_Type"`).
+Only Termux's own `pkg`-built `python-cryptography` works, so the venv
+must be created with `--system-site-packages` to see it, and
+`requirements.txt` already skips installing `cryptography` from PyPI on
+Termux/Android accordingly — **do not** `pip install cryptography`
+yourself afterwards, it will shadow the working system package with the
+broken PyPI one.
+
 ```bash
-python -m venv .venv
+pkg install python-cryptography
+python -m venv --system-site-packages .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+python -c "from cryptography.fernet import Fernet; print('crypto OK')"
 ```
 
 If Pillow fails to build:
 ```bash
 pkg install libjpeg-turbo zlib freetype libxml2 libxslt
 pip install Pillow --no-cache-dir
-```
-
-If `cryptography` fails to import (`ImportError: dlopen failed ... _rust.abi3.so`),
-its prebuilt wheel is incompatible with your Python. Use Termux's build:
-```bash
-pkg install python-cryptography rust openssl openssl-tool clang binutils
-pip install --no-binary cryptography --force-reinstall cryptography
-python -c "from cryptography.fernet import Fernet; print('crypto OK')"
 ```
 
 Install `tzdata` so the background scheduler can resolve your timezone
@@ -213,6 +219,7 @@ git pull origin main
 | Pillow build fails | `pkg install libjpeg-turbo zlib freetype && pip install Pillow` |
 | `lxml` / `python-docx` build fails | `pkg install libxml2 libxslt` then retry `pip install -r requirements.txt` |
 | `argon2-cffi` compile error | `pkg install clang libffi && pip install argon2-cffi --no-binary=:all:` |
+| `cryptography` import fails (`dlopen ... PyModule_Type`) | PyPI's build is incompatible with Termux's Python — `pkg install python-cryptography`, recreate your venv with `python -m venv --system-site-packages .venv`, and never `pip install cryptography` (see [Step 4](#step-4--create-a-virtual-environment-and-install-python-packages)). |
 | Port 3000 in use | `fuser -k 3000/tcp` |
 | App killed by Android | `termux-wake-lock` before starting |
 | httpx timeout | Check internet; timeouts are per-request (5–10 s by default) |
