@@ -3,9 +3,15 @@
 
 {% block content %}
 <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Network Graph</h1>
-<p class="text-sm text-yellow-600 dark:text-yellow-500 mb-4">Visual relationship map of cases, investigations, and shared entities. Diamond nodes are cases; circles are investigations; stars are shared entity hubs (same IP/email/domain across investigations).</p>
+<p class="text-sm text-yellow-600 dark:text-yellow-500 mb-4">Visual relationship map, scoped to the case(s) selected below. Diamond nodes are cases; circles are investigations; stars are shared entity hubs (same IP/email/domain across investigations).</p>
 
-<div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden" style="height:600px;position:relative;">
+{% include "investigation/_case_picker.html" %}
+
+<div id="graph-empty-state" class="hidden bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400">
+  Select a case above to view its relationship graph.
+</div>
+
+<div id="graph-view" class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden" style="height:600px;position:relative;">
   <div id="graph-container" style="width: 100%; height: 100%;"></div>
   <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
     Loading graph data…
@@ -137,8 +143,7 @@ function makeEdge(e) {
   };
 }
 
-const CASE_ID = new URLSearchParams(window.location.search).get("case_id");
-const GRAPH_DATA_URL = "{{ url_for('investigation.graph_data') }}" + (CASE_ID ? ("?case_id=" + encodeURIComponent(CASE_ID)) : "");
+const CASE_IDS = new URLSearchParams(window.location.search).getAll("case_id").filter(Boolean);
 
 // Set by report_snapshot.py's headless capture to know when it's safe to
 // screenshot — true once the graph has stabilized (or we know there's no
@@ -146,6 +151,18 @@ const GRAPH_DATA_URL = "{{ url_for('investigation.graph_data') }}" + (CASE_ID ? 
 // embedding.
 window.__graphReady = false;
 window.__graphNodeCount = 0;
+
+if (!CASE_IDS.length) {
+  // No case selected at all — don't silently fall back to an account-wide
+  // dump; prompt for an explicit selection instead.
+  document.getElementById("graph-loading").style.display = "none";
+  document.getElementById("graph-view").classList.add("hidden");
+  document.getElementById("graph-empty-state").classList.remove("hidden");
+  window.__graphReady = true;
+} else {
+const graphParams = new URLSearchParams();
+CASE_IDS.forEach(id => graphParams.append("case_id", id));
+const GRAPH_DATA_URL = "{{ url_for('investigation.graph_data') }}?" + graphParams.toString();
 
 fetch(GRAPH_DATA_URL)
   .then(r => r.json())
@@ -201,5 +218,6 @@ fetch(GRAPH_DATA_URL)
     document.getElementById("graph-loading").textContent = "Failed to load graph: " + err.message;
     window.__graphReady = true;
   });
+}
 </script>
 {% endblock %}

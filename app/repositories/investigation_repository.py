@@ -6,8 +6,6 @@ from app.models.investigation import Investigation
 from app.models.user import User  # noqa: F401
 from app.repositories.base import session_scope
 
-DEDUPE_WINDOW = timedelta(hours=1)
-
 
 def _detach(inv: Investigation) -> Investigation:
     """Return a plain detached copy with all fields copied."""
@@ -34,18 +32,33 @@ def create_investigation(kind: str, query: str, result_json: str,
 def find_or_update_recent(kind: str, query: str, result_json: str,
                            user_id: int | None, case_id: int | None = None,
                            confidence: str = "UNVERIFIED") -> Investigation:
-    """Upsert: update existing row if same kind+query+case within 1 hour, else create new."""
+    """Upsert: re-running the same tool/query in the same case, as the same
+    user, always updates the existing row in place rather than creating a
+    sibling — no age limit, so this holds regardless of how long ago the
+    original run was. `created_at` is left untouched (it's the case's own
+    "first investigated" timestamp); `updated_at` records the refresh.
+
+    Matching requires `user_id` too, so two different users running the
+    same query in a case they both have access to don't silently overwrite
+    each other's result. `query` is compared case/whitespace-insensitively
+    (mirroring find_related_cases()'s normalization below) so
+    "8.8.8.8 " or "Example.com" don't spawn a sibling row next to an
+    existing "8.8.8.8"/"example.com".
+
+    Investigations not attached to a case (case_id is None) are never
+    deduped — each run is a fully separate, ad-hoc row.
+    """
     if case_id is None:
         return create_investigation(kind=kind, query=query, result_json=result_json,
                                     user_id=user_id, case_id=None, confidence=confidence)
-    cutoff = datetime.utcnow() - DEDUPE_WINDOW
+    normalized_query = query.strip().lower()
     with session_scope() as session:
         existing = session.exec(
             select(Investigation)
             .where(Investigation.case_id == case_id)
+            .where(Investigation.user_id == user_id)
             .where(Investigation.kind == kind)
-            .where(Investigation.query == query)
-            .where(Investigation.created_at >= cutoff)
+            .where(func.lower(Investigation.query) == normalized_query)
             .order_by(Investigation.created_at.desc())
         ).first()
         if existing:

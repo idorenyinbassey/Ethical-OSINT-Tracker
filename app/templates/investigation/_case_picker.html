@@ -1,0 +1,37 @@
+{# Shared case-selection UI for map.html/graph.html — lets an investigator pick
+   one case (the default, isolated view) or explicitly select several to
+   compare. Submitting reloads the current page with repeated ?case_id=
+   params; the view functions treat that as a deliberate multi-case
+   comparison, not a silent account-wide default. #}
+{% set selected_case_ids = request.args.getlist('case_id') %}
+<div class="mb-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+  <form method="get" class="flex flex-wrap items-end gap-3">
+    <div class="flex-1 min-w-[220px]">
+      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+        Case(s) — select one, or ctrl/cmd-click multiple to compare
+      </label>
+      {% if cases %}
+      <select name="case_id" multiple size="{{ [cases|length, 4] | min }}"
+              class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+        {% for c in cases %}
+        <option value="{{ c.id }}" {% if c.id|string in selected_case_ids %}selected{% endif %}>{{ c.title }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <p class="text-sm text-gray-500 dark:text-gray-400">No cases yet — create one first.</p>
+      {% endif %}
+    </div>
+    {% if cases %}
+    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      Apply
+    </button>
+    {% endif %}
+  </form>
+  {% if selected_case_ids|length > 1 %}
+  <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+    Comparing {{ selected_case_ids|length }} cases — each result's tooltip/popup shows which case it belongs to, so they stay distinguishable.
+  </p>
+  {% elif not selected_case_ids and cases %}
+  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">No case selected yet.</p>
+  {% endif %}
+</div>

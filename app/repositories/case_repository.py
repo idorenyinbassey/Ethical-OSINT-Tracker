@@ -2,6 +2,13 @@ from typing import List, Optional
 from sqlmodel import select
 from app.models.case import Case
 from app.models.team import TeamMember
+from app.models.investigation import Investigation
+from app.models.case_comment import CaseComment
+from app.models.case_note import CaseNote
+from app.models.watchlist import WatchlistTarget
+from app.models.tracking_link import TrackingLink
+from app.models.tracking_hit import TrackingHit
+from app.models.intelligence_report import IntelligenceReport
 from app.repositories.base import session_scope
 
 
@@ -122,10 +129,41 @@ def update_case(case_id: int, **fields) -> Optional[Case]:
 
 
 def delete_case(case_id: int) -> bool:
+    """Delete a case and everything scoped to it, in one transaction.
+
+    SQLite foreign-key enforcement is never turned on for this app (see
+    app/db.py) and no ORM relationship()/cascade is declared on Case or its
+    children, so an orphan-free delete has to be explicit application code
+    rather than a DB-level cascade. Order matters: child-of-child rows
+    (TrackingHit) go before their parent (TrackingLink).
+    """
     with session_scope() as session:
         stmt = select(Case).where(Case.id == case_id)
         case = session.exec(stmt).first()
-        if case:
-            session.delete(case)
-            return True
-        return False
+        if not case:
+            return False
+
+        for inv in session.exec(select(Investigation).where(Investigation.case_id == case_id)).all():
+            session.delete(inv)
+        for comment in session.exec(select(CaseComment).where(CaseComment.case_id == case_id)).all():
+            session.delete(comment)
+        for note in session.exec(select(CaseNote).where(CaseNote.case_id == case_id)).all():
+            session.delete(note)
+        for target in session.exec(select(WatchlistTarget).where(WatchlistTarget.case_id == case_id)).all():
+            session.delete(target)
+
+        links = session.exec(select(TrackingLink).where(TrackingLink.case_id == case_id)).all()
+        for link in links:
+            for hit in session.exec(select(TrackingHit).where(TrackingHit.link_id == link.id)).all():
+                session.delete(hit)
+            session.delete(link)
+
+        # related_case_id has no real FK constraint declared at all (see the
+        # model) — a finished report is more of a keepable export artifact
+        # than working case data, so it's unlinked rather than deleted.
+        for report in session.exec(select(IntelligenceReport).where(IntelligenceReport.related_case_id == case_id)).all():
+            report.related_case_id = None
+            session.add(report)
+
+        session.delete(case)
+        return True
