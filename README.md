@@ -194,7 +194,7 @@ standalone.
 
 | Command | Does |
 |---|---|
-| `osint-tracker` | Launches the server. Honors `FLASK_DEV`, `FLASK_HOST`, `FLASK_PORT`, `GUNICORN_WORKERS` — same environment variables `start.sh` uses. |
+| `osint-tracker` | Launches the server. Honors `FLASK_DEV`, `FLASK_HOST`, `FLASK_PORT`, `GUNICORN_WORKERS`, `GUNICORN_TIMEOUT` — same environment variables `start.sh` uses. |
 | `osint-tracker-reset-admin` | Creates the `admin` user if absent, or resets its password. Requires `ADMIN_PASSWORD` in the environment — no interactive prompt (use `./start.sh --reset-admin` for that). |
 | `osint-tracker-init-db` | Creates database tables without touching credentials. |
 | `osint-tracker-gen-fernet-key` | Prints a fresh Fernet key, for `API_KEYS_FERNET_KEY`. |
@@ -236,6 +236,8 @@ plaintext in your shell history.
 | `CACHE_MAX_SIZE` | No | `1000` | Max entries in the in-memory service cache (LRU eviction). |
 | `FLASK_DEV` | No | `0` | `1` runs the dev server instead of gunicorn (via `start.sh`). |
 | `FLASK_DEBUG` | No | `0` | `1` enables debug mode (dev only — never in production). |
+| `GUNICORN_WORKERS` | No | `1` | Number of gunicorn worker processes. Keep at `1` for the default SQLite database (only one writer at a time) — raise it only if `DB_URL` points at a real multi-connection database. |
+| `GUNICORN_TIMEOUT` | No | `120` | Seconds before gunicorn kills and restarts a worker stuck on one request. Raised above gunicorn's own 30s default because some scans legitimately take longer (e.g. Social Search checks up to 273 sites) — too low a value drops the connection mid-scan with an empty response instead of a proper error. |
 
 Generate a Fernet key:
 

@@ -14,7 +14,8 @@ def run_server():
     """Entry point for the `osint-tracker` console script.
 
     Honors the same environment variables as start.sh / run.py:
-    FLASK_DEV, FLASK_DEBUG, FLASK_HOST, FLASK_PORT, GUNICORN_WORKERS.
+    FLASK_DEV, FLASK_DEBUG, FLASK_HOST, FLASK_PORT, GUNICORN_WORKERS,
+    GUNICORN_TIMEOUT.
     """
     dev_mode = os.getenv("FLASK_DEV", "0") == "1"
     host = os.getenv("FLASK_HOST", "127.0.0.1")
@@ -34,10 +35,15 @@ def run_server():
         # worker — safe for the default SQLite database (see start.sh for
         # why a shared SQLite file cannot tolerate multiple writer workers).
         workers = os.getenv("GUNICORN_WORKERS", "1")
+        # gunicorn's own default (30s) is too short for scans that legitimately
+        # take longer — e.g. Social Search checks up to 273 sites — see
+        # start.sh's GUNICORN_TIMEOUT comment for the full explanation.
+        timeout = os.getenv("GUNICORN_TIMEOUT", "120")
         print(f"Starting with gunicorn on http://{host}:{port} (production, {workers} worker(s))")
         os.execvp(sys.executable, [
             sys.executable, "-m", "gunicorn",
             "-w", workers,
+            "-t", timeout,
             "-b", f"{host if host != '127.0.0.1' else '0.0.0.0'}:{port}",
             "app.wsgi:app",
         ])
