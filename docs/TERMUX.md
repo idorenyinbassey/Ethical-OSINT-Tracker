@@ -123,6 +123,7 @@ Uploaded images are saved to `app/uploads/` inside the project directory.
 | Port 3000 in use | `fuser -k 3000/tcp` |
 | App killed by Android | Run `termux-wake-lock` before starting |
 | SSL errors from httpx | `pkg install ca-certificates` |
+| Case reports have no map/graph images | Expected on Termux — `playwright` (used to render those snapshots) ships no Android wheels, so `requirements.txt` skips it there. Everything else about report generation is unaffected. |
 
 ## 10. Keeping the App Alive
 

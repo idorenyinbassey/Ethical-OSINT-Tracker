@@ -67,7 +67,13 @@ alembic>=1.13.0         # Schema migrations; run: alembic upgrade head
 # report exports. Fully optional — if not installed, reports skip this
 # section instead of failing. After installing, also run:
 #   playwright install chromium
-playwright>=1.40.0
+# Excluded on Termux/Android — playwright ships no wheels for that platform,
+# which otherwise breaks `pip install -r requirements.txt` entirely there.
+# Checks both marker forms since which one a given Termux/Python build
+# reports (sys.platform vs platform.system()) isn't consistent everywhere.
+# The report-snapshot feature is simply unavailable on Termux; everything
+# else about report generation works.
+playwright>=1.40.0; sys_platform != "android" and platform_system != "Android"
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest>=7.0
