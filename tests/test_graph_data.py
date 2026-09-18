@@ -169,7 +169,7 @@ def test_graph_data_expands_typosquat_registered_hits_as_child_nodes(app, client
         create_investigation(kind="typosquat", query="example.com", result_json=json.dumps(result),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -194,7 +194,7 @@ def test_graph_data_links_shared_domain_between_subdomain_and_typosquat(app, cli
                              result_json=json.dumps({"domain": "shared-example.com", "registered": []}),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -217,7 +217,7 @@ def test_graph_data_links_shared_email_between_paste_leak_and_email(app, client,
                              result_json=json.dumps({"query": "shared@example.com", "pastes": []}),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -243,7 +243,7 @@ def test_graph_data_links_shared_email_between_social_and_email(app, client, use
         create_investigation(kind="social", query="johndoe", result_json=json.dumps(social_result),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 
@@ -263,7 +263,7 @@ def test_graph_data_typosquat_with_no_registered_hits_has_no_child_nodes(app, cl
                              result_json=json.dumps({"domain": "clean-example.com", "registered": []}),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="UNVERIFIED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 

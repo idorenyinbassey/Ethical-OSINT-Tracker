@@ -99,7 +99,7 @@ def test_graph_data_links_tracking_hit_ip_to_ip_investigation(app, client, user_
                              result_json=json.dumps({"ip": "203.0.113.77", "geo": {}}),
                              user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
 
-    resp = client.get("/investigate/graph/data")
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
     assert resp.status_code == 200
     data = resp.get_json()
 

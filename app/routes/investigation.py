@@ -64,8 +64,11 @@ def _investigation_before():
                             "investigation.watchlist_dismiss_alert",
                             "investigation.tag_investigation"):
         return
-    # Require at least one case to exist
-    cases = _cases_for_select()
+    # Require at least one case to exist (owned, or shared via a team —
+    # a team-only member must not be locked out of every investigation
+    # page just because they don't own any case themselves).
+    from app.repositories.case_repository import list_cases_for_user
+    cases = list_cases_for_user(current_user.id)
     if not cases:
         flash("Please create a case first before running investigations.", "error")
         return redirect(url_for('cases.new'))
@@ -512,7 +515,8 @@ def darkweb():
 @investigation_bp.route("/graph")
 @login_required
 def graph():
-    return render_template("investigation/graph.html", cases=_cases_for_select())
+    from app.repositories.case_repository import list_cases_for_user
+    return render_template("investigation/graph.html", cases=list_cases_for_user(current_user.id))
 
 
 def _register_entity(entity_map: dict, node_id: str, etype: str, val) -> None:
@@ -658,23 +662,29 @@ def graph_data():
     node + case_inv edges (built below) keep every case's investigations
     visually anchored to their case, so comparing never blends them.
 
-    With no case_id at all, falls back to every case the user owns (legacy
-    account-wide view) — kept for backward compatibility, but no longer
-    reachable from normal navigation (sidebar/case-detail links always pass
-    an explicit case_id when there's an active case).
+    With no case_id at all, scopes to the current user's own ad-hoc
+    (case_id IS NULL) investigations and tracking links only — never to
+    every case the user owns. There is no way to see more than one case's
+    data at once without explicitly listing each case_id: that's what
+    keeps this from becoming the account-wide, cross-case-bleeding
+    default the single/no-arg forms used to silently fall back to.
     """
-    from app.repositories.investigation_repository import list_all, list_by_case
-    from app.repositories.case_repository import list_cases, get_case
-    from app.repositories.tracking_repository import list_links, list_links_by_case, list_hits
+    from app.repositories.investigation_repository import list_by_case, list_all
+    from app.repositories.case_repository import get_case
+    from app.repositories.tracking_repository import list_links_by_case, list_links, list_hits
     from app.utils.authz import can_access_case
 
-    case_ids = [cid for cid in request.args.getlist("case_id", type=int) if cid is not None]
+    # Order-preserving de-dup: a repeated ?case_id=1&case_id=1 must not
+    # double every node/edge for that case.
+    requested_case_ids = list(dict.fromkeys(
+        cid for cid in request.args.getlist("case_id", type=int) if cid is not None
+    ))
 
-    if case_ids:
-        cases = []
-        invs = []
-        tracking_links = []
-        for cid in case_ids:
+    cases = []
+    invs = []
+    tracking_links = []
+    if requested_case_ids:
+        for cid in requested_case_ids:
             target_case = get_case(cid)
             if not target_case or not can_access_case(target_case, current_user, action="read"):
                 abort(403)
@@ -685,9 +695,8 @@ def graph_data():
             # like their investigations are, not just the current user's own.
             tracking_links.extend(list_links_by_case(cid))
     else:
-        cases = list_cases(owner_user_id=current_user.id)
-        invs = list_all(user_id=current_user.id)
-        tracking_links = list_links(user_id=current_user.id)
+        invs = [i for i in list_all(user_id=current_user.id) if i.case_id is None]
+        tracking_links = [l for l in list_links(user_id=current_user.id) if l.case_id is None]
 
     comparing_multiple = len(cases) > 1
     case_title_lookup = {c.id: c.title for c in cases}
@@ -954,7 +963,8 @@ def vehicle():
 @investigation_bp.route("/map")
 @login_required
 def location_map():
-    return render_template("investigation/map.html", cases=_cases_for_select())
+    from app.repositories.case_repository import list_cases_for_user
+    return render_template("investigation/map.html", cases=list_cases_for_user(current_user.id))
 
 
 _KIND_LABEL = {
@@ -989,15 +999,22 @@ def map_data():
     popup already shows its case name, so markers from different cases
     stay distinguishable rather than blending together.
 
-    With no case_id at all, falls back to every case the user owns (legacy
-    account-wide view, kept for backward compatibility but no longer
-    reachable from normal navigation).
+    With no case_id at all, scopes to the current user's own ad-hoc
+    (case_id IS NULL) investigations only — never to every case the user
+    owns. Seeing more than one case at once requires explicitly listing
+    each case_id: that's what keeps this from becoming the account-wide,
+    cross-case-bleeding default the single/no-arg forms used to silently
+    fall back to.
     """
-    from app.repositories.investigation_repository import list_all, list_by_case
+    from app.repositories.investigation_repository import list_by_case, list_all
     from app.repositories.case_repository import list_cases, get_case
     from app.utils.authz import can_access_case
 
-    case_ids = [cid for cid in request.args.getlist("case_id", type=int) if cid is not None]
+    # Order-preserving de-dup: a repeated ?case_id=1&case_id=1 must not
+    # double every marker for that case.
+    case_ids = list(dict.fromkeys(
+        cid for cid in request.args.getlist("case_id", type=int) if cid is not None
+    ))
 
     # Build case_id → title lookup (scoped to current user's cases)
     case_lookup = {c.id: c.title for c in list_cases(owner_user_id=current_user.id)}
@@ -1011,7 +1028,7 @@ def map_data():
             case_lookup.setdefault(case.id, case.title)
             invs.extend(list_by_case(cid))
     else:
-        invs = list_all(user_id=current_user.id)
+        invs = [i for i in list_all(user_id=current_user.id) if i.case_id is None]
 
     markers = []
 
@@ -1289,11 +1306,22 @@ def plugin_run(plugin_name):
             try:
                 result = plugin.run(query)
             except Exception as exc:
+                # An uncaught exception replaces `result` with a bare
+                # {"error": ...} blob that carries none of a plugin's
+                # normal result shape — persisting that via the upsert
+                # below would destroy a previously-stored successful
+                # result for this same case/query. A plugin's own
+                # normal return value (even one that legitimately
+                # includes an "error" key, e.g. a DNS lookup failure) is
+                # still persisted as before, matching every other tool
+                # route's convention.
                 result = {"error": str(exc)}
-            find_or_update_recent(kind=f"plugin_{plugin.name}", query=query,
-                                  result_json=json.dumps(result),
-                                  user_id=current_user.id, case_id=case_id)
-            flash(f"Plugin '{plugin.label}' completed.", "success")
+                flash(f"Plugin '{plugin.label}' failed: {exc}", "error")
+            else:
+                find_or_update_recent(kind=f"plugin_{plugin.name}", query=query,
+                                      result_json=json.dumps(result),
+                                      user_id=current_user.id, case_id=case_id)
+                flash(f"Plugin '{plugin.label}' completed.", "success")
 
     return render_template("investigation/plugin_run.html",
                            plugin=plugin, cases=cases, result=result)

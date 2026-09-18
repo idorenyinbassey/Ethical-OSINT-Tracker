@@ -1,8 +1,11 @@
 """app.routes.investigation — /investigate/map/data and /investigate/graph/data
-now accept ?case_id=<id> to scope to a single case's investigations (any
-team member's, per can_access_case), for the report-snapshot renderer and
-an optional case-scoped view in the UI. Without the param, both routes
-keep their pre-existing account-wide behavior."""
+accept ?case_id=<id> (repeatable) to scope to one or more cases'
+investigations (any team member's, per can_access_case), for the
+report-snapshot renderer and the case-scoped/multi-case-comparison views in
+the UI. Without any case_id at all, both routes scope to the current
+user's own ad-hoc (case_id IS NULL) data only — never to every case the
+user owns — so a caller can't bypass the UI's per-case isolation by
+hitting the JSON endpoint directly and getting a cross-case dump."""
 import json
 from tests.conftest import login
 
@@ -17,14 +20,17 @@ def _seed_ip_investigation(app, user, case):
         )
 
 
-def test_map_data_without_case_id_is_account_wide(app, client, user_a, case_of_a):
+def test_map_data_without_case_id_excludes_case_scoped_data(app, client, user_a, case_of_a):
+    """No account-wide fallback — a case-scoped investigation never shows
+    up without its case_id being explicitly requested, so cross-case
+    isolation can't be bypassed by calling the API directly."""
     login(client, user_a.username)
     _seed_ip_investigation(app, user_a, case_of_a)
 
     resp = client.get("/investigate/map/data")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["markers"]) == 1
+    assert data["markers"] == []
 
 
 def test_map_data_with_case_id_scopes_to_that_case(app, client, user_a, case_of_a):
@@ -83,13 +89,15 @@ def test_map_data_case_id_shows_other_team_members_investigations(app, client, u
     assert data["markers"][0]["label"] == "9.9.9.9"
 
 
-def test_graph_data_without_case_id_is_account_wide(app, client, user_a, case_of_a):
+def test_graph_data_without_case_id_excludes_case_scoped_data(app, client, user_a, case_of_a):
+    """No account-wide fallback — case_of_a exists but isn't requested, so
+    its case bubble node must not appear."""
     login(client, user_a.username)
     resp = client.get("/investigate/graph/data")
     assert resp.status_code == 200
     data = resp.get_json()
-    case_nodes = [n for n in data["nodes"] if n["group"] == "case"]
-    assert any(n["id"] == f"case-{case_of_a.id}" for n in case_nodes)
+    assert data["nodes"] == []
+    assert data["edges"] == []
 
 
 def test_graph_data_with_case_id_scopes_to_one_case(app, client, user_a, case_of_a):
@@ -215,3 +223,53 @@ def test_graph_data_single_case_tooltip_omits_case_title(app, client, user_a, ca
     inv_nodes = [n for n in data["nodes"] if n["group"] == "ip"]
     assert len(inv_nodes) == 1
     assert "Case:" not in inv_nodes[0]["title"]
+
+
+# ── Repeated case_id de-duplication ────────────────────────────────────────
+
+def test_map_data_repeated_case_id_does_not_duplicate_markers(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    _seed_ip_investigation(app, user_a, case_of_a)
+
+    resp = client.get(f"/investigate/map/data?case_id={case_of_a.id}&case_id={case_of_a.id}")
+    assert resp.status_code == 200
+    assert len(resp.get_json()["markers"]) == 1
+
+
+def test_graph_data_repeated_case_id_does_not_duplicate_nodes(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    _seed_ip_investigation(app, user_a, case_of_a)
+
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}&case_id={case_of_a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    case_nodes = [n for n in data["nodes"] if n["group"] == "case"]
+    inv_nodes = [n for n in data["nodes"] if n["group"] == "ip"]
+    assert len(case_nodes) == 1
+    assert len(inv_nodes) == 1
+
+
+# ── Case picker includes team-shared cases, not just owned ones ───────────
+
+def test_map_page_case_picker_includes_team_shared_case(app, client, user_a, user_b):
+    """A user with read access to a case via team membership (not
+    ownership) must be able to select it from the map/graph picker, not
+    just reach it by manually constructing a URL."""
+    from app.repositories.case_repository import create_case, update_case
+    from app.repositories.team_repository import create_team, add_team_member
+
+    with app.app_context():
+        team = create_team("Shared Team 2", "", owner_user_id=user_a.id)
+        add_team_member(team.id, user_a.id, role="owner")
+        add_team_member(team.id, user_b.id, role="analyst")
+        shared_case = create_case("Shared Case For Picker", "", owner_user_id=user_a.id)
+        update_case(shared_case.id, team_id=team.id)
+
+    login(client, user_b.username)
+    resp = client.get("/investigate/map")
+    assert resp.status_code == 200
+    assert b"Shared Case For Picker" in resp.data
+
+    resp = client.get("/investigate/graph")
+    assert resp.status_code == 200
+    assert b"Shared Case For Picker" in resp.data

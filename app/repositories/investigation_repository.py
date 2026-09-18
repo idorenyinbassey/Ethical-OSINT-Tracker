@@ -58,7 +58,7 @@ def find_or_update_recent(kind: str, query: str, result_json: str,
             .where(Investigation.case_id == case_id)
             .where(Investigation.user_id == user_id)
             .where(Investigation.kind == kind)
-            .where(func.lower(Investigation.query) == normalized_query)
+            .where(func.lower(func.trim(Investigation.query)) == normalized_query)
             .order_by(Investigation.created_at.desc())
         ).first()
         if existing:

@@ -92,6 +92,37 @@ def test_query_matching_is_case_and_whitespace_insensitive(app, user_a, case_of_
         assert json.loads(rows[0].result_json) == {"v": 2}
 
 
+def test_matches_an_existing_row_whose_stored_query_has_whitespace(app, user_a, case_of_a):
+    """The normalized-query comparison must trim BOTH sides: a row stored
+    with leading/trailing whitespace (e.g. from an older, less-careful
+    caller) still has to be found and updated by a later clean re-run,
+    not duplicated."""
+    from app.repositories.base import session_scope
+    from app.models.investigation import Investigation
+    from sqlmodel import select
+
+    with app.app_context():
+        first = find_or_update_recent(
+            kind="domain", query="example.com", result_json=json.dumps({"v": 1}),
+            user_id=user_a.id, case_id=case_of_a.id,
+        )
+        # Simulate a row whose query was stored with surrounding whitespace
+        # (e.g. written before this normalization existed).
+        with session_scope() as session:
+            row = session.exec(select(Investigation).where(Investigation.id == first.id)).one()
+            row.query = "  example.com  "
+            session.add(row)
+
+        find_or_update_recent(
+            kind="domain", query="example.com", result_json=json.dumps({"v": 2}),
+            user_id=user_a.id, case_id=case_of_a.id,
+        )
+
+        rows = list_by_case(case_of_a.id)
+        assert len(rows) == 1
+        assert json.loads(rows[0].result_json) == {"v": 2}
+
+
 def test_different_kind_same_query_does_not_collide(app, user_a, case_of_a):
     with app.app_context():
         find_or_update_recent(
@@ -160,3 +191,40 @@ def test_plugin_run_route_updates_in_place_instead_of_duplicating(app, client, u
     with app.app_context():
         rows = [r for r in list_by_case(case_of_a.id) if r.kind == f"plugin_{plugin_name}"]
         assert len(rows) == 1
+
+
+def test_plugin_run_failure_does_not_overwrite_prior_successful_result(app, client, user_a, case_of_a):
+    """A transient plugin failure (e.g. a network error on rerun) must not
+    destroy a previously-stored successful result for the same case/query
+    by upserting an {"error": ...} blob over it."""
+    from unittest.mock import patch
+    from tests.conftest import login
+    from app.plugins import get_all
+
+    plugins = get_all()
+    if not plugins:
+        import pytest
+        pytest.skip("no plugins registered")
+    plugin = plugins[0]
+
+    login(client, user_a.username)
+
+    with patch.object(plugin, "run", return_value={"ok": True, "v": 1}):
+        resp = client.post(
+            f"/investigate/plugins/{plugin.name}",
+            data={"query": "same-query", "case_id": str(case_of_a.id)},
+        )
+        assert resp.status_code in (200, 302)
+
+    with patch.object(plugin, "run", side_effect=RuntimeError("boom")):
+        resp = client.post(
+            f"/investigate/plugins/{plugin.name}",
+            data={"query": "same-query", "case_id": str(case_of_a.id)},
+        )
+        assert resp.status_code in (200, 302)
+
+    with app.app_context():
+        rows = [r for r in list_by_case(case_of_a.id) if r.kind == f"plugin_{plugin.name}"]
+        assert len(rows) == 1
+        stored = json.loads(rows[0].result_json)
+        assert stored == {"ok": True, "v": 1}
