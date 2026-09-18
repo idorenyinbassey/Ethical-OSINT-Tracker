@@ -28,14 +28,24 @@ def _check_darkweb() -> tuple:
 
 
 def _check_sherlock_sites() -> tuple:
-    from app.services.social_client import _get_all_sites
-    sites = _get_all_sites()
-    count = len(sites)
-    # The bundled local SITES dict alone is a few dozen entries; a healthy
-    # live fetch merges in Sherlock's own list (600+). Falling below this
-    # floor usually means the GitHub fetch failed and we're on a stale or
-    # missing cache, not that the site list is simply "a bit smaller."
-    return (count >= 100), f"{count} site(s) loaded"
+    # Deliberately bypasses social_client's in-memory/disk cache and hits
+    # the live URL directly. _load_sherlock_sites() falls back to a stale
+    # disk cache (up to 24h old) whenever the live GitHub fetch fails, so
+    # going through it here would let a broken live fetch hide behind a
+    # previously-successful cached copy indefinitely — this canary is
+    # specifically about whether the *live* source is still reachable and
+    # well-formed, not whether we merely have *some* usable site list.
+    from app.services.social_client import _SHERLOCK_URL
+    from app.utils.proxy_config import get_http_client
+    with get_http_client(timeout=10) as client:
+        r = client.get(_SHERLOCK_URL, follow_redirects=True)
+    if r.status_code != 200:
+        return False, f"HTTP {r.status_code}"
+    count = len(r.json())
+    # A healthy live fetch returns Sherlock's full list (600+ entries).
+    # Falling below this floor usually means the response format changed,
+    # not that the upstream list simply got "a bit smaller."
+    return (count >= 100), f"{count} site(s) in live fetch"
 
 
 def _check_company_registry_canada() -> tuple:

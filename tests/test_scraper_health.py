@@ -87,16 +87,66 @@ def test_check_darkweb_fails_on_error_key():
     assert "timed out" in detail
 
 
+class _FakeSherlockResponse:
+    def __init__(self, data, status_code=200):
+        self._data = data
+        self.status_code = status_code
+
+    def json(self):
+        return self._data
+
+
+class _FakeSherlockClient:
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get(self, url, **kwargs):
+        return self._response
+
+
+def _sherlock_client_factory(response):
+    def factory(timeout=10):
+        return _FakeSherlockClient(response)
+    return factory
+
+
 def test_check_sherlock_sites_fails_below_floor():
-    with patch("app.services.social_client._get_all_sites", return_value={"a": {}, "b": {}}):
+    response = _FakeSherlockResponse({str(i): {} for i in range(2)})
+    with patch("app.utils.proxy_config.get_http_client", _sherlock_client_factory(response)):
         ok, detail = scraper_health._check_sherlock_sites()
     assert ok is False
 
 
 def test_check_sherlock_sites_passes_above_floor():
-    with patch("app.services.social_client._get_all_sites", return_value={str(i): {} for i in range(150)}):
+    response = _FakeSherlockResponse({str(i): {} for i in range(150)})
+    with patch("app.utils.proxy_config.get_http_client", _sherlock_client_factory(response)):
         ok, detail = scraper_health._check_sherlock_sites()
     assert ok is True
+
+
+def test_check_sherlock_sites_fails_on_non_200():
+    response = _FakeSherlockResponse({}, status_code=503)
+    with patch("app.utils.proxy_config.get_http_client", _sherlock_client_factory(response)):
+        ok, detail = scraper_health._check_sherlock_sites()
+    assert ok is False
+    assert "503" in detail
+
+
+def test_check_sherlock_sites_does_not_use_the_local_cache():
+    # A stale-but-large local cache must not mask a broken live fetch —
+    # this canary bypasses social_client's cache entirely.
+    with patch("app.services.social_client._load_sherlock_sites",
+               return_value={str(i): {} for i in range(1000)}), \
+         patch("app.utils.proxy_config.get_http_client",
+               _sherlock_client_factory(_FakeSherlockResponse({}, status_code=500))):
+        ok, detail = scraper_health._check_sherlock_sites()
+    assert ok is False
 
 
 def test_check_company_registry_canada_fails_on_no_results():

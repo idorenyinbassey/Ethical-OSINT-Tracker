@@ -48,6 +48,23 @@ jobs:
             const fs = require('fs');
             const body = fs.readFileSync('canary_output.txt', 'utf8');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // issues.create() 422s on a label that doesn't already exist —
+            // GitHub never auto-creates one — so a repo without this label
+            // pre-provisioned would silently drop every tracking issue.
+            // Ensure it exists first; a 422 here just means it already does.
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'scraper-canary',
+                color: 'd73a4a',
+                description: 'Automated scraper health-check failures',
+              });
+            } catch (e) {
+              if (e.status !== 422) throw e;
+            }
+
             const { data: existing } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
