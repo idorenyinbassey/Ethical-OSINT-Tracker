@@ -198,6 +198,7 @@ standalone.
 | `osint-tracker-reset-admin` | Creates the `admin` user if absent, or resets its password. Requires `ADMIN_PASSWORD` in the environment — no interactive prompt (use `./start.sh --reset-admin` for that). |
 | `osint-tracker-init-db` | Creates database tables without touching credentials. |
 | `osint-tracker-gen-fernet-key` | Prints a fresh Fernet key, for `API_KEYS_FERNET_KEY`. |
+| `osint-tracker-update-tac-db` | Forces an immediate refresh of the offline IMEI/TAC database, bypassing the scheduler's normal once-a-day rate limit. |
 
 **Calling `osint-tracker` directly (without `start.sh`) skips three things
 it normally handles for you:**
@@ -238,6 +239,8 @@ plaintext in your shell history.
 | `FLASK_DEBUG` | No | `0` | `1` enables debug mode (dev only — never in production). |
 | `GUNICORN_WORKERS` | No | `1` | Number of gunicorn worker processes. Keep at `1` for the default SQLite database (only one writer at a time) — raise it only if `DB_URL` points at a real multi-connection database. |
 | `GUNICORN_TIMEOUT` | No | `120` | Seconds before gunicorn kills and restarts a worker stuck on one request. Raised above gunicorn's own 30s default because some scans legitimately take longer (e.g. Social Search checks up to 273 sites) — too low a value drops the connection mid-scan with an empty response instead of a proper error. |
+| `TAC_DB_AUTO_UPDATE` | No | `true` | Set to `false` to disable the background weekly refresh of the offline IMEI/TAC database (e.g. on limited mobile data). |
+| `OSINT_TRACKER_DATA_DIR` | No | `~/.local/share/osint-tracker` | Where the refreshed offline TAC database is written. The read-only bundled snapshot is never touched. |
 
 Generate a Fernet key:
 
@@ -443,6 +446,12 @@ rm dev.db
 **IMEI lookup only shows brand/model, no blacklist/stolen status**
 - Brand/model comes from a bundled offline TAC database and always works free, with no key and no account balance.
 - Blacklist, stolen, and warranty status require a paid IMEIService key (dash.imei.info) in Settings — once its credits run out, IMEI Lookup automatically falls back to the free offline data instead of failing outright.
+
+**Keeping the offline TAC database up to date**
+- It self-updates in the background: once shortly after each app start (skipped if already refreshed within the last day) and weekly thereafter for long-running processes, via the same APScheduler job as the watchlist rescan.
+- The refreshed copy is written to `~/.local/share/osint-tracker/tac_database.csv.gz` (override with `OSINT_TRACKER_DATA_DIR`), leaving the read-only bundled snapshot untouched — a failed or skipped refresh always falls back to the last good copy, never to nothing.
+- Set `TAC_DB_AUTO_UPDATE=false` to disable it entirely (e.g. on limited mobile data / Termux).
+- Force an immediate refresh any time with `osint-tracker-update-tac-db`.
 
 **Scheduler fails to start: `No time zone found with key ...`**
 

@@ -24,6 +24,19 @@ def _rescan_all(app):
             pass  # scheduler jobs must never crash the process
 
 
+def _refresh_tac_database(app):
+    """Keep the offline IMEI/TAC database (app.services.tac_lookup) from
+    going stale. Safe to run repeatedly — refresh_tac_database() rate-limits
+    itself and never touches the network more than needed."""
+    with app.app_context():
+        try:
+            from app.services.tac_lookup import refresh_tac_database
+            if refresh_tac_database():
+                app.logger.info("TAC database refreshed from github.com/MoazEb/tac-database")
+        except Exception:
+            pass  # scheduler jobs must never crash the process
+
+
 def _purge_retention(app):
     """Delete investigations older than the configured RETENTION_DAYS (Issue #15)."""
     with app.app_context():
@@ -52,10 +65,19 @@ def start_scheduler(app):
         # Enforce the PII data-retention policy once a day.
         scheduler.add_job(_purge_retention, "interval", hours=24, args=[app],
                           id="retention_purge", replace_existing=True)
+        # Keep the offline TAC database fresh: once ASAP on boot (run via the
+        # scheduler, not called directly, since it's a ~12MB network fetch
+        # that shouldn't block app startup), then weekly for long-running
+        # processes. refresh_tac_database() itself rate-limits to once/day
+        # regardless of how often the app restarts.
+        scheduler.add_job(_refresh_tac_database, args=[app],
+                          id="tac_database_refresh_boot", replace_existing=True)
+        scheduler.add_job(_refresh_tac_database, "interval", days=7, args=[app],
+                          id="tac_database_refresh_weekly", replace_existing=True)
         scheduler.start()
         # Run an initial purge so retention takes effect immediately on boot.
         _purge_retention(app)
-        app.logger.info("APScheduler started — watchlist rescan every 6h, retention purge daily")
+        app.logger.info("APScheduler started — watchlist rescan every 6h, retention purge daily, TAC database refresh weekly")
     except ImportError:
         app.logger.warning("APScheduler not installed — watchlist auto-rescan disabled. Run: pip install apscheduler")
     except Exception as exc:

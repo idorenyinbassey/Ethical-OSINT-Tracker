@@ -492,6 +492,9 @@ Max 16 MB. Supported: JPG, PNG, GIF, BMP, TIFF, WEBP, MP3, FLAC, OGG, M4A, WAV, 
 **IMEI lookup only shows brand/model, no blacklist/stolen status**
 Brand/model comes from a bundled offline TAC database and always works free. Blacklist, stolen, and warranty status require a paid IMEIService key (dash.imei.info) with a funded balance — once it runs out, lookups fall back to the free offline data automatically.
 
+**Keeping the offline TAC database up to date**
+It self-updates in the background — once shortly after each app start (skipped if refreshed within the last day) and weekly thereafter — writing the refreshed copy to `~/.local/share/osint-tracker/tac_database.csv.gz` (override with `OSINT_TRACKER_DATA_DIR`) and leaving the bundled snapshot untouched. Disable it with `TAC_DB_AUTO_UPDATE=false`, or force an immediate refresh with `osint-tracker-update-tac-db`.
+
 **Report generation stuck**
 Reload the page — if the job ID is gone, the server restarted and lost the in-memory job. Re-generate.
 
