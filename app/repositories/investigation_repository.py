@@ -139,19 +139,29 @@ def count_by_kind(user_id: int | None = None) -> Dict[str, int]:
 
 
 def purge_old_investigations(retention_days: int) -> int:
-    """Delete investigations older than `retention_days` (Issue #15 retention).
+    """Delete investigations not touched in `retention_days` (Issue #15
+    retention).
 
     Returns the number of rows deleted. A non-positive retention_days disables
     purging (returns 0) so operators can opt out by setting RETENTION_DAYS<=0.
+
+    Purges on the more recent of `created_at`/`updated_at`, not `created_at`
+    alone: find_or_update_recent() deliberately leaves `created_at` at the
+    row's original first-run timestamp forever (with no age limit on
+    matching), so a long-lived case's investigation that was refreshed
+    today, but first created a year ago, must not be swept away at the
+    next purge just because its `created_at` predates the cutoff.
     """
     if retention_days is None or retention_days <= 0:
         return 0
-    # created_at is naive UTC (see Investigation model default).
+    # created_at/updated_at are naive UTC (see Investigation model default).
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     with session_scope() as session:
         # Single bulk DELETE rather than loading and deleting row-by-row.
         result = session.exec(
-            delete(Investigation).where(Investigation.created_at < cutoff)
+            delete(Investigation).where(
+                func.coalesce(Investigation.updated_at, Investigation.created_at) < cutoff
+            )
         )
         return result.rowcount or 0
 

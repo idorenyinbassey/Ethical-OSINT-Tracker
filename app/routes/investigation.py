@@ -805,12 +805,28 @@ def graph_data():
     # that same address — exactly like any Investigation-sourced entity.
     for link in tracking_links:
         link_node_id = f"track-link-{link.id}"
+        link_title = f"Tracking link: {link.label}\nDecoy: {link.decoy_mode}"
+        hit_case_suffix = ""
+        if comparing_multiple and link.case_id in case_title_lookup:
+            case_label = case_title_lookup[link.case_id]
+            link_title += f"\nCase: {case_label}"
+            hit_case_suffix = f"\nCase: {case_label}"
         nodes.append({
             "id": link_node_id,
             "label": link.label[:28] or "(tracking link)",
             "group": "tracking_link",
-            "title": f"Tracking link: {link.label}\nDecoy: {link.decoy_mode}",
+            "title": link_title,
         })
+        # Anchor the link to its case bubble exactly like investigations
+        # are (case_inv edges above) — without this, tracking links from
+        # different cases in a multi-case comparison are visually
+        # indistinguishable from each other.
+        if link.case_id and link.case_id in case_ids:
+            edges.append({
+                "from": f"case-{link.case_id}",
+                "to": link_node_id,
+                "edge_type": "case_inv",
+            })
         for hit in list_hits(link.id):
             if not hit.ip:
                 continue
@@ -820,7 +836,7 @@ def graph_data():
                 "label": hit.ip,
                 "group": "tracking_hit",
                 "title": f"Tracked hit ({hit.hit_type})\nIP: {hit.ip}\n"
-                         f"Location: {hit.city or '?'}, {hit.country or '?'}",
+                         f"Location: {hit.city or '?'}, {hit.country or '?'}{hit_case_suffix}",
             })
             edges.append({
                 "from": link_node_id,
