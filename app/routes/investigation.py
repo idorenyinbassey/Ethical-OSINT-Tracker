@@ -473,7 +473,7 @@ def imei():
 
         result = imei_client.fetch_imei(imei_num)
 
-        conf = "CONFIRMED" if result and not result.get("error") and not result.get("not_configured") else "UNVERIFIED"
+        conf = "CONFIRMED" if result and not result.get("error") and not result.get("not_configured") and not result.get("unverified") else "UNVERIFIED"
         find_or_update_recent(kind="imei", query=imei_num, result_json=json.dumps(result),
                               user_id=current_user.id, case_id=case_id, confidence=conf)
         flash(f"IMEI lookup complete for {imei_num}.", "success")

@@ -66,6 +66,21 @@ def init_db_cli():
     create_app()
 
 
+def update_tac_db_cli():
+    """Entry point for `osint-tracker-update-tac-db` — force an immediate
+    refresh of the offline IMEI/TAC database, bypassing the scheduler's
+    normal once-a-day rate limit. Useful right after install/upgrade, or on
+    a server where APScheduler isn't installed and the weekly background
+    refresh (app/utils/scheduler.py) never runs."""
+    from app.services.tac_lookup import refresh_tac_database
+    if refresh_tac_database(min_age_days=0):
+        print("✅ TAC database refreshed.")
+    else:
+        print("⚠️  TAC database not refreshed — see logs. "
+              "Existing offline data (bundled or previously downloaded) is unaffected.")
+        sys.exit(1)
+
+
 def reset_admin_cli():
     """Entry point for `osint-tracker-reset-admin` — same behavior as reset_admin.py."""
     from app.utils.admin_bootstrap import reset_admin

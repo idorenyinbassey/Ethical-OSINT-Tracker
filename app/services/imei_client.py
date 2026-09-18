@@ -1,26 +1,41 @@
-"""IMEI service client — imei.info dash API (https://dash.imei.info/api)."""
-from typing import Dict, Any
+"""IMEI service client — imei.info dash API (https://dash.imei.info/api),
+with an automatic offline fallback (app.services.tac_lookup) for
+manufacturer/model when no paid key is configured, or once its credits
+run out. The paid API is the only source for blacklist/stolen/warranty
+status; the offline database only ever gives brand/model/checksum
+validity, but it never runs out and needs no key."""
+import re
+from typing import Dict, Any, Optional
 from app.repositories.api_config_repository import get_by_service
 from app.utils.proxy_config import get_http_client
+from app.services import tac_lookup
 
 
 def fetch_imei(imei: str, timeout: float = 10.0) -> Dict[str, Any]:
+    digits = re.sub(r"\D", "", imei or "")
+    if len(digits) != 15:
+        return {"error": "Enter a valid IMEI number (15 digits)."}
+
     cfg = get_by_service("IMEIService")
-    if not cfg:
-        return {"error": "IMEI Service not configured. Add API key and base URL in Settings.", "not_configured": True}
-    if not cfg.is_enabled:
-        return {"error": "IMEI Service is disabled. Enable it in Settings.", "not_configured": True}
+    if cfg and cfg.is_enabled and cfg.api_key and cfg.base_url:
+        result = _fetch_paid(digits, cfg, timeout)
+        if result is not None:
+            return result
+        # Paid lookup couldn't be completed (out of credits, connection
+        # trouble) — fall back to the free offline database rather than
+        # dead-ending the investigation.
 
-    base = (cfg.base_url or "").rstrip("/")
-    if not base:
-        return {"error": "IMEI Service base URL is missing. Set it to https://dash.imei.info/api in Settings.", "not_configured": True}
+    return tac_lookup.lookup_tac(digits)
 
-    api_key = cfg.api_key
-    if not api_key:
-        return {"error": "IMEI API key is missing. Enter your key in Settings.", "not_configured": True}
 
+def _fetch_paid(imei: str, cfg, timeout: float) -> Optional[Dict[str, Any]]:
+    """Query the paid imei.info dash API. Returns None (triggering the
+    offline fallback) when credits are exhausted or the request fails;
+    returns an explicit error dict only for a rejected key, so a broken
+    key doesn't silently masquerade as a working offline lookup."""
+    base = cfg.base_url.rstrip("/")
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {cfg.api_key}",
         "Accept": "application/json",
     }
 
@@ -44,14 +59,11 @@ def fetch_imei(imei: str, timeout: float = 10.0) -> Dict[str, Any]:
                             return data
                     elif r.status_code == 401:
                         return {"error": "IMEI API key rejected (HTTP 401). Check your key in Settings."}
-                    elif r.status_code == 403:
-                        return {"error": "IMEI API key forbidden (HTTP 403). Ensure your account has a funded balance ($5 minimum on imei.info)."}
-                    elif r.status_code == 402:
-                        return {"error": "Insufficient balance (HTTP 402). Fund your imei.info account to make API requests."}
-                except Exception as exc:
-                    last = str(exc)
+                    elif r.status_code in (402, 403):
+                        return None
+                except Exception:
                     continue
-    except Exception as exc:
-        return {"error": f"IMEI connection error: {exc}"}
+    except Exception:
+        return None
 
-    return {"error": f"IMEI lookup failed. Verify the base URL ({base}) and your account balance at dash.imei.info."}
+    return None
