@@ -29,7 +29,7 @@ SERVICES = [
     {"name": "ImageRecognition", "label": "Google Cloud Vision (AI image analysis)", "default_url": "https://vision.googleapis.com/v1"},
     {"name": "TinEye", "label": "TinEye (reverse image search — requires paid TinEye account)", "default_url": "https://api.tineye.com"},
     {"name": "IMEIService", "label": "IMEI Service", "default_url": "https://api.imei.info"},
-    {"name": "PasteMonitor", "label": "Paste-site / Leak Monitor (psbdmp.ws by default — optional API key for alternate providers)", "default_url": "https://psbdmp.ws/api"},
+    {"name": "PasteMonitor", "label": "Leak Monitor (Hudson Rock infostealer intelligence by default — free, no key required; optional API key for alternate providers)", "default_url": "https://cavalier.hudsonrock.com/api/json/v2/osint-tools"},
     # Outbound alerting
     {"name": "Notifications", "label": "Notifications — webhook on watchlist change (ntfy.sh, Discord, Slack, etc.)", "default_url": ""},
 ]

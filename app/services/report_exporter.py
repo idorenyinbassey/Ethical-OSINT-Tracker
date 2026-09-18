@@ -300,15 +300,15 @@ def _extract_findings(kind: str, result_json: str) -> list:
     elif kind == "paste_leak":
         pairs.append(("Query", g(d, "query")))
         pastes = d.get("pastes") or []
-        pairs.append(("Paste Hits", str(len(pastes))))
+        pairs.append(("Leak Hits", str(len(pastes))))
         for p in pastes[:20]:
             if isinstance(p, dict):
-                label = p.get("url", "")
+                label = p.get("url") or p.get("snippet") or ""
                 if p.get("date"):
                     label += f" ({p['date']})"
-                pairs.append(("Paste Hit", label))
+                pairs.append(("Leak Hit", label))
             else:
-                pairs.append(("Paste Hit", _safe_str(p)))
+                pairs.append(("Leak Hit", _safe_str(p)))
 
     # ------------------------------------------------------------------
     elif kind == "email":
@@ -684,7 +684,7 @@ def _risk_notes(investigations):
             pastes = d.get("pastes") or []
             if pastes:
                 notes.append(
-                    f"'{inv.query}' found in {len(pastes)} paste-site hit(s) - possible credential/data exposure."
+                    f"'{inv.query}' found in {len(pastes)} leak intelligence hit(s) - possible credential/data exposure."
                 )
     if not notes:
         notes.append("No automated high-risk indicators detected. Manual review of findings recommended.")

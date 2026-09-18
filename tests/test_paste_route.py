@@ -27,7 +27,7 @@ def test_paste_monitor_zero_hits(app, client, user_a, case_of_a):
         )
 
     assert resp.status_code == 200
-    assert b"No paste hits found" in resp.data
+    assert b"No leak hits found" in resp.data
 
 
 def test_paste_monitor_renders_hits(app, client, user_a, case_of_a):

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Paste / Leak Monitor – OSINT Tracker{% endblock %}
+{% block title %}Leak Monitor – OSINT Tracker{% endblock %}
 
 {% block content %}
-<h1 class="text-2xl font-bold text-white mb-2">Paste-site / Leak Monitor</h1>
-<p class="text-sm text-yellow-500 mb-6">Searches unofficial paste-dump sites (psbdmp.ws by default) for a query — email, username, or domain. Must be enabled in Settings → PasteMonitor.</p>
+<h1 class="text-2xl font-bold text-white mb-2">Leak Monitor</h1>
+<p class="text-sm text-yellow-500 mb-6">Searches Hudson Rock's free infostealer/compromised-credential intelligence for a query — email, username, or domain. No API key required, but must be enabled in Settings → PasteMonitor.</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
@@ -41,13 +41,17 @@
       {% if pastes %}
         <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div class="px-4 py-3 border-b border-gray-800">
-            <span class="text-sm font-medium text-white">{{ pastes|length }} paste hit(s) for "{{ query }}"</span>
+            <span class="text-sm font-medium text-white">{{ pastes|length }} leak hit(s) for "{{ query }}"</span>
           </div>
           <div class="divide-y divide-gray-800">
             {% for p in pastes %}
               <div class="px-4 py-3">
                 <div class="flex items-center justify-between mb-1">
-                  <a href="{{ p.url }}" target="_blank" rel="noopener" class="text-indigo-300 text-sm hover:underline">{{ p.url }}</a>
+                  {% if p.url %}
+                    <a href="{{ p.url }}" target="_blank" rel="noopener" class="text-indigo-300 text-sm hover:underline">{{ p.url }}</a>
+                  {% else %}
+                    <span class="text-gray-500 text-sm">(no direct URL)</span>
+                  {% endif %}
                   <span class="text-xs text-gray-500">{{ p.date }}</span>
                 </div>
                 {% if p.snippet %}
@@ -59,13 +63,13 @@
         </div>
       {% else %}
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
-          No paste hits found for "{{ query }}".
+          No leak hits found for "{{ query }}".
         </div>
       {% endif %}
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
-        Enter a query to search paste-dump sites.<br>
-        <span class="text-xs text-gray-600 mt-2 block">Uses psbdmp.ws by default — no API key required, but must be enabled in Settings.</span>
+        Enter a query to search Hudson Rock's leak intelligence.<br>
+        <span class="text-xs text-gray-600 mt-2 block">No API key required — but must be enabled in Settings.</span>
       </div>
     {% endif %}
   </div>

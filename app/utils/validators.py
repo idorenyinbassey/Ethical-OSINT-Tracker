@@ -57,3 +57,19 @@ def validate_base_url(url: str) -> tuple[bool, str]:
 
     except Exception as e:
         return False, f"Invalid URL: {str(e)}"
+
+
+def classify_query_kind(query: str) -> str:
+    """Classify a free-text query string as "email", "domain", or
+    "username" — used wherever a tool accepts any of the three as input
+    and needs to guess which one it got (e.g. picking an API endpoint,
+    or registering the right kind of shared entity on the relationship
+    graph). Not a validator — always returns one of the three, even for
+    malformed input; callers that need real validation should check the
+    input themselves first.
+    """
+    if "@" in query:
+        return "email"
+    if "." in query and " " not in query:
+        return "domain"
+    return "username"
