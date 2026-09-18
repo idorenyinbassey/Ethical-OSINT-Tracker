@@ -21,6 +21,85 @@ def test_extract_entities_subdomain_registers_domain():
     assert entity_map.get(("domain", "example.com")) == ["inv-1"]
 
 
+def test_extract_entities_subdomain_registers_resolved_ips():
+    entity_map = {}
+    inv = _FakeInv(1, "subdomain", "example.com")
+    data = {"domain": "example.com", "subdomains": [
+        {"hostname": "www.example.com", "ip": "93.184.216.34"},
+        {"hostname": "no-ip.example.com"},
+    ]}
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert entity_map.get(("ip", "93.184.216.34")) == ["inv-1"]
+
+
+def test_extract_entities_ip_registers_shodan_org_and_hostnames():
+    entity_map = {}
+    inv = _FakeInv(1, "ip", "1.2.3.4")
+    data = {
+        "ip": "1.2.3.4",
+        "geo": {},
+        "shodan": {"organization": "Evil Corp", "hostnames": ["mail.evil.example"]},
+    }
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert entity_map.get(("org", "evil corp")) == ["inv-1"]
+    assert entity_map.get(("domain", "mail.evil.example")) == ["inv-1"]
+
+
+def test_extract_entities_ip_ignores_unknown_shodan_org():
+    entity_map = {}
+    inv = _FakeInv(1, "ip", "1.2.3.4")
+    data = {"ip": "1.2.3.4", "geo": {}, "shodan": {"organization": "Unknown", "hostnames": []}}
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert ("org", "unknown") not in entity_map
+
+
+def test_extract_entities_crypto_registers_counterparties():
+    entity_map = {}
+    inv = _FakeInv(1, "crypto", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+    data = {"address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+            "counterparties": ["1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"]}
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert entity_map.get(("crypto", "1bvbmseystwetqtfn5au4m4gfg7xjanvn2")) == ["inv-1"]
+
+
+def test_extract_entities_darkweb_registers_onion_domain():
+    entity_map = {}
+    inv = _FakeInv(1, "darkweb", "drugs")
+    data = {"query": "drugs", "results": [
+        {"title": "Example", "url": "http://exampleonionabcdefghijklmnopqrstuvwxyz234567.onion/page",
+         "description": "..."},
+    ]}
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert entity_map.get(("domain", "exampleonionabcdefghijklmnopqrstuvwxyz234567.onion")) == ["inv-1"]
+
+
+def test_extract_entities_company_registers_org_and_ddg_contact_fields():
+    entity_map = {}
+    inv = _FakeInv(1, "company", "Acme Inc")
+    data = {
+        "query": "Acme Inc",
+        "results": {
+            "duckduckgo": {
+                "info": {"email": "contact@acme.example", "website": "https://acme.example",
+                          "phone": "+1-555-0100"},
+            },
+        },
+    }
+    _extract_entities(inv, data, "inv-1", entity_map)
+    assert entity_map.get(("org", "acme inc")) == ["inv-1"]
+    assert entity_map.get(("email", "contact@acme.example")) == ["inv-1"]
+    assert entity_map.get(("domain", "acme.example")) == ["inv-1"]
+    assert entity_map.get(("phone", "+1-555-0100")) == ["inv-1"]
+
+
+def test_extract_entities_company_handles_missing_duckduckgo_gracefully():
+    entity_map = {}
+    inv = _FakeInv(1, "company", "Acme Inc")
+    _extract_entities(inv, {"query": "Acme Inc", "results": {}}, "inv-1", entity_map)
+    assert entity_map.get(("org", "acme inc")) == ["inv-1"]
+    assert len(entity_map) == 1
+
+
 def test_extract_entities_typosquat_registers_domain():
     entity_map = {}
     inv = _FakeInv(2, "typosquat", "example.com")

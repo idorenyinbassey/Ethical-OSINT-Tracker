@@ -70,6 +70,9 @@ const COLOR_MAP = {
   typosquat_hit:{ background: "#f87171", border: "#dc2626", font: { color: "#fff" } },
   paste_leak:   { background: "#c084fc", border: "#9333ea", font: { color: "#fff" } },
   image:        { background: "#38bdf8", border: "#0284c7", font: { color: "#fff" } },
+  darkweb:      { background: "#7c3aed", border: "#6d28d9", font: { color: "#fff" } },
+  tracking_link:{ background: "#0891b2", border: "#0e7490", font: { color: "#fff" } },
+  tracking_hit: { background: "#67e8f9", border: "#22d3ee", font: { color: "#111" } },
   entity_ip:      { background: "#0ea5e9", border: "#0284c7", font: { color: "#fff" } },
   entity_email:   { background: "#f97316", border: "#ea580c", font: { color: "#fff" } },
   entity_domain:  { background: "#22c55e", border: "#16a34a", font: { color: "#fff" } },
@@ -104,6 +107,14 @@ function makeEdge(e) {
       color: { color: "#f87171", opacity: 0.9 },
       width: 1,
       dashes: [2, 2],
+      arrows: { to: { enabled: true, scaleFactor: 0.4 } },
+    };
+  }
+  if (e.edge_type === "tracking_hit") {
+    return {
+      from: e.from, to: e.to,
+      color: { color: "#22d3ee", opacity: 0.9 },
+      width: 1,
       arrows: { to: { enabled: true, scaleFactor: 0.4 } },
     };
   }

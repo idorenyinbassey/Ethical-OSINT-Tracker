@@ -53,6 +53,20 @@ def list_links(user_id: int | None = None) -> List[TrackingLink]:
         return [_dl(r) for r in session.exec(stmt).all()]
 
 
+def list_links_by_case(case_id: int) -> List[TrackingLink]:
+    """All tracking links attached to a case, regardless of which team
+    member created them — mirrors investigation_repository.list_by_case's
+    unscoped-by-user semantics. Caller (graph_data()) must already have
+    checked the requesting user has read access to this case."""
+    with session_scope() as session:
+        stmt = (
+            select(TrackingLink)
+            .where(TrackingLink.case_id == case_id)
+            .order_by(TrackingLink.created_at.desc())
+        )
+        return [_dl(r) for r in session.exec(stmt).all()]
+
+
 def delete_link(link_id: int) -> None:
     with session_scope() as session:
         for hit in session.exec(select(TrackingHit).where(TrackingHit.link_id == link_id)).all():
