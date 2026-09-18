@@ -199,6 +199,7 @@ standalone.
 | `osint-tracker-init-db` | Creates database tables without touching credentials. |
 | `osint-tracker-gen-fernet-key` | Prints a fresh Fernet key, for `API_KEYS_FERNET_KEY`. |
 | `osint-tracker-update-tac-db` | Forces an immediate refresh of the offline IMEI/TAC database, bypassing the scheduler's normal once-a-day rate limit. |
+| `osint-tracker-check-scrapers` | Runs canary health checks against the app's web-scraping-based data sources (AHMIA, Sherlock's site list, Company Registry's Canada scraper) and exits non-zero if any fail — useful in a cron job or CI. |
 
 **Calling `osint-tracker` directly (without `start.sh`) skips three things
 it normally handles for you:**
@@ -452,6 +453,11 @@ rm dev.db
 - The refreshed copy is written to `~/.local/share/osint-tracker/tac_database.csv.gz` (override with `OSINT_TRACKER_DATA_DIR`), leaving the read-only bundled snapshot untouched — a failed or skipped refresh always falls back to the last good copy, never to nothing.
 - Set `TAC_DB_AUTO_UPDATE=false` to disable it entirely (e.g. on limited mobile data / Termux).
 - Force an immediate refresh any time with `osint-tracker-update-tac-db`.
+
+**Scraper canary checks**
+- The app's web-scraping-based data sources (AHMIA dark web search, Sherlock's site list, Company Registry's Canada scraper) depend on third-party markup staying stable, and have broken silently before (e.g. the AHMIA anti-bot token issue). A daily background job runs a real, known-good query against each and sends a Notifications webhook alert if one returns nothing — a strong signal the site changed and the scraper needs updating.
+- A weekly [GitHub Actions workflow](.github/workflows/scraper-canary.yml) runs the same checks and opens (or updates) a tracking issue on failure.
+- Run it manually any time with `osint-tracker-check-scrapers` — exits non-zero if any check fails, so it's usable in your own cron job too.
 
 **Scheduler fails to start: `No time zone found with key ...`**
 

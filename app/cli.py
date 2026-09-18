@@ -81,6 +81,27 @@ def update_tac_db_cli():
         sys.exit(1)
 
 
+def check_scrapers_cli():
+    """Entry point for `osint-tracker-check-scrapers` — run canary health
+    checks against the app's web-scraping-based data sources (AHMIA dark
+    web search, Sherlock's site list, Company Registry's Canada scraper)
+    and print a report. Exits non-zero if any check fails, for use in a
+    cron job or CI workflow, so a scraper break (a site's markup changed)
+    gets caught before a user hits it. See app.utils.scraper_health."""
+    from app import create_app
+    from app.utils.scraper_health import check_and_notify
+    create_app()  # ensures DB tables exist before any get_by_service() call
+    results = check_and_notify()
+    failed = False
+    for r in results:
+        status = "✅ OK" if r["ok"] else "❌ FAIL"
+        print(f"{status}  {r['name']}: {r['detail']}")
+        if not r["ok"]:
+            failed = True
+    if failed:
+        sys.exit(1)
+
+
 def reset_admin_cli():
     """Entry point for `osint-tracker-reset-admin` — same behavior as reset_admin.py."""
     from app.utils.admin_bootstrap import reset_admin

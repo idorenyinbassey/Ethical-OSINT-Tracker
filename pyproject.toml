@@ -15,6 +15,7 @@ osint-tracker-reset-admin = "app.cli:reset_admin_cli"
 osint-tracker-init-db = "app.cli:init_db_cli"
 osint-tracker-gen-fernet-key = "app.cli:gen_fernet_key_cli"
 osint-tracker-update-tac-db = "app.cli:update_tac_db_cli"
+osint-tracker-check-scrapers = "app.cli:check_scrapers_cli"
 
 [tool.setuptools.dynamic]
 # Single source of truth for dependencies — read straight from
