@@ -14,7 +14,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.proxy_config import get_http_client
 
@@ -1573,7 +1573,10 @@ def _extract_profile_meta(html: str) -> dict:
     return meta
 
 
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
+# Domain part requires a final all-letter TLD segment so a sentence-ending
+# period (or comma, etc.) right after the address is never swallowed into
+# the match — "Contact alice@example.com." matches only "alice@example.com".
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}")
 
 
 def _extract_contact_info(html: str, bio: str = "") -> dict:
@@ -1610,7 +1613,10 @@ def _extract_contact_info(html: str, bio: str = "") -> dict:
         for a in soup.find_all("a", href=True):
             href = a["href"]
             if href.lower().startswith("mailto:"):
-                addr = href.split(":", 1)[1].split("?", 1)[0].strip().lower()
+                # urlparse().path isolates the address from any "?subject="
+                # query string; unquote() reverses percent-encoding some
+                # pages apply to mailto: links (e.g. "john%2Edoe%40example.com").
+                addr = unquote(urlparse(href).path).strip().lower()
                 if addr and addr not in emails:
                     emails.append(addr)
         if bio:
@@ -1627,7 +1633,16 @@ def _extract_contact_info(html: str, bio: str = "") -> dict:
             rel_values = rel if isinstance(rel, list) else rel.split()
             if "me" not in [v.lower() for v in rel_values]:
                 continue
-            domain = urlparse(a["href"]).netloc.lower()
+            parsed = urlparse(a["href"])
+            if parsed.scheme not in ("http", "https"):
+                continue
+            if "@" in (parsed.netloc or ""):
+                # netloc contains userinfo (user:pass@host) — never trust or
+                # register a credential-bearing value as a graph entity.
+                continue
+            # .hostname (not .netloc) strips any port and is pre-lowercased,
+            # so "example.com:8443" still hub-links with a plain "example.com".
+            domain = parsed.hostname or ""
             if domain and domain not in linked_domains:
                 linked_domains.append(domain)
         if linked_domains:
@@ -1701,13 +1716,18 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
             else:
                 result["status"] = "not_found"
 
-        # For any found result, scrape Open Graph / Twitter Card metadata,
-        # then pull any high-signal contact info out of the same response.
+        # For any found result, scrape Open Graph / Twitter Card metadata.
         if result["found"]:
             result.update(_extract_profile_meta(r.text))
-            contact = _extract_contact_info(r.text, bio=result.get("bio", ""))
-            if contact:
-                result.update(contact)
+            # Contact extraction feeds the entity graph, so it's restricted
+            # to high-confidence results only — a "low"-confidence found
+            # result (e.g. an unverified redirect target) can be a generic
+            # page whose own contact info has nothing to do with this
+            # username, and would otherwise create a misleading graph pivot.
+            if result["confidence"] == "high":
+                contact = _extract_contact_info(r.text, bio=result.get("bio", ""))
+                if contact:
+                    result.update(contact)
 
     except Exception:
         # Log the full exception server-side; do NOT surface internal details
