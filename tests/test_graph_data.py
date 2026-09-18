@@ -49,6 +49,31 @@ def test_extract_entities_paste_leak_registers_username_otherwise():
     assert entity_map.get(("username", "johndoe123")) == ["inv-5"]
 
 
+def test_extract_entities_social_registers_username_only_when_no_contact_info():
+    entity_map = {}
+    inv = _FakeInv(6, "social", "johndoe")
+    data = {"username": "johndoe", "results": [{"site": "GitHub", "found": True}]}
+    _extract_entities(inv, data, "inv-6", entity_map)
+    assert entity_map.get(("username", "johndoe")) == ["inv-6"]
+    assert ("email", "") not in entity_map
+
+
+def test_extract_entities_social_registers_emails_and_linked_domains_from_bios():
+    entity_map = {}
+    inv = _FakeInv(7, "social", "johndoe")
+    data = {
+        "username": "johndoe",
+        "results": [
+            {"site": "GitHub", "found": True, "emails": ["john@example.com"],
+             "linked_domains": ["johndoe.dev"]},
+            {"site": "Mastodon", "found": True, "emails": ["john@example.com"]},
+        ],
+    }
+    _extract_entities(inv, data, "inv-7", entity_map)
+    assert entity_map.get(("email", "john@example.com")) == ["inv-7"]
+    assert entity_map.get(("domain", "johndoe.dev")) == ["inv-7"]
+
+
 # ── Integration: /investigate/graph/data ──────────────────────────────────────
 
 def test_graph_data_expands_typosquat_registered_hits_as_child_nodes(app, client, user_a, case_of_a):
@@ -118,6 +143,32 @@ def test_graph_data_links_shared_email_between_paste_leak_and_email(app, client,
     data = resp.get_json()
 
     entity_nodes = [n for n in data["nodes"] if n["group"] == "entity_email" and "shared@example.com" in n["id"]]
+    assert len(entity_nodes) == 1
+
+    entity_edges = [e for e in data["edges"] if e["to"] == entity_nodes[0]["id"]]
+    assert len(entity_edges) == 2
+
+
+def test_graph_data_links_shared_email_between_social_and_email(app, client, user_a, case_of_a):
+    from app.repositories.investigation_repository import create_investigation
+
+    login(client, user_a.username)
+    with app.app_context():
+        create_investigation(kind="email", query="found@example.com",
+                             result_json=json.dumps({"email": "found@example.com", "breaches": []}),
+                             user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
+        social_result = {
+            "username": "johndoe",
+            "results": [{"site": "GitHub", "found": True, "emails": ["found@example.com"]}],
+        }
+        create_investigation(kind="social", query="johndoe", result_json=json.dumps(social_result),
+                             user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
+
+    resp = client.get("/investigate/graph/data")
+    assert resp.status_code == 200
+    data = resp.get_json()
+
+    entity_nodes = [n for n in data["nodes"] if n["group"] == "entity_email" and "found@example.com" in n["id"]]
     assert len(entity_nodes) == 1
 
     entity_edges = [e for e in data["edges"] if e["to"] == entity_nodes[0]["id"]]

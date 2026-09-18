@@ -545,6 +545,15 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
     elif kind == "social":
         username = data.get("username") or inv.query
         _reg("username", username)
+        # Emails/rel="me" cross-links scraped from confirmed profile pages
+        # (app.services.social_client._extract_contact_info) — same entity
+        # kinds as every other tool, so they hub with any other
+        # investigation that references the same address/domain.
+        for site_result in data.get("results", []):
+            for email in site_result.get("emails", []):
+                _reg("email", email)
+            for domain in site_result.get("linked_domains", []):
+                _reg("domain", domain)
     elif kind == "crypto":
         addr = data.get("address") or inv.query
         _reg("crypto", addr)
