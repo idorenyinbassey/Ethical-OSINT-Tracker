@@ -37,6 +37,21 @@ def _refresh_tac_database(app):
             pass  # scheduler jobs must never crash the process
 
 
+def _run_scraper_canaries(app):
+    """Catch a scraper break (site markup changed underneath a parser)
+    within a day instead of via a bug report — see app.utils.scraper_health
+    for what's checked and why. A canary failure is reported via the
+    configured Notifications webhook, not just a log line, since a
+    silently-broken scraper (like the AHMIA anti-bot token issue) can
+    otherwise go unnoticed for a long time."""
+    with app.app_context():
+        try:
+            from app.utils.scraper_health import check_and_notify
+            check_and_notify()
+        except Exception:
+            pass  # scheduler jobs must never crash the process
+
+
 def _purge_retention(app):
     """Delete investigations older than the configured RETENTION_DAYS (Issue #15)."""
     with app.app_context():
@@ -74,10 +89,15 @@ def start_scheduler(app):
                           id="tac_database_refresh_boot", replace_existing=True)
         scheduler.add_job(_refresh_tac_database, "interval", days=7, args=[app],
                           id="tac_database_refresh_weekly", replace_existing=True)
+        # Scraper canaries daily — not urgent enough to also run at boot
+        # (unlike the TAC refresh, this makes several live outbound
+        # requests purely to check freshness, not to serve a user).
+        scheduler.add_job(_run_scraper_canaries, "interval", hours=24, args=[app],
+                          id="scraper_canaries", replace_existing=True)
         scheduler.start()
         # Run an initial purge so retention takes effect immediately on boot.
         _purge_retention(app)
-        app.logger.info("APScheduler started — watchlist rescan every 6h, retention purge daily, TAC database refresh weekly")
+        app.logger.info("APScheduler started — watchlist rescan every 6h, retention purge daily, TAC database refresh weekly, scraper canaries daily")
     except ImportError:
         app.logger.warning("APScheduler not installed — watchlist auto-rescan disabled. Run: pip install apscheduler")
     except Exception as exc:
