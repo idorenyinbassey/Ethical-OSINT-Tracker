@@ -135,6 +135,27 @@ def test_view_investigation_renders_data_uri_image_as_thumbnail(app, client, use
     assert f'<img src="{data_uri}"' in body
 
 
+def test_view_investigation_does_not_thumbnail_http_image_urls(app, client, user_a, case_of_a):
+    """The CSP's img-src only allows 'self', data:, and https: — an
+    http:// URL would never actually load as a thumbnail (the browser
+    blocks the request), so it must render as plain text instead of a
+    guaranteed-broken <img> tag, whether it has an image extension or an
+    image-suggesting field name."""
+    login(client, user_a.username)
+    result = {
+        "avatar": "http://example.com/profile.jpg",
+        "photo": "http://avatars.example.com/u/1",
+    }
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+    assert '<img src="http://example.com/profile.jpg"' not in body
+    assert '<img src="http://avatars.example.com/u/1"' not in body
+    assert "http://example.com/profile.jpg" in body
+    assert "http://avatars.example.com/u/1" in body
+
+
 # ── Verbose sections collapse; short/high-signal ones don't ────────────────
 
 def test_view_investigation_collapses_long_list_of_complex_items(app, client, user_a, case_of_a):

@@ -122,16 +122,23 @@ def create_app():
         trusted when the field's own name hints it's an image (avatar,
         photo, thumbnail, ...), since a wrong guess there just means an
         extra thumbnail attempt, never a lost Copy button or hidden data.
+
+        Either way, an http:// (non-TLS) URL is never trusted as an image:
+        the CSP below only allows 'self', data:, and https: for img-src, so
+        the browser would silently block the request and render a broken
+        image icon instead of the raw text this value would otherwise show.
         """
         if not isinstance(value, str) or not value:
             return False
         if value.startswith("data:image/"):
             return True
+        if not value.startswith(("https://", "data:")):
+            return False
         lowered = value.split("?", 1)[0].lower()
         if lowered.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")):
             return True
         if field_name and any(hint in field_name.lower() for hint in _IMAGE_FIELD_NAME_HINTS):
-            return value.startswith(("http://", "https://", "data:"))
+            return True
         return False
 
     def _is_verbose_value(value) -> bool:
