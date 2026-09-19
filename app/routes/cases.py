@@ -5,7 +5,7 @@ import hashlib
 import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session, current_app
 from flask_login import login_required, current_user
-from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case
+from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case, delete_case_data
 from app.repositories.case_comment_repository import add_comment, list_comments
 from app.repositories.case_note_repository import add_note, list_notes, delete_note
 from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation
@@ -415,7 +415,10 @@ def close_case(case_id):
     if not can_access_case(case, current_user, action="edit"):
         abort(403)
     update_case(case_id, status="closed", updated_at=datetime.datetime.utcnow())
-    flash(f"Case '{case.title}' has been closed.", "success")
+    delete_case_data(case_id)
+    from app.utils.audit import log as audit_log
+    audit_log("case.close", entity_type="case", entity_id=case_id, detail=case.title)
+    flash(f"Case '{case.title}' has been closed and its data deleted.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
 
