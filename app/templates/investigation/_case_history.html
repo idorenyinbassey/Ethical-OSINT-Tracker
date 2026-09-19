@@ -8,6 +8,7 @@ first, excluding whichever one is shown as `result` above) and `result`
 (used only to decide the default open/closed state) in scope.
 #}
 {% import "investigation/_result_macros.html" as rm %}
+{% import "investigation/_tool_result_macros.html" as tm %}
 {% if history %}
 <details class="mt-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4" {% if not result %}open{% endif %}>
   <summary class="cursor-pointer select-none text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -31,6 +32,12 @@ first, excluding whichever one is shown as `result` above) and `result`
       {% set parsed = h.result_json | from_json %}
       {% if parsed is none %}
       <p class="text-xs text-gray-400 italic">Could not read this result — it may be from an older, incompatible format.</p>
+      {% elif h.kind == 'social' %}
+      {{ tm.render_social_result(parsed) }}
+      {% elif h.kind == 'breach' and parsed.breaches is not none %}
+      {{ tm.render_breach_result(parsed.breaches) }}
+      {% elif h.kind == 'breach' %}
+      <p class="text-xs text-gray-400 italic">Breach data unavailable for this entry.</p>
       {% else %}
       {{ rm.render_value(parsed) }}
       {% endif %}

@@ -8,10 +8,18 @@ from tests.conftest import login
 
 
 def _seed_investigation(app, user_id, case_id, result):
+    """kind="ip" here is an arbitrary placeholder that exercises the
+    generic renderer (_result_macros.html) — these tests are about that
+    renderer's behavior (nested fields, image detection, verbose
+    collapsing), not any particular tool's own result shape. "social" and
+    "breach" specifically must be avoided: those kinds render through
+    their own specialized macros (_tool_result_macros.html) instead, per
+    cases/investigation_view.html's kind dispatch — see
+    test_investigation_kind_specific_rendering.py for tests of that."""
     from app.repositories.investigation_repository import create_investigation
     with app.app_context():
         return create_investigation(
-            kind="social", query="johndoe", result_json=json.dumps(result),
+            kind="ip", query="johndoe", result_json=json.dumps(result),
             user_id=user_id, case_id=case_id, confidence="CONFIRMED",
         )
 
