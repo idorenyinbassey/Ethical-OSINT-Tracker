@@ -65,7 +65,7 @@
     <form method="post" action="{{ url_for('cases.close_case', case_id=case.id) }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="bg-gray-700 hover:bg-red-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
-        onclick="return confirm('Close this case?')">Close</button>
+        onclick="return confirm('Close this case? Its investigations, comments, notes, watchlist targets, and tracking links/hits will be deleted. This cannot be undone.')">Close</button>
     </form>
     {% else %}
     <form method="post" action="{{ url_for('cases.reopen_case', case_id=case.id) }}" class="inline">
@@ -163,7 +163,8 @@
             <div class="flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-2 mb-1">
                 <span class="text-xs px-2 py-0.5 bg-indigo-900/50 text-indigo-300 rounded">{{ inv.kind.replace('_', ' ') }}</span>
-                <span class="text-sm text-gray-700 dark:text-gray-200 font-mono truncate">{{ inv.query }}</span>
+                <a href="{{ url_for('cases.view_investigation', case_id=case.id, inv_id=inv.id) }}"
+                   class="text-sm text-gray-700 dark:text-gray-200 font-mono truncate hover:text-indigo-500 dark:hover:text-indigo-400 hover:underline">{{ inv.query }}</a>
                 <span class="text-xs px-1.5 py-0.5 rounded
                   {% if inv.confidence == 'CONFIRMED' %}bg-green-900/50 text-green-300
                   {% elif inv.confidence == 'POSSIBLE' %}bg-amber-900/50 text-amber-300
@@ -189,6 +190,8 @@
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span class="text-xs text-gray-500 dark:text-gray-500">{{ inv.created_at.strftime('%Y-%m-%d') }}</span>
+              <a href="{{ url_for('cases.view_investigation', case_id=case.id, inv_id=inv.id) }}"
+                 class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700 hover:bg-gray-600">View</a>
               <!-- Tag dropdown (vanilla JS, no Alpine) -->
               <div class="relative">
                 <button type="button"

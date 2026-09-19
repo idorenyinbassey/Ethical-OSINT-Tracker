@@ -7,7 +7,7 @@
   <h1 class="text-2xl font-bold text-white mb-6">Edit Case</h1>
 
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-    <form method="post" class="space-y-4">
+    <form method="post" class="space-y-4" onsubmit="return confirmCloseIfNeeded(this)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label class="block text-sm text-gray-400 mb-1">Title *</label>
@@ -53,4 +53,14 @@
     </form>
   </div>
 </div>
+<script>
+  const ORIGINAL_CASE_STATUS = "{{ case.status }}";
+  function confirmCloseIfNeeded(form) {
+    const newStatus = form.querySelector('select[name="status"]').value;
+    if (newStatus === 'closed' && ORIGINAL_CASE_STATUS !== 'closed') {
+      return confirm('Setting status to Closed will delete this case\'s investigations, comments, notes, watchlist targets, and tracking links. This cannot be undone. Continue?');
+    }
+    return true;
+  }
+</script>
 {% endblock %}

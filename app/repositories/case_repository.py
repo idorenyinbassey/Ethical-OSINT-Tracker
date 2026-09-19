@@ -109,10 +109,18 @@ def update_case(case_id: int, **fields) -> Optional[Case]:
         case = session.exec(stmt).first()
         if not case:
             return None
+        was_closed = case.status == "closed"
         for k, v in fields.items():
             if hasattr(case, k):
                 setattr(case, k, v)
         session.add(case)
+        # Any transition into "closed" — via the dedicated Close button or
+        # the Edit form's status dropdown, both of which call update_case()
+        # — deletes the case's data in the SAME transaction as the status
+        # change, so a failure partway through can't leave the case marked
+        # closed with its data still (or only partly) intact.
+        if case.status == "closed" and not was_closed:
+            _delete_case_children(session, case_id)
         session.flush()
         session.refresh(case)
         return Case(
@@ -128,42 +136,51 @@ def update_case(case_id: int, **fields) -> Optional[Case]:
         )
 
 
-def delete_case(case_id: int) -> bool:
-    """Delete a case and everything scoped to it, in one transaction.
+def _delete_case_children(session, case_id: int) -> None:
+    """Delete everything scoped to a case (but not the Case row itself),
+    within the caller's transaction.
 
     SQLite foreign-key enforcement is never turned on for this app (see
     app/db.py) and no ORM relationship()/cascade is declared on Case or its
     children, so an orphan-free delete has to be explicit application code
     rather than a DB-level cascade. Order matters: child-of-child rows
-    (TrackingHit) go before their parent (TrackingLink).
+    (TrackingHit) go before their parent (TrackingLink). Shared by
+    delete_case() (which also removes the Case row) and update_case()
+    (which calls this in the same transaction as the status change,
+    whenever a case transitions into status="closed", leaving the Case
+    row itself untouched).
     """
+    for inv in session.exec(select(Investigation).where(Investigation.case_id == case_id)).all():
+        session.delete(inv)
+    for comment in session.exec(select(CaseComment).where(CaseComment.case_id == case_id)).all():
+        session.delete(comment)
+    for note in session.exec(select(CaseNote).where(CaseNote.case_id == case_id)).all():
+        session.delete(note)
+    for target in session.exec(select(WatchlistTarget).where(WatchlistTarget.case_id == case_id)).all():
+        session.delete(target)
+
+    links = session.exec(select(TrackingLink).where(TrackingLink.case_id == case_id)).all()
+    for link in links:
+        for hit in session.exec(select(TrackingHit).where(TrackingHit.link_id == link.id)).all():
+            session.delete(hit)
+        session.delete(link)
+
+    # related_case_id has no real FK constraint declared at all (see the
+    # model) — a finished report is more of a keepable export artifact
+    # than working case data, so it's unlinked rather than deleted.
+    for report in session.exec(select(IntelligenceReport).where(IntelligenceReport.related_case_id == case_id)).all():
+        report.related_case_id = None
+        session.add(report)
+
+
+def delete_case(case_id: int) -> bool:
+    """Delete a case and everything scoped to it, in one transaction."""
     with session_scope() as session:
         stmt = select(Case).where(Case.id == case_id)
         case = session.exec(stmt).first()
         if not case:
             return False
 
-        for inv in session.exec(select(Investigation).where(Investigation.case_id == case_id)).all():
-            session.delete(inv)
-        for comment in session.exec(select(CaseComment).where(CaseComment.case_id == case_id)).all():
-            session.delete(comment)
-        for note in session.exec(select(CaseNote).where(CaseNote.case_id == case_id)).all():
-            session.delete(note)
-        for target in session.exec(select(WatchlistTarget).where(WatchlistTarget.case_id == case_id)).all():
-            session.delete(target)
-
-        links = session.exec(select(TrackingLink).where(TrackingLink.case_id == case_id)).all()
-        for link in links:
-            for hit in session.exec(select(TrackingHit).where(TrackingHit.link_id == link.id)).all():
-                session.delete(hit)
-            session.delete(link)
-
-        # related_case_id has no real FK constraint declared at all (see the
-        # model) — a finished report is more of a keepable export artifact
-        # than working case data, so it's unlinked rather than deleted.
-        for report in session.exec(select(IntelligenceReport).where(IntelligenceReport.related_case_id == case_id)).all():
-            report.related_case_id = None
-            session.add(report)
-
+        _delete_case_children(session, case_id)
         session.delete(case)
         return True
