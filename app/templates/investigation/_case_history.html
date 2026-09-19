@@ -1,0 +1,41 @@
+{#
+Shared "previous results in this case" section — included (not
+imported, so it shares the calling template's context automatically)
+near the bottom of every tool page that supports "Link to Case", right
+after that page's own {% if result %}...{% endif %} block. Expects
+`history` (a list of Investigation rows, same kind + case, newest
+first, excluding whichever one is shown as `result` above) and `result`
+(used only to decide the default open/closed state) in scope.
+#}
+{% import "investigation/_result_macros.html" as rm %}
+{% if history %}
+<details class="mt-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4" {% if not result %}open{% endif %}>
+  <summary class="cursor-pointer select-none text-sm font-medium text-gray-700 dark:text-gray-200">
+    Previous results in this case ({{ history|length }})
+  </summary>
+  <div class="mt-3 space-y-4">
+    {% for h in history %}
+    <div class="border-t border-gray-200 dark:border-gray-700 pt-3 first:border-t-0 first:pt-0">
+      <div class="flex flex-wrap items-center gap-2 mb-2">
+        <span class="text-sm font-mono text-gray-700 dark:text-gray-200">{{ h.query }}</span>
+        <span class="text-xs px-1.5 py-0.5 rounded
+          {% if h.confidence == 'CONFIRMED' %}bg-green-900/50 text-green-300
+          {% elif h.confidence == 'POSSIBLE' %}bg-amber-900/50 text-amber-300
+          {% else %}bg-gray-700 text-gray-400{% endif %}">
+          {{ h.confidence or 'UNVERIFIED' }}
+        </span>
+        <span class="text-xs text-gray-500 dark:text-gray-500">{{ h.created_at.strftime('%Y-%m-%d') if h.created_at else '' }}</span>
+        <a href="{{ url_for('cases.view_investigation', case_id=h.case_id, inv_id=h.id) }}"
+           class="text-xs text-indigo-500 dark:text-indigo-400 hover:underline ml-auto">Open full view</a>
+      </div>
+      {% set parsed = h.result_json | from_json %}
+      {% if parsed is none %}
+      <p class="text-xs text-gray-400 italic">Could not read this result — it may be from an older, incompatible format.</p>
+      {% else %}
+      {{ rm.render_value(parsed) }}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}

@@ -1,3 +1,4 @@
+import json
 import os
 from flask import Flask
 from flask_login import LoginManager
@@ -105,6 +106,76 @@ def create_app():
             "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
         )
         return response
+
+    _IMAGE_FIELD_NAME_HINTS = (
+        "avatar", "photo", "picture", "thumbnail", "thumb", "image", "img",
+        "logo", "icon", "profile_pic",
+    )
+
+    def _is_image_value(value, field_name: str = "") -> bool:
+        """True for a string that looks like an image, so the scan viewer
+        can render an actual thumbnail instead of just showing raw text.
+
+        Two ways in: a data: URI or a URL ending in a common image
+        extension is always trusted. Beyond that, many real APIs (GitHub,
+        Gravatar) serve avatars from extensionless URLs — those are only
+        trusted when the field's own name hints it's an image (avatar,
+        photo, thumbnail, ...), since a wrong guess there just means an
+        extra thumbnail attempt, never a lost Copy button or hidden data.
+
+        Either way, an http:// (non-TLS) URL is never trusted as an image:
+        the CSP below only allows 'self', data:, and https: for img-src, so
+        the browser would silently block the request and render a broken
+        image icon instead of the raw text this value would otherwise show.
+        """
+        if not isinstance(value, str) or not value:
+            return False
+        if value.startswith("data:image/"):
+            return True
+        if not value.startswith(("https://", "data:")):
+            return False
+        lowered = value.split("?", 1)[0].lower()
+        if lowered.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")):
+            return True
+        if field_name and any(hint in field_name.lower() for hint in _IMAGE_FIELD_NAME_HINTS):
+            return True
+        return False
+
+    def _is_verbose_value(value) -> bool:
+        """True for a value that's bulky/low-signal-density (a dict with
+        many fields, or a list of several dicts/lists) — vs. a short list
+        of plain values like username guesses, which is always shown
+        immediately regardless of length. Used by the scan viewer to
+        collapse verbose sections (e.g. a dozen reference links) by
+        default, so a few high-signal fields aren't buried under them."""
+        if isinstance(value, dict):
+            return len(value) > 6
+        if isinstance(value, (list, tuple)):
+            if not value:
+                return False
+            first = value[0]
+            if isinstance(first, (dict, list, tuple)):
+                return len(value) > 3
+            return False
+        return False
+
+    def _from_json(value):
+        """Parse a stored result_json string for direct display in a
+        template. Returns None on empty/malformed input rather than
+        raising, matching this codebase's established
+        graceful-degradation convention (e.g. investigation_view's own
+        parse_error handling) — a corrupted old row shouldn't break the
+        whole page it's listed on."""
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return None
+
+    app.jinja_env.filters["is_image_value"] = _is_image_value
+    app.jinja_env.filters["is_verbose_value"] = _is_verbose_value
+    app.jinja_env.filters["from_json"] = _from_json
 
     @app.context_processor
     def inject_active_case():

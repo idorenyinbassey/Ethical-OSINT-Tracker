@@ -1,0 +1,75 @@
+{#
+Generic, recursive renderer for a stored investigation result dict — used
+by both the case scan viewer (cases/investigation_view.html) and every
+tool page's "previous results in this case" history
+(investigation/_case_history.html). Top-level macros (not nested inside
+a block), so they can be {% import %}-ed from either place. Only depends
+on the is_image_value/is_verbose_value Jinja filters registered in
+app/__init__.py — no page-specific variables.
+
+The global copy-btn click handler lives in base.html (loaded on every
+page), not here, since {% import %} only exposes macros, not a
+template's own body content — a <script> tag here would never render.
+#}
+{% macro render_fields(value) %}
+  <dl class="space-y-2">
+    {% for k, v in value.items() %}
+    <div>
+      <dt class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ k }}</dt>
+      <dd class="mt-0.5">{{ render_value(v, k) }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+{% endmacro %}
+{% macro render_items(items, field_name='') %}
+  <ul class="space-y-2 list-none">
+    {% for item in items %}
+    <li>{{ render_value(item, field_name) }}</li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+{% macro render_value(value, field_name='') %}
+  {% if value is mapping %}
+    {% if not value %}
+    <span class="text-xs text-gray-400 italic">(empty)</span>
+    {% elif value|is_verbose_value %}
+    <details class="pl-3 border-l border-gray-200 dark:border-gray-700">
+      <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 select-none">{{ value|length }} fields — click to expand</summary>
+      <div class="mt-2">{{ render_fields(value) }}</div>
+    </details>
+    {% else %}
+    <div class="pl-3 border-l border-gray-200 dark:border-gray-700">{{ render_fields(value) }}</div>
+    {% endif %}
+  {% elif value is iterable and value is not string %}
+    {% set items = value|list %}
+    {% if not items %}
+    <span class="text-xs text-gray-400 italic">(empty)</span>
+    {% elif items|is_verbose_value %}
+    <details class="pl-3 border-l border-gray-200 dark:border-gray-700">
+      <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 select-none">{{ items|length }} items — click to expand</summary>
+      <div class="mt-2">{{ render_items(items, field_name) }}</div>
+    </details>
+    {% else %}
+    <div class="pl-3 border-l border-gray-200 dark:border-gray-700">{{ render_items(items, field_name) }}</div>
+    {% endif %}
+  {% elif value is string and value|is_image_value(field_name) %}
+    <div class="flex flex-col items-start gap-1">
+      <a href="{{ value }}" target="_blank" rel="noopener noreferrer">
+        <img src="{{ value }}" alt="" loading="lazy"
+             class="max-h-32 max-w-xs rounded border border-gray-300 dark:border-gray-700 object-contain bg-gray-100 dark:bg-gray-800">
+      </a>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="value-text text-xs text-gray-500 dark:text-gray-400 font-mono break-all" data-copy-value="{{ value }}">{{ value }}</span>
+        <button type="button" class="copy-btn text-xs text-gray-400 hover:text-indigo-400 px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700">Copy</button>
+      </span>
+    </div>
+  {% else %}
+    <span class="inline-flex items-center gap-1.5">
+      <span class="value-text text-sm text-gray-800 dark:text-gray-100 font-mono break-all"
+            data-copy-value="{{ value if value is not none else '' }}">{{ value if value is not none else '—' }}</span>
+      {% if value %}
+      <button type="button" class="copy-btn text-xs text-gray-400 hover:text-indigo-400 px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700">Copy</button>
+      {% endif %}
+    </span>
+  {% endif %}
+{% endmacro %}

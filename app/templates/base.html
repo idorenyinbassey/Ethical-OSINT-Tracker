@@ -404,6 +404,23 @@ function _updateThemeBtns(t) {
     }
   });
 })();
+
+// Copy-value buttons — global delegation so this works wherever
+// investigation/_result_macros.html's render_value() output appears
+// (the case scan viewer, and every tool page's "previous results in
+// this case" history). Event delegation, not per-button inline onclick,
+// avoids having to safely embed arbitrary scan data (which can contain
+// quotes, etc.) directly into JS — the value lives in a data-* attribute,
+// which Jinja's autoescaping already handles safely regardless of content.
+document.addEventListener('click', function (e) {
+  if (!e.target.classList.contains('copy-btn')) return;
+  const valueEl = e.target.previousElementSibling;
+  if (!valueEl) return;
+  navigator.clipboard.writeText(valueEl.getAttribute('data-copy-value') || '');
+  const orig = e.target.textContent;
+  e.target.textContent = 'Copied!';
+  setTimeout(() => { e.target.textContent = orig; }, 1200);
+});
 </script>
 </body>
 </html>

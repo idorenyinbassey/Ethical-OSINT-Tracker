@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "investigation/_result_macros.html" as rm %}
 {% block title %}{{ inv.kind.replace('_', ' ')|title }}: {{ inv.query }} – OSINT Tracker{% endblock %}
 
 {% block content %}
@@ -26,59 +27,8 @@
     {% elif result is none %}
     <p class="text-sm text-gray-500 dark:text-gray-400">This scan has no stored result data.</p>
     {% else %}
-    {% macro render_value(value) %}
-      {% if value is mapping %}
-        {% if value %}
-        <dl class="space-y-2 pl-3 border-l border-gray-200 dark:border-gray-700">
-          {% for k, v in value.items() %}
-          <div>
-            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ k }}</dt>
-            <dd class="mt-0.5">{{ render_value(v) }}</dd>
-          </div>
-          {% endfor %}
-        </dl>
-        {% else %}
-        <span class="text-xs text-gray-400 italic">(empty)</span>
-        {% endif %}
-      {% elif value is iterable and value is not string %}
-        {% set items = value|list %}
-        {% if items %}
-        <ul class="space-y-2 pl-3 border-l border-gray-200 dark:border-gray-700 list-none">
-          {% for item in items %}
-          <li>{{ render_value(item) }}</li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <span class="text-xs text-gray-400 italic">(empty)</span>
-        {% endif %}
-      {% else %}
-        <span class="inline-flex items-center gap-1.5">
-          <span class="value-text text-sm text-gray-800 dark:text-gray-100 font-mono break-all"
-                data-copy-value="{{ value if value is not none else '' }}">{{ value if value is not none else '—' }}</span>
-          {% if value %}
-          <button type="button" class="copy-btn text-xs text-gray-400 hover:text-indigo-400 px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700">Copy</button>
-          {% endif %}
-        </span>
-      {% endif %}
-    {% endmacro %}
-    {{ render_value(result) }}
+    {{ rm.render_value(result) }}
     {% endif %}
   </div>
 </div>
-
-<script>
-// Event delegation, not per-button inline onclick — avoids having to
-// safely embed arbitrary scan data (which can contain quotes, etc.)
-// directly into JS. The value lives in a data-* attribute, which Jinja's
-// autoescaping already handles safely regardless of its content.
-document.addEventListener('click', function (e) {
-  if (!e.target.classList.contains('copy-btn')) return;
-  const valueEl = e.target.previousElementSibling;
-  if (!valueEl) return;
-  navigator.clipboard.writeText(valueEl.getAttribute('data-copy-value') || '');
-  const orig = e.target.textContent;
-  e.target.textContent = 'Copied!';
-  setTimeout(() => { e.target.textContent = orig; }, 1200);
-});
-</script>
 {% endblock %}
