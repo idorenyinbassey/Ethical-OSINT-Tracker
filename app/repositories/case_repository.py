@@ -109,10 +109,18 @@ def update_case(case_id: int, **fields) -> Optional[Case]:
         case = session.exec(stmt).first()
         if not case:
             return None
+        was_closed = case.status == "closed"
         for k, v in fields.items():
             if hasattr(case, k):
                 setattr(case, k, v)
         session.add(case)
+        # Any transition into "closed" — via the dedicated Close button or
+        # the Edit form's status dropdown, both of which call update_case()
+        # — deletes the case's data in the SAME transaction as the status
+        # change, so a failure partway through can't leave the case marked
+        # closed with its data still (or only partly) intact.
+        if case.status == "closed" and not was_closed:
+            _delete_case_children(session, case_id)
         session.flush()
         session.refresh(case)
         return Case(
@@ -137,8 +145,10 @@ def _delete_case_children(session, case_id: int) -> None:
     children, so an orphan-free delete has to be explicit application code
     rather than a DB-level cascade. Order matters: child-of-child rows
     (TrackingHit) go before their parent (TrackingLink). Shared by
-    delete_case() (which also removes the Case row) and delete_case_data()
-    (which leaves the Case row/status untouched, for closing a case).
+    delete_case() (which also removes the Case row) and update_case()
+    (which calls this in the same transaction as the status change,
+    whenever a case transitions into status="closed", leaving the Case
+    row itself untouched).
     """
     for inv in session.exec(select(Investigation).where(Investigation.case_id == case_id)).all():
         session.delete(inv)
@@ -173,19 +183,4 @@ def delete_case(case_id: int) -> bool:
 
         _delete_case_children(session, case_id)
         session.delete(case)
-        return True
-
-
-def delete_case_data(case_id: int) -> bool:
-    """Delete everything scoped to a case, but keep the Case row itself
-    (and its status) untouched — used when a case is closed, so closing
-    cleans up its data exactly like deleting the case does, without
-    deleting the case."""
-    with session_scope() as session:
-        stmt = select(Case).where(Case.id == case_id)
-        case = session.exec(stmt).first()
-        if not case:
-            return False
-
-        _delete_case_children(session, case_id)
         return True

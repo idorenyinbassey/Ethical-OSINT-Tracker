@@ -5,7 +5,7 @@ import hashlib
 import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, abort, session, current_app
 from flask_login import login_required, current_user
-from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case, delete_case_data
+from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
 from app.repositories.case_note_repository import add_note, list_notes, delete_note
 from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation
@@ -128,6 +128,7 @@ def edit(case_id):
             flash("Title is required.", "error")
             return render_template("cases/edit.html", case=case)
 
+        was_closed = case.status == "closed"
         update_case(
             case_id,
             title=title,
@@ -136,7 +137,15 @@ def edit(case_id):
             status=status,
             updated_at=datetime.datetime.utcnow(),
         )
-        flash("Case updated.", "success")
+        # update_case() itself deletes the case's data (atomically, in the
+        # same transaction) on any transition into "closed" — including
+        # via this form's status dropdown, not just the dedicated Close
+        # button. Just audit-log it and adjust the flash message here.
+        if status == "closed" and not was_closed:
+            _audit_case_close(case_id, title)
+            flash("Case updated, closed, and its data deleted.", "success")
+        else:
+            flash("Case updated.", "success")
         return redirect(url_for("cases.detail", case_id=case_id))
 
     return render_template("cases/edit.html", case=case)
@@ -405,6 +414,15 @@ def set_active(case_id):
     return redirect(url_for("cases.detail", case_id=case_id))
 
 
+def _audit_case_close(case_id: int, case_title: str) -> None:
+    """Shared audit-log call for any transition into status="closed" — the
+    dedicated Close button and the Edit form's status dropdown both funnel
+    through this. The actual data deletion happens inside update_case()
+    itself, atomically with the status change, not here."""
+    from app.utils.audit import log as audit_log
+    audit_log("case.close", entity_type="case", entity_id=case_id, detail=case_title)
+
+
 @cases_bp.route("/<int:case_id>/close", methods=["POST"])
 @login_required
 def close_case(case_id):
@@ -415,9 +433,7 @@ def close_case(case_id):
     if not can_access_case(case, current_user, action="edit"):
         abort(403)
     update_case(case_id, status="closed", updated_at=datetime.datetime.utcnow())
-    delete_case_data(case_id)
-    from app.utils.audit import log as audit_log
-    audit_log("case.close", entity_type="case", entity_id=case_id, detail=case.title)
+    _audit_case_close(case_id, case.title)
     flash(f"Case '{case.title}' has been closed and its data deleted.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
