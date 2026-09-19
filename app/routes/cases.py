@@ -101,11 +101,17 @@ def detail(case_id):
     can_edit = can_access_case(case, current_user, action="edit")
     can_delete = can_access_case(case, current_user, action="delete")
     my_teams = list_teams_for_user(current_user.id)
+    # list_by_case() orders newest-first, so the first investigation's kind
+    # is whichever tool-type group should start open by default — the rest
+    # stay collapsed so a case with many scans across many tools stays
+    # scannable instead of one long flat list.
+    default_open_kind = investigations[0].kind if investigations else None
     return render_template("cases/detail.html", case=case,
                            investigations=investigations, comments=comments,
                            notes=notes, threat_score=threat_score,
                            related_cases=related_cases, can_edit=can_edit,
-                           can_delete=can_delete, my_teams=my_teams)
+                           can_delete=can_delete, my_teams=my_teams,
+                           default_open_kind=default_open_kind)
 
 
 @cases_bp.route("/<int:case_id>/edit", methods=["GET", "POST"])

@@ -91,3 +91,81 @@ def test_view_investigation_nonexistent_returns_404(app, client, user_a, case_of
     login(client, user_a.username)
     resp = client.get(f"/cases/{case_of_a.id}/investigations/999999")
     assert resp.status_code == 404
+
+
+# ── Image thumbnails ────────────────────────────────────────────────────────
+
+def test_view_investigation_renders_image_url_as_thumbnail(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    result = {"avatar": "https://example.com/profile.jpg", "name": "not-an-image"}
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+    assert '<img src="https://example.com/profile.jpg"' in body
+    # A plain non-image string must not get an <img> tag.
+    assert '<img src="not-an-image"' not in body
+
+
+def test_view_investigation_renders_extensionless_avatar_url_as_thumbnail(app, client, user_a, case_of_a):
+    """GitHub/Gravatar-style avatar URLs carry no file extension at all
+    (e.g. https://avatars.githubusercontent.com/u/1?v=4) — the field
+    name (avatar/photo/thumbnail/...) is what should trigger a thumbnail
+    here, not the URL shape alone."""
+    login(client, user_a.username)
+    avatar_url = "https://avatars.githubusercontent.com/u/1?v=4"
+    result = {"avatar": avatar_url, "unrelated_url": "https://example.com/page?v=4"}
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+    assert f'<img src="{avatar_url}"' in body
+    # A same-shaped URL under an unrelated key must NOT get a thumbnail.
+    assert '<img src="https://example.com/page?v=4"' not in body
+
+
+def test_view_investigation_renders_data_uri_image_as_thumbnail(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+    result = {"thumbnail": data_uri}
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+    assert f'<img src="{data_uri}"' in body
+
+
+# ── Verbose sections collapse; short/high-signal ones don't ────────────────
+
+def test_view_investigation_collapses_long_list_of_complex_items(app, client, user_a, case_of_a):
+    import re
+
+    login(client, user_a.username)
+    result = {
+        "username_guesses": ["johndoe", "j.doe", "j_doe", "jdoe"],
+        "dork_links": [
+            {"label": f"Link {i}", "url": f"https://example.com/{i}"} for i in range(6)
+        ],
+    }
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+
+    assert "click to expand" in body
+    # username_guesses (a short list of plain strings) must render
+    # immediately, not hidden behind the same collapse as dork_links.
+    first_details = re.search(r"<details.*?</details>", body, re.S)
+    assert "johndoe" not in first_details.group(0)
+    assert "Link 0" in first_details.group(0)
+
+
+def test_view_investigation_does_not_collapse_short_plain_list(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    result = {"username_guesses": ["johndoe", "j.doe", "j_doe", "jdoe", "doej", "jd"]}
+    inv = _seed_investigation(app, user_a.id, case_of_a.id, result)
+
+    resp = client.get(f"/cases/{case_of_a.id}/investigations/{inv.id}")
+    body = resp.data.decode()
+    assert "click to expand" not in body
+    assert "johndoe" in body
