@@ -121,6 +121,18 @@
                     <p class="text-gray-400 text-xs mt-0.5 line-clamp-2">{{ r.bio }}</p>
                   {% endif %}
 
+                  {% if r.emails or r.linked_domains %}
+                    <div class="flex flex-wrap gap-1 mt-1.5">
+                      {% for e in r.emails %}
+                        <a href="mailto:{{ e }}"
+                           class="text-xs px-1.5 py-0.5 bg-indigo-900/40 text-indigo-300 rounded hover:bg-indigo-900/60">{{ e }}</a>
+                      {% endfor %}
+                      {% for d in r.linked_domains %}
+                        <span class="text-xs px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded">{{ d }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+
                   <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer"
                      class="text-indigo-400 hover:text-indigo-300 text-xs mt-1 inline-block truncate max-w-full">
                     {{ r.url }}
