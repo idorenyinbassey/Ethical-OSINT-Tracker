@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "investigation/_result_macros.html" as rm %}
+{% import "investigation/_tool_result_macros.html" as tm %}
 {% block title %}{{ inv.kind.replace('_', ' ')|title }}: {{ inv.query }} – OSINT Tracker{% endblock %}
 
 {% block content %}
@@ -26,6 +27,12 @@
     <p class="text-sm text-red-500">Could not read this scan's stored data — it may be from an older, incompatible format.</p>
     {% elif result is none %}
     <p class="text-sm text-gray-500 dark:text-gray-400">This scan has no stored result data.</p>
+    {% elif inv.kind == 'social' %}
+    {{ tm.render_social_result(result) }}
+    {% elif inv.kind == 'breach' and result.breaches is not none %}
+    {{ tm.render_breach_result(result.breaches) }}
+    {% elif inv.kind == 'breach' %}
+    <p class="text-sm text-gray-500 dark:text-gray-400">Breach data unavailable for this entry.</p>
     {% else %}
     {{ rm.render_value(result) }}
     {% endif %}
