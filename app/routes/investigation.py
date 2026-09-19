@@ -9,8 +9,9 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from app.repositories.investigation_repository import create_investigation, list_recent, find_or_update_recent, update_tags
-from app.repositories.case_repository import list_cases
+from app.repositories.investigation_repository import create_investigation, list_recent, find_or_update_recent, update_tags, list_by_case_and_kind
+from app.repositories.case_repository import list_cases, get_case
+from app.utils.authz import can_access_case
 from app.services import (
     ip_client, rdap_client, hibp_client, hunter_client,
     numverify_client, social_client, image_client, imei_client,
@@ -49,6 +50,28 @@ def _safe_case_id(raw: str | None) -> int | None:
 
 def _cases_for_select():
     return list_cases(owner_user_id=current_user.id)
+
+
+def _resolve_case_context() -> int | None:
+    """Read case_id from the POST form (a search being run) or the GET
+    query string (the "Link to Case" dropdown reloading the page to show
+    that case's history for this tool), and access-check it if present.
+
+    Every tool route calls this once at the top, before its own POST
+    handling — closes a latent gap where case_id was previously only
+    ever read from POST with no ownership/team-access check at all, so a
+    crafted request could write (and, now that GET reads case_id too,
+    read) another user's case data.
+    """
+    if request.method == "POST":
+        case_id = _safe_case_id(request.form.get("case_id"))
+    else:
+        case_id = request.args.get("case_id", type=int)
+    if case_id is not None:
+        case = get_case(case_id)
+        if not case or not can_access_case(case, current_user, action="read"):
+            abort(403)
+    return case_id
 
 
 @investigation_bp.before_request
@@ -96,25 +119,27 @@ def index():
 @login_required
 def ip():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         ip_addr = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not ip_addr:
             flash("IP address is required.", "error")
-            return render_template("investigation/ip.html", cases=cases, result=None)
+        else:
+            geo = ip_client.fetch_ip(ip_addr)
+            vt = virustotal_client.fetch_virustotal(ip_addr)
+            shodan = shodan_client.fetch_shodan(ip_addr)
+            result = {"geo": geo, "virustotal": vt, "shodan": shodan}
 
-        geo = ip_client.fetch_ip(ip_addr)
-        vt = virustotal_client.fetch_virustotal(ip_addr)
-        shodan = shodan_client.fetch_shodan(ip_addr)
-        result = {"geo": geo, "virustotal": vt, "shodan": shodan}
+            conf = "CONFIRMED" if result.get("geo") and not result["geo"].get("error") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="ip", query=ip_addr, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"IP lookup complete for {ip_addr}.", "success")
 
-        conf = "CONFIRMED" if result.get("geo") and not result["geo"].get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="ip", query=ip_addr, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"IP lookup complete for {ip_addr}.", "success")
-
-    return render_template("investigation/ip.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "ip", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/ip.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Domain WHOIS ──────────────────────────────────────────────────────────────
@@ -123,25 +148,26 @@ def ip():
 @login_required
 def domain():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         domain_name = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not domain_name:
             flash("Domain is required.", "error")
-            return render_template("investigation/domain.html", cases=cases, result=None)
+        else:
+            result = rdap_client.fetch_domain(domain_name)
+            if result is None:
+                flash(f"WHOIS lookup failed for '{domain_name}'. The domain may not exist or RDAP is temporarily unavailable.", "error")
+            else:
+                conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+                inv = find_or_update_recent(kind="domain", query=domain_name, result_json=json.dumps(result),
+                                      user_id=current_user.id, case_id=case_id, confidence=conf)
+                flash(f"Domain lookup complete for {domain_name}.", "success")
 
-        result = rdap_client.fetch_domain(domain_name)
-        if result is None:
-            flash(f"WHOIS lookup failed for '{domain_name}'. The domain may not exist or RDAP is temporarily unavailable.", "error")
-            return render_template("investigation/domain.html", cases=cases, result=None)
-
-        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="domain", query=domain_name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Domain lookup complete for {domain_name}.", "success")
-
-    return render_template("investigation/domain.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "domain", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/domain.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Subdomain Scanner ─────────────────────────────────────────────────────────
@@ -150,27 +176,29 @@ def domain():
 @login_required
 def subdomain():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         domain_name = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not domain_name:
             flash("Domain is required.", "error")
-            return render_template("investigation/subdomain.html", cases=cases, result=None)
+        else:
+            from app.services import subdomain_client
+            result = subdomain_client.scan_domain(domain_name)
 
-        from app.services import subdomain_client
-        result = subdomain_client.scan_domain(domain_name)
+            conf = "CONFIRMED" if result.get("subdomains_found", 0) > 0 else "UNVERIFIED"
+            inv = find_or_update_recent(kind="subdomain", query=domain_name, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            msg = f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found."
+            takeover_count = result.get("takeover_count", 0)
+            if takeover_count > 0:
+                msg += f" {takeover_count} possible takeover(s) detected — verify manually."
+            flash(msg, "success")
 
-        conf = "CONFIRMED" if result.get("subdomains_found", 0) > 0 else "UNVERIFIED"
-        find_or_update_recent(kind="subdomain", query=domain_name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        msg = f"Subdomain scan complete for {domain_name} — {result.get('subdomains_found', 0)} found."
-        takeover_count = result.get("takeover_count", 0)
-        if takeover_count > 0:
-            msg += f" {takeover_count} possible takeover(s) detected — verify manually."
-        flash(msg, "success")
-
-    return render_template("investigation/subdomain.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "subdomain", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/subdomain.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Domain Typosquat Monitor ───────────────────────────────────────────────────
@@ -179,24 +207,26 @@ def subdomain():
 @login_required
 def typosquat():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         domain_name = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not domain_name:
             flash("Domain is required.", "error")
-            return render_template("investigation/typosquat.html", cases=cases, result=None)
+        else:
+            from app.services import typosquat_client
+            result = typosquat_client.scan_typosquats(domain_name)
 
-        from app.services import typosquat_client
-        result = typosquat_client.scan_typosquats(domain_name)
+            conf = "CONFIRMED" if result.get("registered_count", 0) > 0 else "UNVERIFIED"
+            inv = find_or_update_recent(kind="typosquat", query=domain_name, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Typosquat scan complete for {domain_name} — "
+                  f"{result.get('registered_count', 0)} registered lookalike(s) found.", "success")
 
-        conf = "CONFIRMED" if result.get("registered_count", 0) > 0 else "UNVERIFIED"
-        find_or_update_recent(kind="typosquat", query=domain_name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Typosquat scan complete for {domain_name} — "
-              f"{result.get('registered_count', 0)} registered lookalike(s) found.", "success")
-
-    return render_template("investigation/typosquat.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "typosquat", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/typosquat.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Email Analysis (HIBP + Hunter) ────────────────────────────────────────────
@@ -205,25 +235,27 @@ def typosquat():
 @login_required
 def email():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         email_addr = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not email_addr:
             flash("Email address is required.", "error")
-            return render_template("investigation/email.html", cases=cases, result=None)
+        else:
+            breaches = hibp_client.check_breaches(email_addr)
+            verification = hunter_client.verify_email(email_addr)
+            result = {"breaches": breaches, "verification": verification}
 
-        breaches = hibp_client.check_breaches(email_addr)
-        verification = hunter_client.verify_email(email_addr)
-        result = {"breaches": breaches, "verification": verification}
+            breaches = result.get("breaches")
+            conf = "CONFIRMED" if breaches and breaches != "No breaches found" else "UNVERIFIED"
+            inv = find_or_update_recent(kind="email", query=email_addr, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Email analysis complete for {email_addr}.", "success")
 
-        breaches = result.get("breaches")
-        conf = "CONFIRMED" if breaches and breaches != "No breaches found" else "UNVERIFIED"
-        find_or_update_recent(kind="email", query=email_addr, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Email analysis complete for {email_addr}.", "success")
-
-    return render_template("investigation/email.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "email", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/email.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Email Header Analyser ─────────────────────────────────────────────────────
@@ -232,23 +264,25 @@ def email():
 @login_required
 def email_header():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         raw = request.form.get("headers", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not raw:
             flash("Paste email headers to analyse.", "error")
-            return render_template("investigation/email_header.html", cases=cases, result=None)
+        else:
+            from app.services.email_header_client import analyse_headers
+            result = analyse_headers(raw)
 
-        from app.services.email_header_client import analyse_headers
-        result = analyse_headers(raw)
+            inv = find_or_update_recent(kind="email_header", query=result.get("from", "unknown"),
+                                  result_json=json.dumps(result), user_id=current_user.id,
+                                  case_id=case_id, confidence="CONFIRMED")
+            flash("Email header analysis complete.", "success")
 
-        find_or_update_recent(kind="email_header", query=result.get("from", "unknown"),
-                              result_json=json.dumps(result), user_id=current_user.id,
-                              case_id=case_id, confidence="CONFIRMED")
-        flash("Email header analysis complete.", "success")
-
-    return render_template("investigation/email_header.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "email_header", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/email_header.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Social Username Search ────────────────────────────────────────────────────
@@ -257,32 +291,34 @@ def email_header():
 @login_required
 def social():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
+    status = 200
     if request.method == "POST":
         username = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not username:
             flash("Username is required.", "error")
-            return render_template("investigation/social.html", cases=cases, result=None)
-
-        if not USERNAME_PATTERN.match(username):
+        elif not USERNAME_PATTERN.match(username):
             flash(
                 "Invalid username — use only letters, numbers, dots, "
                 "underscores, and dashes (max 50 characters).",
                 "error",
             )
-            return render_template("investigation/social.html", cases=cases, result=None), 400
+            status = 400
+        else:
+            result = social_client.search_username(username)
 
-        result = social_client.search_username(username)
+            confirmed = result.get("confirmed_count", 0)
+            found = result.get("found_count", 0)
+            conf = "CONFIRMED" if confirmed > 0 else ("POSSIBLE" if found > 0 else "UNVERIFIED")
+            inv = find_or_update_recent(kind="social", query=username, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Social search complete for '{username}' — {result.get('found_count', 0)} of {result.get('total_checked', 0)} profiles found.", "success")
 
-        confirmed = result.get("confirmed_count", 0)
-        found = result.get("found_count", 0)
-        conf = "CONFIRMED" if confirmed > 0 else ("POSSIBLE" if found > 0 else "UNVERIFIED")
-        find_or_update_recent(kind="social", query=username, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Social search complete for '{username}' — {result.get('found_count', 0)} of {result.get('total_checked', 0)} profiles found.", "success")
-
-    return render_template("investigation/social.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "social", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/social.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id), status
 
 
 # ── Phone Lookup ──────────────────────────────────────────────────────────────
@@ -291,24 +327,26 @@ def social():
 @login_required
 def phone():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         phone_num = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not phone_num:
             flash("Phone number is required.", "error")
-            return render_template("investigation/phone.html", cases=cases, result=None)
+        else:
+            result = numverify_client.validate_phone(phone_num)
+            if result is None:
+                result = {"error": "NumVerify API not configured or unavailable."}
 
-        result = numverify_client.validate_phone(phone_num)
-        if result is None:
-            result = {"error": "NumVerify API not configured or unavailable."}
+            conf = "CONFIRMED" if result and not result.get("error") and result.get("valid") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="phone", query=phone_num, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Phone lookup complete for {phone_num}.", "success")
 
-        conf = "CONFIRMED" if result and not result.get("error") and result.get("valid") else "UNVERIFIED"
-        find_or_update_recent(kind="phone", query=phone_num, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Phone lookup complete for {phone_num}.", "success")
-
-    return render_template("investigation/phone.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "phone", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/phone.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── MAC Vendor Lookup ─────────────────────────────────────────────────────────
@@ -317,23 +355,25 @@ def phone():
 @login_required
 def mac():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         mac_addr = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not mac_addr:
             flash("MAC address is required.", "error")
-            return render_template("investigation/mac.html", cases=cases, result=None)
+        else:
+            from app.services import mac_client
+            result = mac_client.lookup_mac(mac_addr)
 
-        from app.services import mac_client
-        result = mac_client.lookup_mac(mac_addr)
+            conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="mac", query=mac_addr, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"MAC vendor lookup complete for {mac_addr}.", "success")
 
-        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="mac", query=mac_addr, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"MAC vendor lookup complete for {mac_addr}.", "success")
-
-    return render_template("investigation/mac.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "mac", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/mac.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── File & Document Forensics ─────────────────────────────────────────────────
@@ -342,46 +382,43 @@ def mac():
 @login_required
 def file_forensics():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
-        case_id = _safe_case_id(request.form.get("case_id"))
-
         uploaded = request.files.get("file")
+        original_name = secure_filename(uploaded.filename) if uploaded and uploaded.filename else ""
         if not uploaded or uploaded.filename == "":
             flash("No file selected.", "error")
-            return render_template("investigation/file_forensics.html", cases=cases, result=None)
-
-        if not _ext_ok(uploaded.filename, ALLOWED_FILE_EXTENSIONS):
+        elif not _ext_ok(uploaded.filename, ALLOWED_FILE_EXTENSIONS):
             flash("Unsupported file type.", "error")
-            return render_template("investigation/file_forensics.html", cases=cases, result=None)
-
-        original_name = secure_filename(uploaded.filename)
-        if not original_name:
+        elif not original_name:
             flash("Invalid filename — rename the file and try again.", "error")
-            return render_template("investigation/file_forensics.html", cases=cases, result=None)
-        ext = os.path.splitext(original_name)[1].lower()
-        filename = f"{uuid.uuid4().hex}{ext}"
-        upload_dir = current_app.config["UPLOAD_FOLDER"]
-        os.makedirs(upload_dir, exist_ok=True)
-        filepath = Path(upload_dir) / filename
-        uploaded.save(str(filepath))
+        else:
+            ext = os.path.splitext(original_name)[1].lower()
+            filename = f"{uuid.uuid4().hex}{ext}"
+            upload_dir = current_app.config["UPLOAD_FOLDER"]
+            os.makedirs(upload_dir, exist_ok=True)
+            filepath = Path(upload_dir) / filename
+            uploaded.save(str(filepath))
 
-        from app.services.file_forensics_client import analyse_file
-        try:
-            result = analyse_file(filepath)
-        finally:
+            from app.services.file_forensics_client import analyse_file
             try:
-                filepath.unlink(missing_ok=True)
-            except Exception:
-                pass
+                result = analyse_file(filepath)
+            finally:
+                try:
+                    filepath.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="file_forensics", query=original_name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"File forensics complete for {original_name}.", "success")
+            conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="file_forensics", query=original_name, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"File forensics complete for {original_name}.", "success")
 
+    history = list_by_case_and_kind(case_id, "file_forensics", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/file_forensics.html",
-                           cases=cases, result=result,
+                           cases=cases, result=result, history=history, selected_case_id=case_id,
                            allowed_types="Images, Audio, Video, PDF, DOCX, XLSX")
 
 
@@ -442,23 +479,25 @@ def image():
 @login_required
 def crypto():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         address = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not address:
             flash("Wallet address is required.", "error")
-            return render_template("investigation/crypto.html", cases=cases, result=None)
+        else:
+            from app.services.crypto_client import lookup_address
+            result = lookup_address(address)
 
-        from app.services.crypto_client import lookup_address
-        result = lookup_address(address)
+            conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="crypto", query=address, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Crypto lookup complete for {address[:12]}...", "success")
 
-        conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="crypto", query=address, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Crypto lookup complete for {address[:12]}...", "success")
-
-    return render_template("investigation/crypto.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "crypto", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/crypto.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── IMEI Lookup ───────────────────────────────────────────────────────────────
@@ -467,22 +506,24 @@ def crypto():
 @login_required
 def imei():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         imei_num = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not imei_num:
             flash("IMEI number is required.", "error")
-            return render_template("investigation/imei.html", cases=cases, result=None)
+        else:
+            result = imei_client.fetch_imei(imei_num)
 
-        result = imei_client.fetch_imei(imei_num)
+            conf = "CONFIRMED" if result and not result.get("error") and not result.get("not_configured") and not result.get("unverified") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="imei", query=imei_num, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"IMEI lookup complete for {imei_num}.", "success")
 
-        conf = "CONFIRMED" if result and not result.get("error") and not result.get("not_configured") and not result.get("unverified") else "UNVERIFIED"
-        find_or_update_recent(kind="imei", query=imei_num, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"IMEI lookup complete for {imei_num}.", "success")
-
-    return render_template("investigation/imei.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "imei", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/imei.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Dark Web Monitor ──────────────────────────────────────────────────────────
@@ -491,23 +532,25 @@ def imei():
 @login_required
 def darkweb():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
-        query = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
-        if not query:
+        query_str = request.form.get("query", "").strip()
+        if not query_str:
             flash("Search term is required.", "error")
-            return render_template("investigation/darkweb.html", cases=cases, result=None)
+        else:
+            from app.services import darkweb_client
+            result = darkweb_client.search_ahmia(query_str)
 
-        from app.services import darkweb_client
-        result = darkweb_client.search_ahmia(query)
+            conf = "CONFIRMED" if result.get("total", 0) > 0 else "UNVERIFIED"
+            inv = find_or_update_recent(kind="darkweb", query=query_str, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            flash(f"Dark web search complete: {result.get('total', 0)} results found.", "success")
 
-        conf = "CONFIRMED" if result.get("total", 0) > 0 else "UNVERIFIED"
-        find_or_update_recent(kind="darkweb", query=query, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        flash(f"Dark web search complete: {result.get('total', 0)} results found.", "success")
-
-    return render_template("investigation/darkweb.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "darkweb", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/darkweb.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Network Graph ─────────────────────────────────────────────────────────────
@@ -889,36 +932,38 @@ def graph_data():
 @login_required
 def company():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         name = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not name:
             flash("Company name is required.", "error")
-            return render_template("investigation/company.html", cases=cases, result=None)
-
-        from app.services import company_client
-        from app.repositories.api_config_repository import get_by_service
-        uk_cfg = get_by_service("companies_house")
-        uk_key = uk_cfg.api_key if uk_cfg and uk_cfg.is_enabled else None
-        result = company_client.search_companies(name, uk_api_key=uk_key)
-
-        reg_results = result.get("results", {})
-        has_confirmed = any(isinstance(v.get("found"), list) and v["found"] for v in reg_results.values())
-        has_manual = any(v.get("manual_url") for v in reg_results.values() if not v.get("found"))
-        ddg_found = reg_results.get("duckduckgo", {}).get("found", False)
-        if has_confirmed or ddg_found:
-            conf = "CONFIRMED"
-        elif has_manual:
-            conf = "POSSIBLE"
         else:
-            conf = "UNVERIFIED"
-        find_or_update_recent(kind="company", query=name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        total = sum(len(v["found"]) for v in reg_results.values() if isinstance(v.get("found"), list))
-        flash(f"Company search for '{name}' complete — {total} results across registries.", "success")
+            from app.services import company_client
+            from app.repositories.api_config_repository import get_by_service
+            uk_cfg = get_by_service("companies_house")
+            uk_key = uk_cfg.api_key if uk_cfg and uk_cfg.is_enabled else None
+            result = company_client.search_companies(name, uk_api_key=uk_key)
 
-    return render_template("investigation/company.html", cases=cases, result=result)
+            reg_results = result.get("results", {})
+            has_confirmed = any(isinstance(v.get("found"), list) and v["found"] for v in reg_results.values())
+            has_manual = any(v.get("manual_url") for v in reg_results.values() if not v.get("found"))
+            ddg_found = reg_results.get("duckduckgo", {}).get("found", False)
+            if has_confirmed or ddg_found:
+                conf = "CONFIRMED"
+            elif has_manual:
+                conf = "POSSIBLE"
+            else:
+                conf = "UNVERIFIED"
+            inv = find_or_update_recent(kind="company", query=name, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            total = sum(len(v["found"]) for v in reg_results.values() if isinstance(v.get("found"), list))
+            flash(f"Company search for '{name}' complete — {total} results across registries.", "success")
+
+    history = list_by_case_and_kind(case_id, "company", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/company.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Person / Full Name Search ─────────────────────────────────────────────────
@@ -927,22 +972,24 @@ def company():
 @login_required
 def person():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         name = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not name:
             flash("Full name is required.", "error")
-            return render_template("investigation/person.html", cases=cases, result=None)
+        else:
+            from app.services.person_client import search_person
+            result = search_person(name)
 
-        from app.services.person_client import search_person
-        result = search_person(name)
+            inv = find_or_update_recent(kind="person", query=name, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
+            flash(f"Person investigation links generated for '{name}'.", "success")
 
-        find_or_update_recent(kind="person", query=name, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence="CONFIRMED")
-        flash(f"Person investigation links generated for '{name}'.", "success")
-
-    return render_template("investigation/person.html", cases=cases, result=result)
+    history = list_by_case_and_kind(case_id, "person", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/person.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Vehicle / VIN Lookup ──────────────────────────────────────────────────────
@@ -951,27 +998,29 @@ def person():
 @login_required
 def vehicle():
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         vin = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not vin:
             flash("VIN is required.", "error")
-            return render_template("investigation/vehicle.html", cases=cases, result=None)
-
-        from app.services.vehicle_client import decode_vin
-        result = decode_vin(vin)
-
-        conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
-        find_or_update_recent(kind="vehicle", query=vin, result_json=json.dumps(result),
-                              user_id=current_user.id, case_id=case_id, confidence=conf)
-        if result.get("error"):
-            flash(f"VIN decode error: {result['error']}", "error")
         else:
-            s = result.get("summary", {})
-            flash(f"VIN decoded: {s.get('year','')} {s.get('make','')} {s.get('model','')}.", "success")
+            from app.services.vehicle_client import decode_vin
+            result = decode_vin(vin)
 
-    return render_template("investigation/vehicle.html", cases=cases, result=result)
+            conf = "CONFIRMED" if not result.get("error") else "UNVERIFIED"
+            inv = find_or_update_recent(kind="vehicle", query=vin, result_json=json.dumps(result),
+                                  user_id=current_user.id, case_id=case_id, confidence=conf)
+            if result.get("error"):
+                flash(f"VIN decode error: {result['error']}", "error")
+            else:
+                s = result.get("summary", {})
+                flash(f"VIN decoded: {s.get('year','')} {s.get('make','')} {s.get('model','')}.", "success")
+
+    history = list_by_case_and_kind(case_id, "vehicle", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/vehicle.html", cases=cases, result=result,
+                           history=history, selected_case_id=case_id)
 
 
 # ── Location Map ──────────────────────────────────────────────────────────────
@@ -1228,17 +1277,17 @@ def watchlist_dismiss_alert(target_id):
 @login_required
 def breach():
     from app.services.hibp_client import check_breaches, check_password_pwned
-    from app.repositories.case_repository import list_cases as _list_cases
     from app.utils.audit import log as audit_log
 
-    cases = _list_cases(owner_user_id=current_user.id)
+    cases = _cases_for_select()
+    case_id = _resolve_case_context()
     email = breaches = error = None
     pwned_count = None
+    inv = None
 
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
 
         if email:
             breaches = check_breaches(email)
@@ -1247,16 +1296,18 @@ def breach():
             audit_log("investigation.run", entity_type="investigation",
                       detail=f"breach check — {email}")
             result_json = json.dumps({"breaches": breaches})
-            find_or_update_recent(kind="breach", query=email, result_json=result_json,
+            inv = find_or_update_recent(kind="breach", query=email, result_json=result_json,
                                   user_id=current_user.id, case_id=case_id,
                                   confidence="CONFIRMED" if breaches is not None else "UNVERIFIED")
 
         if password:
             pwned_count = check_password_pwned(password)
 
+    history = list_by_case_and_kind(case_id, "breach", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/breach.html", email=email,
                            breaches=breaches, pwned_count=pwned_count,
-                           error=error, cases=cases)
+                           error=error, cases=cases, history=history,
+                           selected_case_id=case_id, result=inv)
 
 
 # ── Leak Monitor (Hudson Rock infostealer intelligence) ───────────────────────
@@ -1268,28 +1319,30 @@ def breach():
 @login_required
 def paste_monitor():
     cases = _cases_for_select()
-    query = None
+    case_id = _resolve_case_context()
+    query_str = None
     pastes = None
     error = None
+    inv = None
     if request.method == "POST":
-        query = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
-        if not query:
+        query_str = request.form.get("query", "").strip()
+        if not query_str:
             flash("A query is required.", "error")
-            return render_template("investigation/paste_monitor.html", cases=cases, query=None, pastes=None)
-
-        from app.services import paste_client
-        pastes = paste_client.check_pastes(query)
-
-        if pastes is None:
-            error = "Leak monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
         else:
-            conf = "CONFIRMED" if pastes else "UNVERIFIED"
-            find_or_update_recent(kind="paste_leak", query=query, result_json=json.dumps({"query": query, "pastes": pastes}),
-                                  user_id=current_user.id, case_id=case_id, confidence=conf)
-            flash(f"Leak search complete for '{query}' — {len(pastes)} hit(s) found.", "success")
+            from app.services import paste_client
+            pastes = paste_client.check_pastes(query_str)
 
-    return render_template("investigation/paste_monitor.html", cases=cases, query=query, pastes=pastes, error=error)
+            if pastes is None:
+                error = "Leak monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
+            else:
+                conf = "CONFIRMED" if pastes else "UNVERIFIED"
+                inv = find_or_update_recent(kind="paste_leak", query=query_str, result_json=json.dumps({"query": query_str, "pastes": pastes}),
+                                      user_id=current_user.id, case_id=case_id, confidence=conf)
+                flash(f"Leak search complete for '{query_str}' — {len(pastes)} hit(s) found.", "success")
+
+    history = list_by_case_and_kind(case_id, "paste_leak", exclude_id=inv.id if inv else None) if case_id else []
+    return render_template("investigation/paste_monitor.html", cases=cases, query=query_str, pastes=pastes,
+                           error=error, history=history, selected_case_id=case_id, result=inv)
 
 
 # ── Plugins ───────────────────────────────────────────────────────────────────
@@ -1312,10 +1365,11 @@ def plugin_run(plugin_name):
         return redirect(url_for("investigation.plugins"))
 
     cases = _cases_for_select()
+    case_id = _resolve_case_context()
     result = None
+    inv = None
     if request.method == "POST":
         query = request.form.get("query", "").strip()
-        case_id = _safe_case_id(request.form.get("case_id"))
         if not query:
             flash("Query is required.", "error")
         else:
@@ -1334,10 +1388,13 @@ def plugin_run(plugin_name):
                 result = {"error": str(exc)}
                 flash(f"Plugin '{plugin.label}' failed: {exc}", "error")
             else:
-                find_or_update_recent(kind=f"plugin_{plugin.name}", query=query,
+                inv = find_or_update_recent(kind=f"plugin_{plugin.name}", query=query,
                                       result_json=json.dumps(result),
                                       user_id=current_user.id, case_id=case_id)
                 flash(f"Plugin '{plugin.label}' completed.", "success")
 
+    history = (list_by_case_and_kind(case_id, f"plugin_{plugin.name}", exclude_id=inv.id if inv else None)
+               if case_id else [])
     return render_template("investigation/plugin_run.html",
-                           plugin=plugin, cases=cases, result=result)
+                           plugin=plugin, cases=cases, result=result,
+                           history=history, selected_case_id=case_id)

@@ -1,3 +1,4 @@
+import json
 import os
 from flask import Flask
 from flask_login import LoginManager
@@ -151,8 +152,23 @@ def create_app():
             return False
         return False
 
+    def _from_json(value):
+        """Parse a stored result_json string for direct display in a
+        template. Returns None on empty/malformed input rather than
+        raising, matching this codebase's established
+        graceful-degradation convention (e.g. investigation_view's own
+        parse_error handling) — a corrupted old row shouldn't break the
+        whole page it's listed on."""
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return None
+
     app.jinja_env.filters["is_image_value"] = _is_image_value
     app.jinja_env.filters["is_verbose_value"] = _is_verbose_value
+    app.jinja_env.filters["from_json"] = _from_json
 
     @app.context_processor
     def inject_active_case():

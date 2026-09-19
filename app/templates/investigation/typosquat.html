@@ -16,11 +16,11 @@
       {% if cases %}
         <div>
           <label class="block text-sm text-gray-400 mb-1">Link to Case (optional)</label>
-          <select name="case_id"
+          <select name="case_id" onchange="location.search = this.value ? ('?case_id=' + this.value) : ''"
             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
             <option value="">— None —</option>
             {% for case in cases %}
-              <option value="{{ case.id }}">{{ case.title }}</option>
+              <option value="{{ case.id }}" {% if case.id == selected_case_id %}selected{% endif %}>{{ case.title }}</option>
             {% endfor %}
           </select>
         </div>
@@ -88,4 +88,5 @@
     {% endif %}
   </div>
 </div>
+{% include "investigation/_case_history.html" %}
 {% endblock %}

@@ -16,11 +16,11 @@
 
       <div>
         <label class="block text-sm text-gray-400 mb-1">Link to Case</label>
-        <select name="case_id" required
+        <select name="case_id" required onchange="location.search = this.value ? ('?case_id=' + this.value) : ''"
           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
-          <option value="" disabled selected>Select case...</option>
+          <option value="" disabled {% if not selected_case_id %}selected{% endif %}>Select case...</option>
           {% for case in cases %}
-            <option value="{{ case.id }}">{{ case.title }}</option>
+            <option value="{{ case.id }}" {% if case.id == selected_case_id %}selected{% endif %}>{{ case.title }}</option>
           {% endfor %}
         </select>
       </div>
@@ -157,4 +157,5 @@
   </div>
 
 </div>
+{% include "investigation/_case_history.html" %}
 {% endblock %}

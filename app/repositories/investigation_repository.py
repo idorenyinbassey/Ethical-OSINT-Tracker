@@ -179,6 +179,24 @@ def list_by_case(case_id: int) -> List[Investigation]:
         return [_detach(inv) for inv in results]
 
 
+def list_by_case_and_kind(case_id: int, kind: str, exclude_id: int | None = None) -> List[Investigation]:
+    """One tool's past investigations in one case, newest first — powers
+    each tool page's "previous results in this case" section. exclude_id
+    omits the just-run/just-updated result, which is already shown
+    separately, front and center, so it doesn't also appear in history."""
+    with session_scope() as session:
+        stmt = (
+            select(Investigation)
+            .where(Investigation.case_id == case_id)
+            .where(Investigation.kind == kind)
+            .order_by(Investigation.created_at.desc())
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Investigation.id != exclude_id)
+        results = session.exec(stmt).all()
+        return [_detach(inv) for inv in results]
+
+
 def list_all(user_id: int | None = None) -> List[Investigation]:
     """Return all investigations, optionally filtered to a single user."""
     with session_scope() as session:
