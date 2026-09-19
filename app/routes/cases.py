@@ -8,7 +8,7 @@ from flask_login import login_required, current_user
 from app.repositories.case_repository import list_cases, list_cases_for_user, get_case, create_case, update_case, delete_case
 from app.repositories.case_comment_repository import add_comment, list_comments
 from app.repositories.case_note_repository import add_note, list_notes, delete_note
-from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation
+from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation, get_investigation
 from app.repositories.team_repository import list_teams_for_user
 from app.services import report_exporter
 from app.utils.authz import can_access_case
@@ -557,6 +557,35 @@ def delete_case_note(case_id, note_id):
     delete_note(note_id, user_id=current_user.id, force=is_privileged)
     flash("Entry deleted.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+# ── View a past scan's stored result ──────────────────────────────────────────
+
+@cases_bp.route("/<int:case_id>/investigations/<int:inv_id>")
+@login_required
+def view_investigation(case_id, inv_id):
+    case = get_case(case_id)
+    if not case:
+        abort(404)
+    if not can_access_case(case, current_user, action="read"):
+        abort(403)
+    inv = get_investigation(inv_id)
+    # Must actually belong to this case — without this check, a user with
+    # read access to their OWN case could view any investigation on the
+    # site just by guessing its inv_id in the URL.
+    if not inv or inv.case_id != case_id:
+        abort(404)
+
+    result = None
+    parse_error = False
+    if inv.result_json:
+        try:
+            result = json.loads(inv.result_json)
+        except (ValueError, TypeError):
+            parse_error = True
+
+    return render_template("cases/investigation_view.html", case=case, inv=inv,
+                           result=result, parse_error=parse_error)
 
 
 # ── Evidence Tagging ──────────────────────────────────────────────────────────
