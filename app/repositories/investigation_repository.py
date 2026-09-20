@@ -108,6 +108,19 @@ def count_all(user_id: int | None = None) -> int:
         return session.exec(stmt).one()
 
 
+def count_ad_hoc(user_id: int | None = None) -> int:
+    """Count investigations never linked to any case (case_id IS NULL).
+    These survive every case delete/close untouched, since they were
+    never scoped to a case in the first place — the Dashboard surfaces
+    this count so "Total Investigations" next to "Total Cases: 0" isn't
+    confusing after every case has been deleted."""
+    with session_scope() as session:
+        stmt = select(func.count(Investigation.id)).where(Investigation.case_id.is_(None))
+        if user_id is not None:
+            stmt = stmt.where(Investigation.user_id == user_id)
+        return session.exec(stmt).one()
+
+
 def aggregate_by_day(days: int = 7, user_id: int | None = None) -> Dict[datetime.date, int]:
     """Count investigations grouped by date for last N days, optionally per user."""
     with session_scope() as session:

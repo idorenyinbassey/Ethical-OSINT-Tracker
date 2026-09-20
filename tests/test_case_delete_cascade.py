@@ -130,9 +130,15 @@ def test_delete_case_returns_false_for_nonexistent_case(app):
 
 
 # ── close_case() deletes the same scoped data, but keeps the Case row ────
+#
+# Closing (like deleting) is admin-only with a re-entered password — see
+# tests/test_case_admin_delete.py for the access-control side of that.
+# These tests exercise the cascade-cleanup behavior itself, so they log
+# in as admin_user (not the case's own owner, user_a) and supply the
+# correct password on every close/closing-edit POST.
 
-def test_close_case_deletes_scoped_data_but_keeps_the_case(app, client, user_a):
-    from tests.conftest import login
+def test_close_case_deletes_scoped_data_but_keeps_the_case(app, client, user_a, admin_user):
+    from tests.conftest import login, PASSWORD
     from app.repositories.base import session_scope
     from app.models.investigation import Investigation
     from app.models.case_comment import CaseComment
@@ -143,9 +149,9 @@ def test_close_case_deletes_scoped_data_but_keeps_the_case(app, client, user_a):
     from app.models.intelligence_report import IntelligenceReport
 
     case, inv_id, ids = _seed_full_case(app, user_a.id)
-    login(client, user_a.username)
+    login(client, admin_user.username)
 
-    resp = client.post(f"/cases/{case.id}/close")
+    resp = client.post(f"/cases/{case.id}/close", data={"password": PASSWORD})
     assert resp.status_code == 302
 
     with app.app_context():
@@ -166,15 +172,15 @@ def test_close_case_deletes_scoped_data_but_keeps_the_case(app, client, user_a):
             assert report.related_case_id is None
 
 
-def test_close_case_does_not_touch_another_case_data(app, client, user_a):
-    from tests.conftest import login
+def test_close_case_does_not_touch_another_case_data(app, client, user_a, admin_user):
+    from tests.conftest import login, PASSWORD
     from app.repositories.investigation_repository import get_investigation
 
     case_1, inv_1, _ = _seed_full_case(app, user_a.id)
     case_2, inv_2, _ = _seed_full_case(app, user_a.id)
-    login(client, user_a.username)
+    login(client, admin_user.username)
 
-    resp = client.post(f"/cases/{case_1.id}/close")
+    resp = client.post(f"/cases/{case_1.id}/close", data={"password": PASSWORD})
     assert resp.status_code == 302
 
     with app.app_context():
@@ -187,18 +193,18 @@ def test_close_case_does_not_touch_another_case_data(app, client, user_a):
 #    dedicated Close button — a second, easy-to-miss path into "closed"
 #    that must not bypass the cleanup. ─────────────────────────────────────
 
-def test_edit_case_status_to_closed_deletes_scoped_data(app, client, user_a):
-    from tests.conftest import login
+def test_edit_case_status_to_closed_deletes_scoped_data(app, client, user_a, admin_user):
+    from tests.conftest import login, PASSWORD
     from app.repositories.base import session_scope
     from app.models.investigation import Investigation
     from app.models.watchlist import WatchlistTarget
 
     case, inv_id, ids = _seed_full_case(app, user_a.id)
-    login(client, user_a.username)
+    login(client, admin_user.username)
 
     resp = client.post(f"/cases/{case.id}/edit", data={
         "title": case.title, "description": case.description,
-        "priority": case.priority, "status": "closed",
+        "priority": case.priority, "status": "closed", "password": PASSWORD,
     })
     assert resp.status_code == 302
 
@@ -230,16 +236,17 @@ def test_edit_case_without_status_change_does_not_delete_data(app, client, user_
         assert get_investigation(inv_id) is not None
 
 
-def test_edit_case_already_closed_does_not_redelete_or_error(app, client, user_a):
+def test_edit_case_already_closed_does_not_redelete_or_error(app, client, user_a, admin_user):
     """Editing an already-closed case (e.g. just changing its title) must
     not attempt cleanup again — was_closed guards against a redundant
-    second delete pass."""
-    from tests.conftest import login
+    second delete pass. Since the case is already closed, this second
+    edit isn't a new closing transition, so it needs no admin password."""
+    from tests.conftest import login, PASSWORD
 
     case, _, _ = _seed_full_case(app, user_a.id)
-    login(client, user_a.username)
+    login(client, admin_user.username)
 
-    resp = client.post(f"/cases/{case.id}/close")
+    resp = client.post(f"/cases/{case.id}/close", data={"password": PASSWORD})
     assert resp.status_code == 302
 
     resp = client.post(f"/cases/{case.id}/edit", data={

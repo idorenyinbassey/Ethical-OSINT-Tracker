@@ -9,6 +9,9 @@
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
     <p class="text-xs text-gray-400 uppercase tracking-wider">Total Investigations</p>
     <p class="text-3xl font-bold text-indigo-400 mt-1">{{ total_investigations }}</p>
+    {% if ad_hoc_investigations %}
+    <p class="text-xs text-gray-500 mt-1">includes {{ ad_hoc_investigations }} not linked to any case</p>
+    {% endif %}
   </div>
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
     <p class="text-xs text-gray-400 uppercase tracking-wider">Tool Types Used</p>

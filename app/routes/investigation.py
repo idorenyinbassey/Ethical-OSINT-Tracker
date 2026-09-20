@@ -1185,6 +1185,12 @@ def watchlist_add():
         return redirect(url_for("investigation.watchlist"))
     add_target(query=query, kind=kind, user_id=current_user.id, case_id=case_id, notes=notes)
     flash(f"'{query}' added to watchlist.", "success")
+    if case_id is None:
+        # Every rescan of this target (watchlist_rescan/finalize_scan) will
+        # persist as an investigation with no case_id — surfaced up front so
+        # it isn't a surprise later, e.g. on the Dashboard.
+        flash("This target isn't linked to a case — its future rescans will "
+              "show up as investigations not linked to any case.", "info")
     return redirect(url_for("investigation.watchlist"))
 
 

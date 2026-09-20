@@ -22,12 +22,16 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-sm text-gray-400 mb-1">Status</label>
-          <select name="status"
+          <select name="status" id="case-status-select" onchange="toggleClosePasswordField()"
             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-sm">
             <option value="open" {% if case.status == 'open' %}selected{% endif %}>Open</option>
             <option value="in_progress" {% if case.status == 'in_progress' %}selected{% endif %}>In Progress</option>
-            <option value="closed" {% if case.status == 'closed' %}selected{% endif %}>Closed</option>
+            <option value="closed" {% if case.status == 'closed' %}selected{% endif %}
+              {% if not current_user.is_admin %}disabled title="Only an admin can close a case — it deletes the case's data."{% endif %}>Closed</option>
           </select>
+          {% if not current_user.is_admin and case.status != 'closed' %}
+          <p class="text-xs text-gray-500 mt-1">Only an admin can close a case — closing deletes its data.</p>
+          {% endif %}
         </div>
         <div>
           <label class="block text-sm text-gray-400 mb-1">Priority</label>
@@ -40,6 +44,14 @@
           </select>
         </div>
       </div>
+      {% if current_user.is_admin and case.status != 'closed' %}
+      <div id="close-password-field" class="hidden">
+        <label class="block text-sm text-gray-400 mb-1">Confirm your password to close this case</label>
+        <input type="password" name="password" autocomplete="current-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 text-sm">
+        <p class="text-xs text-red-400 mt-1">Closing deletes this case's investigations, comments, notes, watchlist targets, and tracking links. This cannot be undone.</p>
+      </div>
+      {% endif %}
       <div class="flex gap-3 pt-2">
         <button type="submit"
           class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
@@ -55,6 +67,12 @@
 </div>
 <script>
   const ORIGINAL_CASE_STATUS = "{{ case.status }}";
+  function toggleClosePasswordField() {
+    const field = document.getElementById('close-password-field');
+    if (!field) return;
+    const newStatus = document.getElementById('case-status-select').value;
+    field.classList.toggle('hidden', !(newStatus === 'closed' && ORIGINAL_CASE_STATUS !== 'closed'));
+  }
   function confirmCloseIfNeeded(form) {
     const newStatus = form.querySelector('select[name="status"]').value;
     if (newStatus === 'closed' && ORIGINAL_CASE_STATUS !== 'closed') {
