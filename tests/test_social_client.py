@@ -156,3 +156,113 @@ def test_check_site_extracts_contact_on_high_confidence():
     assert result["found"] is True
     assert result["confidence"] == "high"
     assert result["emails"] == ["john@example.com"]
+
+
+# ── Sherlock conversion: headers + regexCheck now carried over ──────────────
+# Confirmed by diffing app/data/sherlock_sites.json's real LinkedIn/
+# Instagram/TikTok/Snapchat/Pinterest/Twitter entries against our own
+# long-frozen local ones: Sherlock uses a realistic browser UA + a
+# username-shape regexCheck for LinkedIn, a read-only mirror (imginn.com)
+# to probe Instagram instead of instagram.com directly, and an oEmbed API
+# probe for Pinterest — all meaningfully better anti-bot techniques that
+# an earlier version of this conversion silently dropped.
+
+def test_sherlock_to_defn_carries_over_headers_and_regex_check():
+    entry = {
+        "url": "https://linkedin.com/in/{}",
+        "errorType": "status_code",
+        "headers": {"User-Agent": "Mozilla/5.0 Chrome/120.0"},
+        "regexCheck": "^[a-zA-Z0-9]{3,100}$",
+    }
+    defn = social_client._sherlock_to_defn(entry)
+    assert defn["headers"] == {"User-Agent": "Mozilla/5.0 Chrome/120.0"}
+    assert defn["regex_check"] == "^[a-zA-Z0-9]{3,100}$"
+
+
+def test_sherlock_to_defn_omits_headers_and_regex_check_when_absent():
+    entry = {"url": "https://example.com/{}", "errorType": "status_code"}
+    defn = social_client._sherlock_to_defn(entry)
+    assert "headers" not in defn
+    assert "regex_check" not in defn
+
+
+def test_get_all_sites_prefers_sherlocks_definition_for_bot_walled_platforms():
+    fake_sherlock = {
+        "LinkedIn": {
+            "url": "https://linkedin.com/in/{}", "errorType": "status_code",
+            "headers": {"User-Agent": "Chrome/120.0"}, "regexCheck": "^[a-zA-Z0-9]{3,100}$",
+        },
+        "Instagram": {"url": "https://instagram.com/{}", "urlProbe": "https://imginn.com/{}", "errorType": "status_code"},
+    }
+    with patch.object(social_client, "_load_sherlock_sites", return_value=fake_sherlock):
+        merged = social_client._get_all_sites()
+
+    # Our own local LinkedIn/Instagram entries (no headers/url_probe) must
+    # have been replaced by Sherlock's, not merely supplemented.
+    assert merged["LinkedIn"]["headers"] == {"User-Agent": "Chrome/120.0"}
+    assert merged["LinkedIn"]["regex_check"] == "^[a-zA-Z0-9]{3,100}$"
+    assert merged["Instagram"]["url_probe"] == "https://imginn.com/{username}"
+
+
+def test_get_all_sites_leaves_non_preferred_overlaps_untouched():
+    # GitHub isn't in _PREFER_SHERLOCK — our own (identical, here
+    # deliberately different to prove it) local definition must win.
+    fake_sherlock = {"GitHub": {"url": "https://sherlock-would-use-this.example/{}", "errorType": "status_code"}}
+    with patch.object(social_client, "_load_sherlock_sites", return_value=fake_sherlock):
+        merged = social_client._get_all_sites()
+    assert merged["GitHub"]["url"] == social_client.SITES["GitHub"]["url"]
+
+
+# ── _check_site: regexCheck gate + per-site headers ─────────────────────────
+
+def test_check_site_skips_request_for_regex_invalid_username():
+    defn = {"url": "https://example.test/{username}", "error_type": "status_code",
+            "error_code": 404, "regex_check": r"^[a-zA-Z0-9_]{1,15}$"}
+    with patch.object(social_client, "get_http_client") as mock_get_client:
+        result = _check_site("Twitter", defn, "a-username-that-is-way-too-long-for-twitter")
+
+    mock_get_client.assert_not_called()
+    assert result["found"] is False
+    assert result["status"] == "invalid_username"
+
+
+def test_check_site_makes_request_for_regex_valid_username():
+    response = _FakeResponse('<html></html>', status_code=404, url="https://example.test/johndoe")
+    defn = {"url": "https://example.test/{username}", "error_type": "status_code",
+            "error_code": 404, "regex_check": r"^[a-zA-Z0-9_]{1,15}$"}
+    with patch.object(social_client, "get_http_client", _client_factory(response)):
+        result = _check_site("Twitter", defn, "johndoe")
+    assert result["status"] == "not_found"
+
+
+def test_check_site_sends_per_site_headers_merged_with_defaults():
+    captured = {}
+
+    class _CapturingClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url, **kwargs):
+            captured.update(kwargs.get("headers", {}))
+            return _FakeResponse("<html></html>", status_code=404, url=url)
+
+    defn = {"url": "https://example.test/{username}", "error_type": "status_code",
+            "error_code": 404, "headers": {"User-Agent": "Custom/1.0"}}
+    with patch.object(social_client, "get_http_client", lambda timeout=10: _CapturingClient()):
+        _check_site("Example", defn, "johndoe")
+
+    assert captured["User-Agent"] == "Custom/1.0"
+    # Our own default headers (e.g. Accept-Language) are still present
+    # for anything the per-site override doesn't specify.
+    assert "Accept-Language" in captured
+
+
+# ── Removed entries: dead/mismatched checks that should no longer exist ────
+
+def test_removed_stale_or_mismatched_local_entries():
+    for name in ("Twitter/X", "Coinbase", "Battlenet", "OkCupid",
+                 "PlentyOfFish", "Zoosk", "Badoo", "Tagged", "Etherscan"):
+        assert name not in social_client.SITES, f"{name} should have been removed"

@@ -113,15 +113,50 @@ def _sherlock_to_defn(entry: dict) -> dict | None:
     if url_probe:
         defn["url_probe"] = url_probe.replace("{}", "{username}")
 
+    # Sherlock's own per-site headers (e.g. a modern browser UA a bot-wall
+    # is less likely to challenge) and regexCheck (skip a site entirely
+    # when the username can't be legal there, e.g. Twitter's 15-char
+    # limit) — both dropped by earlier versions of this conversion.
+    headers = entry.get("headers")
+    if isinstance(headers, dict) and headers:
+        defn["headers"] = dict(headers)
+
+    regex_check = entry.get("regexCheck")
+    if regex_check:
+        defn["regex_check"] = regex_check
+
     return defn
 
 
+# Platforms where Sherlock's actively-maintained definition uses a
+# meaningfully better anti-bot technique than this app's own long-frozen
+# local entry — confirmed by diffing the two, not assumed:
+#   - LinkedIn: a realistic Chrome UA + Accept-Language/Accept headers and
+#     a regexCheck, vs. our generic UA and no validation.
+#   - Instagram: probes imginn.com (a read-only Instagram mirror) instead
+#     of instagram.com directly, sidestepping Instagram's own bot-wall.
+#   - TikTok: matches a precise JSON status-code string instead of a body
+#     substring that TikTok's anti-bot page may not always contain.
+#   - Snapchat: adds a regexCheck for Snapchat's actual username shape.
+#   - Pinterest: probes Pinterest's own oEmbed API (meant for machine
+#     consumption) instead of scraping the HTML profile page.
+# Every other local entry is left exactly as-is; Sherlock's own "Twitter"
+# entry (probing a Nitter mirror of x.com) is unaffected by this set since
+# it doesn't collide with our differently-named "Twitter/X" — that local
+# entry is instead just removed below, since Sherlock's already fully
+# covers it under its own name.
+_PREFER_SHERLOCK = {"linkedin", "instagram", "tiktok", "snapchat", "pinterest"}
+
+
 def _get_all_sites() -> dict[str, dict]:
-    """Return merged site dict: local SITES take priority over Sherlock entries."""
+    """Return merged site dict: local SITES take priority over Sherlock
+    entries, except for the _PREFER_SHERLOCK names above, where Sherlock's
+    actively-maintained anti-bot technique wins instead."""
     merged: dict[str, dict] = dict(SITES)
     sherlock_lower = {k.lower(): k for k in merged}
     for name, entry in _load_sherlock_sites().items():
-        if name.lower() in sherlock_lower:
+        name_lower = name.lower()
+        if name_lower in sherlock_lower and name_lower not in _PREFER_SHERLOCK:
             continue  # our definition takes priority
         defn = _sherlock_to_defn(entry)
         if defn:
@@ -140,11 +175,11 @@ SITES: dict[str, dict] = {
         "error_type": "status_code",
         "error_code": 404,
     },
-    "Twitter/X": {
-        "url": "https://twitter.com/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
+    # "Twitter/X" was removed here — Sherlock's own "Twitter" entry (merged
+    # in automatically, see _get_all_sites()) already covers this site
+    # under a different name, probing a Nitter mirror of x.com instead of
+    # x.com directly, which is far less likely to hit a bot-wall than this
+    # local entry's plain twitter.com request ever was.
     "Instagram": {
         "url": "https://www.instagram.com/{username}/",
         "error_type": "message",
@@ -528,11 +563,9 @@ SITES: dict[str, dict] = {
         "error_type": "status_code",
         "error_code": 404,
     },
-    "Battlenet": {
-        "url": "https://battle.net/profile/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
+    # "Battlenet" was removed here — a real Battle.net profile needs a
+    # BattleTag with a "#1234" discriminator, not a bare username, so
+    # this check could never correctly resolve on a plain username input.
     "Ubisoft": {
         "url": "https://www.ubisoft.com/en-us/playstats/uplay/{username}",
         "error_type": "status_code",
@@ -874,31 +907,14 @@ SITES: dict[str, dict] = {
         "error_type": "message",
         "error_msg": "page you requested does not exist",
     },
-    "Tagged": {
-        "url": "https://www.tagged.com/profile/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
-    "Badoo": {
-        "url": "https://badoo.com/profile/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
-    "OkCupid": {
-        "url": "https://www.okcupid.com/profile/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
-    "PlentyOfFish": {
-        "url": "https://www.pof.com/viewprofile.aspx?profile_id={username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
-    "Zoosk": {
-        "url": "https://www.zoosk.com/date/user/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
+    # "Tagged", "Badoo", "OkCupid", "PlentyOfFish", and "Zoosk" were
+    # removed here — mainstream dating platforms have gated profile
+    # viewing behind a login wall for years now, so a plain unauthenticated
+    # request to any of these just returns the same generic page
+    # regardless of whether the username exists, with no reliable
+    # not-found signal to detect on. Sherlock's own current site list
+    # (app/data/sherlock_sites.json) has independently dropped all five
+    # for the same reason.
     "Amino": {
         "url": "https://aminoapps.com/u/{username}",
         "error_type": "status_code",
@@ -1101,16 +1117,14 @@ SITES: dict[str, dict] = {
         "error_type": "status_code",
         "error_code": 404,
     },
-    "Coinbase": {
-        "url": "https://www.coinbase.com/{username}",
-        "error_type": "status_code",
-        "error_code": 404,
-    },
-    "Etherscan": {
-        "url": "https://etherscan.io/address/{username}",
-        "error_type": "message",
-        "error_msg": "not found",
-    },
+    # "Coinbase" was removed here — Coinbase discontinued public
+    # username-profile pages years ago; this URL now appears to redirect
+    # to a generic page for any input rather than a real 404, which would
+    # make every username falsely report as "found".
+    # "Etherscan" was removed here — it looks up a blockchain wallet
+    # address, not a chosen username, so it never fit this tool's
+    # username-enumeration pattern (a wallet lookup belongs with the
+    # Crypto Wallet tool, not Social Search).
 
     # ------------------------------------------------------------------ #
     #  STREAMING PLATFORMS                                                #
@@ -1656,18 +1670,30 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
     url_template = defn["url"]
     url = url_template.replace("{username}", username)
 
-    # Sherlock urlProbe: a separate URL used for the HTTP check
-    probe_template = defn.get("url_probe", url_template)
-    probe_url = probe_template.replace("{username}", username)
-
     result = {
         "site": name, "url": url, "found": False,
         "status": "error", "status_code": None, "confidence": "low",
     }
 
+    # Sherlock regexCheck: this username can't legally exist on this site
+    # (e.g. too long, illegal characters) — skip the request entirely
+    # rather than report a misleading not_found for an unwinnable check.
+    regex_check = defn.get("regex_check")
+    if regex_check and not re.match(regex_check, username):
+        result["status"] = "invalid_username"
+        return result
+
+    # Sherlock urlProbe: a separate URL used for the HTTP check
+    probe_template = defn.get("url_probe", url_template)
+    probe_url = probe_template.replace("{username}", username)
+
+    # Sherlock per-site headers (e.g. a browser-realistic UA some sites
+    # are less likely to bot-wall) layer on top of our defaults.
+    headers = {**_HEADERS, **defn.get("headers", {})}
+
     try:
         with get_http_client(timeout=10) as client:
-            r = client.get(probe_url, headers=_HEADERS, follow_redirects=True)
+            r = client.get(probe_url, headers=headers, follow_redirects=True)
         result["status_code"] = r.status_code
 
         error_type = defn.get("error_type", "status_code")
