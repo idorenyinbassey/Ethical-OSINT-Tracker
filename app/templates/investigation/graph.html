@@ -11,6 +11,8 @@
   Select a case above to view its relationship graph.
 </div>
 
+<div id="graph-pivot-panel" class="hidden mb-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg"></div>
+
 <div id="graph-view" class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden" style="height:600px;position:relative;">
   <div id="graph-container" style="width: 100%; height: 100%;"></div>
   <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
@@ -145,6 +147,26 @@ function makeEdge(e) {
 
 const CASE_IDS = new URLSearchParams(window.location.search).getAll("case_id").filter(Boolean);
 
+// Entity hub type -> the tool that investigates that kind of value, for
+// click-to-pivot ("one investigation leading to another"). Mirrors the
+// same etype set _extract_entities() (app/routes/investigation.py)
+// registers on the graph.
+const ENTITY_TOOL_MAP = {
+  ip:       { endpoint: "{{ url_for('investigation.ip') }}", label: "IP Lookup" },
+  email:    { endpoint: "{{ url_for('investigation.email') }}", label: "Email Analysis" },
+  domain:   { endpoint: "{{ url_for('investigation.domain') }}", label: "Domain WHOIS" },
+  phone:    { endpoint: "{{ url_for('investigation.phone') }}", label: "Phone Lookup" },
+  username: { endpoint: "{{ url_for('investigation.social') }}", label: "Social Search" },
+  crypto:   { endpoint: "{{ url_for('investigation.crypto') }}", label: "Crypto Lookup" },
+  org:      { endpoint: "{{ url_for('investigation.company') }}", label: "Company Registry" },
+};
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 // Set by report_snapshot.py's headless capture to know when it's safe to
 // screenshot — true once the graph has stabilized (or we know there's no
 // data), with __graphNodeCount telling the capture whether to bother
@@ -184,14 +206,16 @@ fetch(GRAPH_DATA_URL)
         color: colors, font: colors.font,
         shape: n.group === "case" ? "diamond" : isEntity ? "star" : "dot",
         size: n.group === "case" ? 22 : isEntity ? 18 : 12,
+        is_entity: isEntity, group: n.group, value: n.value,
       };
     });
 
     const edges = data.edges.map(makeEdge);
 
+    const nodeDataSet = new vis.DataSet(nodes);
     const container = document.getElementById("graph-container");
     const network = new vis.Network(container,
-      { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+      { nodes: nodeDataSet, edges: new vis.DataSet(edges) },
       {
         physics: {
           stabilization: { iterations: 250, fit: true },
@@ -212,6 +236,27 @@ fetch(GRAPH_DATA_URL)
     network.once("stabilizationIterationsDone", () => {
       network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
       setTimeout(() => { window.__graphReady = true; }, 800);
+    });
+
+    // Click an entity hub (star node — a value shared across 2+
+    // investigations) to pivot into a follow-up scan on that value with
+    // the matching tool ("one investigation leading to another").
+    const pivotPanel = document.getElementById("graph-pivot-panel");
+    network.on("click", (params) => {
+      if (!params.nodes.length) { pivotPanel.classList.add("hidden"); return; }
+      const node = nodeDataSet.get(params.nodes[0]);
+      const etype = node && node.is_entity ? node.group.replace("entity_", "") : null;
+      const tool = etype ? ENTITY_TOOL_MAP[etype] : null;
+      if (!node || !node.is_entity || !tool) {
+        pivotPanel.classList.add("hidden");
+        return;
+      }
+      const qs = new URLSearchParams({ query: node.value });
+      if (CASE_IDS.length) qs.set("case_id", CASE_IDS[0]);
+      pivotPanel.innerHTML = `<a href="${tool.endpoint}?${qs.toString()}" ` +
+        `class="text-indigo-700 dark:text-indigo-300 hover:underline text-sm font-medium">` +
+        `Investigate "${escapeHtml(node.value)}" with ${tool.label} →</a>`;
+      pivotPanel.classList.remove("hidden");
     });
   })
   .catch(err => {

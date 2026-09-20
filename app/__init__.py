@@ -1,5 +1,7 @@
+import ipaddress
 import json
 import os
+import re
 from flask import Flask
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
@@ -173,9 +175,56 @@ def create_app():
         except (ValueError, TypeError):
             return None
 
+    _EMAIL_FULL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$")
+    # Last label must be letters-only (a real TLD is never purely numeric),
+    # which also naturally excludes malformed/non-IPv4 dotted-number
+    # strings like "123.456.789.0" from being misread as a domain.
+    _DOMAIN_FULL_RE = re.compile(
+        r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
+    )
+    _PHONE_FULL_RE = re.compile(r"^\+?[0-9][0-9\s\-()]{5,17}[0-9]$")
+
+    def _investigate_tool_for(value, field_name: str = ""):
+        """If `value` looks like an email, IP, domain, or phone number,
+        return (endpoint, label) for the tool that investigates it — lets
+        the scan viewer / tool history offer an "Investigate with X ->"
+        link next to that value, so a value discovered in one result can
+        lead straight into a follow-up scan with another tool ("one
+        investigation leading to another"). Returns None when nothing
+        recognized matches, which is the common case for most values
+        (a display name, a status code, a boolean, ...).
+
+        Deliberately conservative — a missed pivot just means one fewer
+        convenience link, whereas a wrong one sends the user to the wrong
+        tool with a nonsense prefilled query. Phone detection in
+        particular requires either visible phone punctuation (+, -, (),
+        a space) or an explicit "phone"-hinting field name for a bare
+        digit string, mirroring is_image_value's field-name-hint
+        tie-breaker convention above.
+        """
+        if not isinstance(value, str) or not value:
+            return None
+        v = value.strip()
+        if _EMAIL_FULL_RE.match(v):
+            return ("investigation.email", "Email Analysis")
+        try:
+            ipaddress.ip_address(v)
+            return ("investigation.ip", "IP Lookup")
+        except ValueError:
+            pass
+        if _DOMAIN_FULL_RE.match(v):
+            return ("investigation.domain", "Domain WHOIS")
+        digits = re.sub(r"\D", "", v)
+        if 7 <= len(digits) <= 15 and _PHONE_FULL_RE.match(v):
+            has_punctuation = any(ch in v for ch in "+-() ")
+            if has_punctuation or (field_name and "phone" in field_name.lower()):
+                return ("investigation.phone", "Phone Lookup")
+        return None
+
     app.jinja_env.filters["is_image_value"] = _is_image_value
     app.jinja_env.filters["is_verbose_value"] = _is_verbose_value
     app.jinja_env.filters["from_json"] = _from_json
+    app.jinja_env.filters["investigate_tool_for"] = _investigate_tool_for
 
     @app.context_processor
     def inject_active_case():

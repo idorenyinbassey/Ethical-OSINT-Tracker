@@ -34,7 +34,7 @@
     {% elif inv.kind == 'breach' %}
     <p class="text-sm text-gray-500 dark:text-gray-400">Breach data unavailable for this entry.</p>
     {% else %}
-    {{ rm.render_value(result) }}
+    {{ rm.render_value(result, case_id=case.id) }}
     {% endif %}
   </div>
 </div>

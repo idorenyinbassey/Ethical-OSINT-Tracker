@@ -28,6 +28,7 @@ def init_db():
     from app.models.tracking_hit import TrackingHit  # noqa: F401
     from app.models.audit_log import AuditLog  # noqa: F401
     from app.models.api_key import ApiKey  # noqa: F401
+    from app.models.geocode_cache import GeocodeCache  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
     # Idempotent column additions for existing tables

@@ -4,16 +4,23 @@
 {% block content %}
 <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Location Intelligence Map</h1>
 <p class="text-sm text-yellow-600 dark:text-yellow-500 mb-4">
-  Geo-tagged data from IP lookups and image EXIF GPS coordinates, scoped to the case(s) selected below.
-  Powered by OpenStreetMap + Leaflet.js — no data leaves your browser.
+  Geo-tagged data from IP lookups, image EXIF GPS coordinates, and geocoded Company Registry addresses,
+  scoped to the case(s) selected below. Powered by OpenStreetMap + Leaflet.js — no data leaves your browser.
 </p>
 
 {% include "investigation/_case_picker.html" %}
 
 <!-- Legend -->
-<div class="flex flex-wrap gap-4 mb-4 text-xs text-gray-600 dark:text-gray-300">
+<div class="flex flex-wrap gap-4 mb-2 text-xs text-gray-600 dark:text-gray-300">
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 inline-block"></span> IP Geolocation</span>
   <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Image GPS (EXIF)</span>
+  <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> Company Registry (geocoded)</span>
+</div>
+<div class="flex flex-wrap gap-4 mb-4 text-xs text-gray-600 dark:text-gray-300">
+  <span class="font-semibold text-gray-700 dark:text-gray-200">Confidence:</span>
+  <span class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded-full text-white text-[10px] font-semibold" style="background:#16a34a">Exact</span> camera GPS reading</span>
+  <span class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded-full text-white text-[10px] font-semibold" style="background:#2563eb">Approximate</span> IP-based, city/region-level</span>
+  <span class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded-full text-white text-[10px] font-semibold" style="background:#d97706">Suspected</span> a stated address, unverified</span>
 </div>
 
 <div id="map-empty-state" class="hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400">
@@ -37,7 +44,12 @@
 <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 
 <script>
-const KIND_COLOR = { ip: "#3b82f6", file_forensics: "#22c55e" };
+const KIND_COLOR = { ip: "#3b82f6", file_forensics: "#22c55e", company: "#f59e0b" };
+const CONFIDENCE_STYLE = {
+  exact:       { label: "Exact",       badge: "#16a34a", borderStyle: "solid" },
+  approximate: { label: "Approximate", badge: "#2563eb", borderStyle: "dashed" },
+  suspected:   { label: "Suspected",   badge: "#d97706", borderStyle: "dotted" },
+};
 const CASE_IDS = new URLSearchParams(window.location.search).getAll("case_id").filter(Boolean);
 
 // Set by report_snapshot.py's headless capture to know when it's safe to
@@ -87,17 +99,19 @@ fetch(MAP_DATA_URL)
     const bounds = [];
     markers.forEach(m => {
       const color = KIND_COLOR[m.kind] || "#6366f1";
+      const conf = CONFIDENCE_STYLE[m.confidence] || { label: "Unknown", badge: "#6b7280", borderStyle: "solid" };
       const icon = L.divIcon({
         className: "",
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px ${conf.borderStyle} white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
       });
       const marker = L.marker([m.lat, m.lon], { icon });
       const caseLine = m.case_name ? `<span style="color:#6366f1;font-weight:600">📁 ${m.case_name}</span><br>` : "";
       const toolLine = `<span style="color:#6b7280;font-size:11px">🔧 ${m.tool}</span><br>`;
+      const confBadge = `<span style="display:inline-block;padding:1px 6px;border-radius:9999px;font-size:10px;font-weight:600;color:#fff;background:${conf.badge}">${conf.label}</span>`;
       marker.bindPopup(
-        `${caseLine}${toolLine}<strong>${m.label || m.kind}</strong><br>${m.info || ""}<br><small style="color:#9ca3af">${m.date}</small>`
+        `${caseLine}${toolLine}<strong>${m.label || m.kind}</strong> ${confBadge}<br>${m.info || ""}<br><small style="color:#9ca3af">${m.date}</small>`
       );
       marker.addTo(map);
       bounds.push([m.lat, m.lon]);

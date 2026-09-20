@@ -39,7 +39,7 @@ first, excluding whichever one is shown as `result` above) and `result`
       {% elif h.kind == 'breach' %}
       <p class="text-xs text-gray-400 italic">Breach data unavailable for this entry.</p>
       {% else %}
-      {{ rm.render_value(parsed) }}
+      {{ rm.render_value(parsed, case_id=h.case_id) }}
       {% endif %}
     </div>
     {% endfor %}
