@@ -108,15 +108,23 @@ Platforms include: Twitter/X, GitHub, Instagram, Reddit, LinkedIn, TikTok, Teleg
 
 ### Company Registry (`/investigate/company`)
 
-Searches 5 jurisdictions in parallel — no keys required except for UK Companies House:
+Searches 11 jurisdictions in parallel:
 
 | Jurisdiction | Source |
 |---|---|
 | United States | SEC EDGAR |
-| United Kingdom | Companies House (optional key) |
-| Nigeria | CAC portal |
+| United Kingdom | Companies House (optional free key) |
+| Nigeria | CAC (name, RC number, address, city, state, email) |
 | Canada | Corporations Canada |
 | Cyprus | DRCOR (manual link) |
+| Singapore | ACRA (manual link) |
+| Estonia | e-Business Register (manual link) |
+| Ireland | CRO (manual link) |
+| Brazil | Receita Federal / CNPJ (manual link) |
+| Australia | ABN Lookup (optional free key) |
+| New Zealand | NZBN (optional free key) |
+
+Hits with a structured address (currently UK and Nigeria) are geocoded onto the Location Map as a "suspected" marker, and registration numbers/emails feed the Relationship Graph so they can hub-link with other investigations.
 
 ### Phone Lookup (`/investigate/phone`)
 

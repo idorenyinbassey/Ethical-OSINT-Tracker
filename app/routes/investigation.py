@@ -687,9 +687,10 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
         if query:
             _reg("org", query[:40])
         # DuckDuckGo's Instant Answer "Infobox" is the only company-registry
-        # source with genuine contact fields — none of the 5 statutory
+        # source with genuine contact fields — none of the statutory
         # registries (SEC EDGAR, UK Companies House, CAC Nigeria, Corporations
-        # Canada, Cyprus DRCOR) expose officer emails/phones.
+        # Canada, Cyprus DRCOR, Singapore, Estonia, Ireland, Brazil,
+        # Australia, New Zealand) reliably expose officer emails/phones.
         ddg_info = ((data.get("results") or {}).get("duckduckgo") or {}).get("info", {})
         if ddg_info.get("email"):
             _reg("email", ddg_info["email"])
@@ -699,6 +700,27 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
                 _reg("domain", domain)
         if ddg_info.get("phone"):
             _reg("phone", ddg_info["phone"])
+        # Every statutory registry's hits share a common shape when
+        # present: a "found" list of dicts. Register each hit's
+        # registration-number-equivalent field and email (when present)
+        # as entities, so e.g. a CAC RC number or a registry-listed email
+        # can hub-link with another investigation that references it —
+        # covers Nigeria + all newly-added registries with no per-country
+        # branch (only UK/Canada/Nigeria/Australia/New Zealand carry a
+        # number field today; Singapore/Estonia/Ireland/Brazil are
+        # currently manual-referral-only with no structured hits).
+        for reg in (data.get("results") or {}).values():
+            if not isinstance(reg, dict):
+                continue
+            for hit in reg.get("found") or []:
+                if not isinstance(hit, dict):
+                    continue
+                number = (hit.get("rc_number") or hit.get("number")
+                          or hit.get("abn") or hit.get("nzbn"))
+                if number:
+                    _reg("company_number", number)
+                if hit.get("email"):
+                    _reg("email", hit["email"])
 
 
 @investigation_bp.route("/graph/data")
@@ -959,7 +981,13 @@ def company():
             from app.repositories.api_config_repository import get_by_service
             uk_cfg = get_by_service("companies_house")
             uk_key = uk_cfg.api_key if uk_cfg and uk_cfg.is_enabled else None
-            result = company_client.search_companies(name, uk_api_key=uk_key)
+            au_cfg = get_by_service("abn_lookup")
+            au_key = au_cfg.api_key if au_cfg and au_cfg.is_enabled else None
+            nz_cfg = get_by_service("nzbn")
+            nz_key = nz_cfg.api_key if nz_cfg and nz_cfg.is_enabled else None
+            result = company_client.search_companies(
+                name, uk_api_key=uk_key, au_api_key=au_key, nz_api_key=nz_key,
+            )
 
             reg_results = result.get("results", {})
             has_confirmed = any(isinstance(v.get("found"), list) and v["found"] for v in reg_results.values())
@@ -1166,29 +1194,33 @@ def map_data():
             continue
 
         elif inv.kind == "company":
-            # Only UK Companies House hits carry a structured, free-text
-            # address today (confirmed in company.html) — geocoded via
-            # Nominatim (free, no key, cached; app.services.geocode_client)
-            # into a "suspected" marker, since it's the registry's stated
-            # address, not independently verified. Capped at the first 3
-            # hits per investigation so one page load can't trigger an
-            # unbounded run of geocoding requests.
+            # Any registry's hits carrying a structured, free-text address
+            # (UK, Nigeria, and any future registry that returns one) get
+            # geocoded via Nominatim (free, no key, cached;
+            # app.services.geocode_client) into a "suspected" marker, since
+            # it's the registry's stated address, not independently
+            # verified. Capped at the first 3 hits per registry so one page
+            # load can't trigger an unbounded run of geocoding requests.
             from app.services import geocode_client
-            uk_hits = ((data.get("results") or {}).get("uk") or {}).get("found") or []
-            for hit in uk_hits[:3]:
-                address = (hit.get("address") or "").strip()
-                if not address:
+            for reg in (data.get("results") or {}).values():
+                if not isinstance(reg, dict):
                     continue
-                geocoded = geocode_client.geocode(address)
-                if not geocoded:
-                    continue
-                markers.append({
-                    "lat": geocoded["lat"], "lon": geocoded["lon"],
-                    "label": hit.get("name") or inv.query, "case_name": case_name,
-                    "tool": tool_label, "info": geocoded["display_name"] or address,
-                    "kind": inv.kind, "confidence": "suspected",
-                    "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
-                })
+                for hit in (reg.get("found") or [])[:3]:
+                    if not isinstance(hit, dict):
+                        continue
+                    address = (hit.get("address") or "").strip()
+                    if not address:
+                        continue
+                    geocoded = geocode_client.geocode(address)
+                    if not geocoded:
+                        continue
+                    markers.append({
+                        "lat": geocoded["lat"], "lon": geocoded["lon"],
+                        "label": hit.get("name") or inv.query, "case_name": case_name,
+                        "tool": tool_label, "info": geocoded["display_name"] or address,
+                        "kind": inv.kind, "confidence": "suspected",
+                        "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
+                    })
             continue
 
     return jsonify({"markers": markers})

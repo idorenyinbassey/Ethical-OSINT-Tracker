@@ -4,7 +4,8 @@
 {% block content %}
 <h1 class="text-2xl font-bold text-white mb-2">Company Registry Search</h1>
 <p class="text-sm text-yellow-500 mb-6">
-  Searches US EDGAR, UK Companies House, CAC Nigeria, and Canadian registries.
+  Searches US EDGAR, UK Companies House, CAC Nigeria, Canada, Cyprus, Singapore,
+  Estonia, Ireland, Brazil, Australia, and New Zealand registries.
   Only search companies you are authorised to investigate.
 </p>
 
@@ -245,6 +246,9 @@
                   <th class="pb-2 text-left text-xs text-gray-400 uppercase">RC Number</th>
                   <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
                   <th class="pb-2 text-left text-xs text-gray-400 uppercase">Type</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Address</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">City / State</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Email</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-800">
@@ -253,7 +257,14 @@
                     <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
                     <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.rc_number or '—' }}</td>
                     <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.status or '—' }}</td>
-                    <td class="py-2 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.address or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ [item.city, item.state] | select | join(', ') or '—' }}</td>
+                    <td class="py-2 text-gray-400 text-xs">
+                      {% if item.email %}
+                        <a href="mailto:{{ item.email }}" class="text-indigo-400 hover:text-indigo-300">{{ item.email }}</a>
+                      {% else %}—{% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -330,11 +341,134 @@
         </div>
       </div>
 
+      {# ── Manual-referral-only registries: Singapore, Estonia, Ireland, Brazil ── #}
+      {% for reg_key in ["singapore", "estonia", "ireland", "brazil"] %}
+        {% set reg = result.results[reg_key] %}
+        {% if reg %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <span class="text-sm font-semibold text-white">{{ reg.source }}</span>
+          </div>
+          <div class="p-4">
+            {% if reg.error %}
+              <p class="text-red-400 text-sm">{{ reg.error }}</p>
+            {% endif %}
+            {% if reg.note %}
+              <p class="text-gray-400 text-sm">{{ reg.note }}
+                {% if reg.manual_url %}
+                  <a href="{{ reg.manual_url }}" target="_blank" rel="noopener noreferrer"
+                     class="text-indigo-400 hover:text-indigo-300 underline ml-1">Search manually</a>
+                {% endif %}
+              </p>
+            {% elif not reg.error %}
+              <p class="text-gray-500 text-sm">No results found.</p>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+
+      {# ── Australia ABN Lookup ── #}
+      {% set au = result.results.australia %}
+      {% if au %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ au.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if au.error %}
+            <p class="text-red-400 text-sm">{{ au.error }}</p>
+          {% endif %}
+          {% if au.note %}
+            <p class="text-gray-400 text-sm mb-2">{{ au.note }}
+              {% if au.manual_url %}
+                <a href="{{ au.manual_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-400 hover:text-indigo-300 underline">Search manually</a>
+              {% endif %}
+            </p>
+          {% endif %}
+          {% if au.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Name</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">ABN</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Type</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in au.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.abn or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.status or '—' }}</td>
+                    <td class="py-2 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% elif not au.error and not au.note %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── New Zealand NZBN ── #}
+      {% set nz = result.results.new_zealand %}
+      {% if nz %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800">
+          <span class="text-sm font-semibold text-white">{{ nz.source }}</span>
+        </div>
+        <div class="p-4">
+          {% if nz.error %}
+            <p class="text-red-400 text-sm">{{ nz.error }}</p>
+          {% endif %}
+          {% if nz.note %}
+            <p class="text-gray-400 text-sm mb-2">{{ nz.note }}
+              {% if nz.manual_url %}
+                <a href="{{ nz.manual_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-400 hover:text-indigo-300 underline">Search manually</a>
+              {% endif %}
+            </p>
+          {% endif %}
+          {% if nz.found %}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800">
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Name</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">NZBN</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Status</th>
+                  <th class="pb-2 text-left text-xs text-gray-400 uppercase">Type</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                {% for item in nz.found %}
+                  <tr class="hover:bg-gray-800/50">
+                    <td class="py-2 pr-3 text-white">{{ item.name or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-300 font-mono text-xs">{{ item.nzbn or '—' }}</td>
+                    <td class="py-2 pr-3 text-gray-400 text-xs">{{ item.status or '—' }}</td>
+                    <td class="py-2 text-gray-400 text-xs">{{ item.type or '—' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% elif not nz.error and not nz.note %}
+            <p class="text-gray-500 text-sm">No results found.</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
-        Select a case and enter a company name to search across five registries simultaneously.
+        Select a case and enter a company name to search across eleven registries simultaneously.
         <span class="block text-xs text-gray-600 mt-2">
-          US EDGAR and Canada require no API key. UK Companies House requires a key configured in Settings.
+          US EDGAR, CAC Nigeria, and Canada require no API key. UK Companies House, Australia ABN
+          Lookup, and New Zealand NZBN each accept an optional free key configured in Settings.
+          Singapore, Estonia, Ireland, Brazil, and Cyprus link out to search manually.
         </span>
       </div>
     {% endif %}

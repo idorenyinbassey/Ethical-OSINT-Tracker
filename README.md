@@ -31,7 +31,7 @@ Tools marked **zero-key** work without any API configuration out of the box.
 |------|-------------|---------------|
 | **Social Search** | Sherlock/Maigret-style username enumeration across **273+ platforms** — social networks, dev tools, gaming, art, music, Nigerian sites (Nairaland, Jobberman), NFT/crypto, Bluesky, Threads, HackerOne, TryHackMe, and more; concurrent via `ThreadPoolExecutor(12)` | Zero-key |
 | **Person Search** | Generates 12 curated investigative dork links (Google, LinkedIn, news, court records, Nairaland, SEC EDGAR officers, Scholar, Twitter) + up to 8 plausible username guesses | Zero-key |
-| **Company Registry** | Searches **5 jurisdictions in parallel**: US SEC EDGAR, UK Companies House, CAC Nigeria, Corporations Canada, Cyprus DRCOR | Zero-key (UK key optional) |
+| **Company Registry** | Searches **11 jurisdictions in parallel**: US SEC EDGAR, UK Companies House, CAC Nigeria, Corporations Canada, Cyprus DRCOR, Singapore ACRA, Estonia e-Business Register, Ireland CRO, Brazil CNPJ, Australia ABN Lookup, New Zealand NZBN | Zero-key (UK/AU/NZ keys optional) |
 | **Phone Lookup** | Carrier and country validation via NumVerify | Optional |
 | **IMEI Lookup** | Brand/model via a bundled 255k-entry offline TAC database (free, no key, never runs out); optional dash.imei.info key adds blacklist/stolen/warranty status | Zero-key |
 
@@ -326,7 +326,7 @@ Ethical-OSINT-Tracker/
 │   │   ├── hibp_client.py       # Have I Been Pwned + k-anonymity password check
 │   │   ├── hunter_client.py     # Hunter.io email verification
 │   │   ├── social_client.py     # 273-platform concurrent username search
-│   │   ├── company_client.py    # EDGAR + Companies House + CAC + Canada + Cyprus
+│   │   ├── company_client.py    # EDGAR + Companies House + CAC + Canada + Cyprus + SG/EE/IE/BR/AU/NZ
 │   │   ├── person_client.py     # Name dork links + username guesses
 │   │   ├── vehicle_client.py    # NHTSA vPIC VIN decoder
 │   │   ├── file_forensics_client.py
