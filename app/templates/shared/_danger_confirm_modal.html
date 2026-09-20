@@ -1,0 +1,34 @@
+{#
+Shared admin-password confirmation dialog for any irreversible admin
+action (case delete/close, audit log clear) — see
+app/utils/authz.py's verify_current_password() and each route's own
+gate. Included once per page; each trigger button calls
+openDangerConfirm(actionUrl, title, message) instead of a plain JS
+confirm(), so the admin has to re-enter their own password before the
+POST actually fires.
+#}
+<dialog id="danger-confirm-modal" class="rounded-xl border border-red-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-white p-0 max-w-md w-full backdrop:bg-black/60">
+  <form method="post" id="danger-confirm-form" class="p-5 space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 class="text-lg font-semibold text-red-500 dark:text-red-400" id="danger-confirm-title">Are you sure?</h2>
+    <p class="text-sm text-gray-600 dark:text-gray-300" id="danger-confirm-message"></p>
+    <div>
+      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Confirm your password</label>
+      <input type="password" name="password" required autocomplete="current-password"
+        class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-red-500">
+    </div>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" class="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white"
+        onclick="document.getElementById('danger-confirm-modal').close()">Cancel</button>
+      <button type="submit" class="px-4 py-2 text-sm rounded-lg bg-red-700 hover:bg-red-600 text-white font-medium">Yes, continue</button>
+    </div>
+  </form>
+</dialog>
+<script>
+  function openDangerConfirm(actionUrl, title, message) {
+    document.getElementById('danger-confirm-form').action = actionUrl;
+    document.getElementById('danger-confirm-title').textContent = title;
+    document.getElementById('danger-confirm-message').textContent = message;
+    document.getElementById('danger-confirm-modal').showModal();
+  }
+</script>

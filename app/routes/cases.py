@@ -11,9 +11,18 @@ from app.repositories.case_note_repository import add_note, list_notes, delete_n
 from app.repositories.investigation_repository import list_by_case, find_related_cases, update_tags, create_investigation, get_investigation
 from app.repositories.team_repository import list_teams_for_user
 from app.services import report_exporter
-from app.utils.authz import can_access_case
+from app.utils.authz import can_access_case, verify_current_password
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
+
+
+def _current_password_matches(raw_password: str) -> bool:
+    """Re-verify the logged-in user's own password — required before a
+    case delete/close, which is now gated to admins only precisely
+    because it's an irreversible, cascading data wipe (see
+    app.utils.authz.verify_current_password)."""
+    from app.repositories.user_repository import get_by_id
+    return verify_current_password(get_by_id(current_user.id), raw_password or "")
 
 
 def _get_case_with_access(case_id: int, action: str = "read") -> dict | None:
@@ -99,7 +108,10 @@ def detail(case_id):
             related_cases.append({"case": related_case, "shared": corr["shared"]})
     threat_score = _compute_threat_score(investigations)
     can_edit = can_access_case(case, current_user, action="edit")
-    can_delete = can_access_case(case, current_user, action="delete")
+    # Deleting (and closing, which cascades to the same data wipe) is
+    # gated to site-wide admins only, regardless of case ownership —
+    # see app.utils.authz.can_access_case's module docstring.
+    can_delete = bool(getattr(current_user, "is_admin", False))
     my_teams = list_teams_for_user(current_user.id)
     # Whichever tool-type group was most recently touched should start open
     # by default — the rest stay collapsed so a case with many scans across
@@ -141,6 +153,22 @@ def edit(case_id):
             return render_template("cases/edit.html", case=case)
 
         was_closed = case.status == "closed"
+        closing_now = status == "closed" and not was_closed
+        # update_case() deletes the case's data (atomically, in the same
+        # transaction) on any transition into "closed" — including via
+        # this form's status dropdown, not just the dedicated Close
+        # button, so this transition needs the exact same admin+password
+        # gate as the dedicated delete/close routes, not just "edit"
+        # access. Reject the whole submission rather than silently
+        # dropping just the status change, so nothing is half-applied.
+        if closing_now:
+            if not getattr(current_user, "is_admin", False):
+                flash("Only an admin can close a case — it deletes the case's data.", "error")
+                return render_template("cases/edit.html", case=case)
+            if not _current_password_matches(request.form.get("password", "")):
+                flash("Incorrect password — case was not updated.", "error")
+                return render_template("cases/edit.html", case=case)
+
         update_case(
             case_id,
             title=title,
@@ -149,11 +177,7 @@ def edit(case_id):
             status=status,
             updated_at=datetime.datetime.utcnow(),
         )
-        # update_case() itself deletes the case's data (atomically, in the
-        # same transaction) on any transition into "closed" — including
-        # via this form's status dropdown, not just the dedicated Close
-        # button. Just audit-log it and adjust the flash message here.
-        if status == "closed" and not was_closed:
+        if closing_now:
             _audit_case_close(case_id, title)
             flash("Case updated, closed, and its data deleted.", "success")
         else:
@@ -170,8 +194,15 @@ def delete(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    if not can_access_case(case, current_user, action="delete"):
+    # Deleting a case is a permanent, cascading data wipe — gated to
+    # site-wide admins only, with the admin's own password re-entered,
+    # regardless of who owns the case. See app.utils.authz's module
+    # docstring for why this isn't a can_access_case("delete") check.
+    if not getattr(current_user, "is_admin", False):
         abort(403)
+    if not _current_password_matches(request.form.get("password", "")):
+        flash("Incorrect password — case was not deleted.", "error")
+        return redirect(url_for("cases.detail", case_id=case_id))
     title = case.title
     delete_case(case_id)
     from app.utils.audit import log as audit_log
@@ -442,8 +473,13 @@ def close_case(case_id):
     if not case:
         flash("Case not found.", "error")
         return redirect(url_for("cases.index"))
-    if not can_access_case(case, current_user, action="edit"):
+    # Closing cascades to delete the case's data exactly like the delete
+    # route — same admin+password gate, regardless of case ownership.
+    if not getattr(current_user, "is_admin", False):
         abort(403)
+    if not _current_password_matches(request.form.get("password", "")):
+        flash("Incorrect password — case was not closed.", "error")
+        return redirect(url_for("cases.detail", case_id=case_id))
     update_case(case_id, status="closed", updated_at=datetime.datetime.utcnow())
     _audit_case_close(case_id, case.title)
     flash(f"Case '{case.title}' has been closed and its data deleted.", "success")

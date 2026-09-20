@@ -84,12 +84,18 @@ def test_admin_role_can_edit_not_delete(app, user_a, user_b, case_of_a, team_a):
         assert can_access_case(shared, user_b, action="delete") is False
 
 
-def test_team_owner_role_has_full_access(app, user_a, user_b, case_of_a, team_a):
+def test_team_owner_role_has_edit_access_but_not_delete(app, user_a, user_b, case_of_a, team_a):
+    """Deleting/closing a case is admin-only site-wide now (see
+    app.utils.authz's module docstring) — not even a team "owner" role
+    grants it; can_access_case never returns True for action="delete"
+    for anyone, since that check has moved to a direct
+    current_user.is_admin check at the route level."""
     with app.app_context():
         add_team_member(team_a.id, user_b.id, role="owner")
     shared = _share(app, case_of_a, team_a)
     with app.app_context():
-        assert can_access_case(shared, user_b, action="delete") is True
+        assert can_access_case(shared, user_b, action="edit") is True
+        assert can_access_case(shared, user_b, action="delete") is False
 
 
 def test_outsider_denied_even_with_shared_case(app, user_a, user_b, case_of_a, team_a):

@@ -74,6 +74,17 @@ def _resolve_case_context() -> int | None:
     return case_id
 
 
+def _prefill_query() -> str:
+    """A GET-only ?query= param, used solely to prefill a tool's own
+    input field — e.g. an "Investigate with Email Analysis ->" pivot
+    link on an extracted value elsewhere lands here with that value
+    ready to run, rather than requiring it to be retyped. Never read on
+    POST, where request.form['query'] is the real submitted value."""
+    if request.method == "GET":
+        return request.args.get("query", "")
+    return ""
+
+
 @investigation_bp.before_request
 def _investigation_before():
     from flask_login import current_user
@@ -139,7 +150,7 @@ def ip():
 
     history = list_by_case_and_kind(case_id, "ip", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/ip.html", cases=cases, result=result,
-                           history=history, selected_case_id=case_id)
+                           history=history, selected_case_id=case_id, prefill_query=_prefill_query())
 
 
 # ── Domain WHOIS ──────────────────────────────────────────────────────────────
@@ -167,7 +178,7 @@ def domain():
 
     history = list_by_case_and_kind(case_id, "domain", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/domain.html", cases=cases, result=result,
-                           history=history, selected_case_id=case_id)
+                           history=history, selected_case_id=case_id, prefill_query=_prefill_query())
 
 
 # ── Subdomain Scanner ─────────────────────────────────────────────────────────
@@ -255,7 +266,7 @@ def email():
 
     history = list_by_case_and_kind(case_id, "email", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/email.html", cases=cases, result=result,
-                           history=history, selected_case_id=case_id)
+                           history=history, selected_case_id=case_id, prefill_query=_prefill_query())
 
 
 # ── Email Header Analyser ─────────────────────────────────────────────────────
@@ -346,7 +357,7 @@ def phone():
 
     history = list_by_case_and_kind(case_id, "phone", exclude_id=inv.id if inv else None) if case_id else []
     return render_template("investigation/phone.html", cases=cases, result=result,
-                           history=history, selected_case_id=case_id)
+                           history=history, selected_case_id=case_id, prefill_query=_prefill_query())
 
 
 # ── MAC Vendor Lookup ─────────────────────────────────────────────────────────
@@ -900,6 +911,10 @@ def graph_data():
             "group": f"entity_{etype}",
             "title": f"Shared {etype}: {evalue}\nLinked to {len(inv_ids)} investigations",
             "is_entity": True,
+            # Full, untruncated value — "label" above is cut to 24 chars for
+            # display, but a click-to-pivot link (graph.html) needs the real
+            # value to prefill a follow-up tool's query with.
+            "value": evalue,
         })
         for inv_node_id in inv_ids:
             edges.append({
@@ -1105,7 +1120,6 @@ def map_data():
         except Exception:
             continue
 
-        lat = lon = info = None
         case_name = case_lookup.get(inv.case_id, "") if inv.case_id else ""
         tool_label = _KIND_LABEL.get(inv.kind, inv.kind.replace("_", " ").title())
 
@@ -1113,35 +1127,69 @@ def map_data():
             geo = data.get("geo") or {}
             lat = geo.get("lat")
             lon = geo.get("lon")
-            if lat is not None and lon is not None:
-                city = geo.get("city", "")
-                country = geo.get("country", "")
-                isp = geo.get("isp", "")
-                info = f"{city}, {country}" + (f"<br>ISP: {isp}" if isp else "")
+            if lat is None or lon is None:
+                continue
+            city = geo.get("city", "")
+            country = geo.get("country", "")
+            isp = geo.get("isp", "")
+            info = f"{city}, {country}" + (f"<br>ISP: {isp}" if isp else "")
+            markers.append({
+                "lat": lat, "lon": lon, "label": inv.query, "case_name": case_name,
+                "tool": tool_label, "info": info, "kind": inv.kind,
+                # IP geolocation is city/region-level at best — never a
+                # confirmed physical location.
+                "confidence": "approximate",
+                "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
+            })
+            continue
 
         elif inv.kind == "file_forensics":
             meta = data.get("metadata") or {}
             coords = meta.get("GPS_Coordinates")
-            if coords and isinstance(coords, str) and "," in coords:
-                try:
-                    parts = coords.split(",")
-                    lat = float(parts[0].strip())
-                    lon = float(parts[1].strip())
-                    info = (data.get("location") or meta.get("GPS_Location") or coords)
-                except (ValueError, IndexError):
-                    pass
-
-        if lat is not None and lon is not None:  # explicit None check — 0.0 is a valid coordinate
+            if not (coords and isinstance(coords, str) and "," in coords):
+                continue
+            try:
+                parts = coords.split(",")
+                lat = float(parts[0].strip())
+                lon = float(parts[1].strip())
+            except (ValueError, IndexError):
+                continue
+            info = (data.get("location") or meta.get("GPS_Location") or coords)
             markers.append({
-                "lat": lat,
-                "lon": lon,
-                "label": inv.query,
-                "case_name": case_name,
-                "tool": tool_label,
-                "info": info or "",
-                "kind": inv.kind,
+                "lat": lat, "lon": lon, "label": inv.query, "case_name": case_name,
+                "tool": tool_label, "info": info, "kind": inv.kind,
+                # A camera's own embedded GPS reading — the most direct
+                # location signal this app ever has.
+                "confidence": "exact",
                 "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
             })
+            continue
+
+        elif inv.kind == "company":
+            # Only UK Companies House hits carry a structured, free-text
+            # address today (confirmed in company.html) — geocoded via
+            # Nominatim (free, no key, cached; app.services.geocode_client)
+            # into a "suspected" marker, since it's the registry's stated
+            # address, not independently verified. Capped at the first 3
+            # hits per investigation so one page load can't trigger an
+            # unbounded run of geocoding requests.
+            from app.services import geocode_client
+            uk_hits = ((data.get("results") or {}).get("uk") or {}).get("found") or []
+            for hit in uk_hits[:3]:
+                address = (hit.get("address") or "").strip()
+                if not address:
+                    continue
+                geocoded = geocode_client.geocode(address)
+                if not geocoded:
+                    continue
+                markers.append({
+                    "lat": geocoded["lat"], "lon": geocoded["lon"],
+                    "label": hit.get("name") or inv.query, "case_name": case_name,
+                    "tool": tool_label, "info": geocoded["display_name"] or address,
+                    "kind": inv.kind, "confidence": "suspected",
+                    "date": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else "",
+                })
+            continue
 
     return jsonify({"markers": markers})
 
@@ -1185,6 +1233,12 @@ def watchlist_add():
         return redirect(url_for("investigation.watchlist"))
     add_target(query=query, kind=kind, user_id=current_user.id, case_id=case_id, notes=notes)
     flash(f"'{query}' added to watchlist.", "success")
+    if case_id is None:
+        # Every rescan of this target (watchlist_rescan/finalize_scan) will
+        # persist as an investigation with no case_id — surfaced up front so
+        # it isn't a surprise later, e.g. on the Dashboard.
+        flash("This target isn't linked to a case — its future rescans will "
+              "show up as investigations not linked to any case.", "info")
     return redirect(url_for("investigation.watchlist"))
 
 
