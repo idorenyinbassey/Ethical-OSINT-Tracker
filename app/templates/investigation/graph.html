@@ -13,6 +13,10 @@
 
 <div id="graph-pivot-panel" class="hidden mb-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg"></div>
 
+<div id="graph-no-hubs-note" class="hidden mb-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300">
+  No shared values (IP, email, domain, etc.) across investigations in this case yet — a star hub appears once two or more investigations reference the same value.
+</div>
+
 <div id="graph-view" class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden" style="height:600px;position:relative;">
   <div id="graph-container" style="width: 100%; height: 100%;"></div>
   <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
@@ -199,17 +203,33 @@ fetch(GRAPH_DATA_URL)
       return;
     }
 
+    // vis.js draws a "dot"-shaped node's label below/outside the node, on
+    // the canvas itself — which has no explicit color and is transparent
+    // over whatever page background shows through (light or dark). A
+    // COLOR_MAP font color chosen to contrast the node's own fill (e.g.
+    // "#111" for a light-yellow "social" node) can end up unreadable
+    // against a dark page background it was never designed to sit on.
+    // Painting a background chip behind every label — using that same
+    // node's own fill color, which its font color was already chosen to
+    // contrast against — makes every label legible regardless of where
+    // vis.js places it or what theme the page is in, with no need to
+    // detect the theme at all.
     const nodes = data.nodes.map(n => {
       const colors = COLOR_MAP[n.group] || { background: "#6b7280", border: "#4b5563", font: { color: "#fff" } };
       const isEntity = n.is_entity;
       return {
         id: n.id, label: n.label, title: n.title,
-        color: colors, font: colors.font,
+        color: colors,
+        font: { color: colors.font.color, background: colors.background, strokeWidth: 0, size: 13 },
         shape: n.group === "case" ? "diamond" : isEntity ? "star" : "dot",
         size: n.group === "case" ? 22 : isEntity ? 18 : 12,
         is_entity: isEntity, group: n.group, value: n.value,
       };
     });
+
+    if (!nodes.some(n => n.is_entity)) {
+      document.getElementById("graph-no-hubs-note").classList.remove("hidden");
+    }
 
     const edges = data.edges.map(makeEdge);
 
