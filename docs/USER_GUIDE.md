@@ -255,6 +255,12 @@ The detail page polls for new hits every 3 seconds using JavaScript. New hits sl
 | In Progress | Being worked on |
 | Closed | Resolved |
 
+### Backup & Restore
+
+Closing or deleting a case permanently deletes its investigations, comments, notes, watchlist targets, and tracking links — there's no undo. Before doing either, download an **Encrypted Backup** (case detail page → "🔒 Encrypted Backup") — a password-protected `.zip` covering all of that data. The password is chosen at download time and is never stored by the app; if you lose it, the backup can't be recovered.
+
+To bring a backup's contents back — for example, after reopening a case that was previously closed and had its data wiped — use **↑ Restore Backup** and upload the file with its password. Every record is re-created with its original date preserved, as if it had never been deleted; tracking links get a fresh public token rather than reusing the old one.
+
 ### Threat Scoring
 
 Each case is automatically assigned a threat score (0–100) based on linked investigation confidence levels, dark web hits, and HIBP breach counts. The badge on the case list is colour-coded:
@@ -281,6 +287,8 @@ The Investigator Journal provides structured notes on a case (distinct from info
 - `lead` — a thread to investigate
 - `key_evidence` — a significant finding
 - `follow_up` — a pending action
+
+Both the Investigator Journal and Team Comments are included as their own sections in every exported report (PDF/HTML/DOCX).
 
 ### Auto Case Correlation
 

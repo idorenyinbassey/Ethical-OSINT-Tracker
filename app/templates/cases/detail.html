@@ -35,7 +35,7 @@
       {% endif %}
       {% if can_delete %}
       <button type="button"
-        onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone.')"
+        onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone — download an encrypted backup first if you want to keep this data.')"
         class="bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
         Delete
       </button>
@@ -65,7 +65,7 @@
     {% if case.status != 'closed' %}
       {% if can_delete %}
       <button type="button" class="bg-gray-700 hover:bg-red-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
-        onclick="openDangerConfirm('{{ url_for('cases.close_case', case_id=case.id) }}', 'Close this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be deleted. This cannot be undone.')">Close</button>
+        onclick="openDangerConfirm('{{ url_for('cases.close_case', case_id=case.id) }}', 'Close this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be deleted. This cannot be undone — download an encrypted backup first if you want to keep this data.')">Close</button>
       {% elif can_edit %}
       <button type="button" disabled title="Only an admin can close a case — it deletes the case's data."
         class="bg-gray-300 dark:bg-gray-800 text-gray-500 dark:text-gray-600 text-sm font-medium px-4 py-1.5 rounded-lg cursor-not-allowed">Close</button>
@@ -91,6 +91,12 @@
        class="flex-shrink-0 bg-yellow-900/40 hover:bg-yellow-900/60 text-yellow-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-yellow-800">↓ CSV</a>
     <a href="{{ url_for('cases.export_xlsx', case_id=case.id) }}"
        class="flex-shrink-0 bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-emerald-800">↓ XLSX</a>
+    <a href="{{ url_for('cases.backup', case_id=case.id) }}"
+       class="flex-shrink-0 bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-indigo-800">🔒 Encrypted Backup</a>
+    {% if can_edit %}
+    <a href="{{ url_for('cases.restore', case_id=case.id) }}"
+       class="flex-shrink-0 bg-gray-700/60 hover:bg-gray-700 text-gray-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors border border-gray-600">↑ Restore Backup</a>
+    {% endif %}
   </div>
 </div>
 

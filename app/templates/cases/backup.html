@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Backup Case – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-xl">
+  <a href="{{ url_for('cases.detail', case_id=case.id) }}" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm mb-2 inline-block">← Back to {{ case.title }}</a>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Download Encrypted Backup</h1>
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+    Bundles this case's investigations, comments, notes, watchlist targets, and tracking links (with their hits)
+    into a single AES-256-encrypted <code>.zip</code> file. Use this before closing or deleting the case if you
+    want to keep the data — a <a href="{{ url_for('cases.restore', case_id=case.id) }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">restore</a>
+    can bring it all back into a case later.
+  </p>
+
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+    <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Backup password (min. 8 characters)</label>
+        <input type="password" name="password" required minlength="8" autocomplete="new-password"
+          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Confirm password</label>
+        <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password"
+          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <p class="text-xs text-amber-600 dark:text-amber-500">
+        This password is never stored anywhere. If you lose it, this backup file cannot be recovered — write it down somewhere safe.
+      </p>
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Download Encrypted Backup
+        </button>
+        <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+           class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

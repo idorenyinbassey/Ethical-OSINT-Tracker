@@ -62,7 +62,7 @@
            class="text-gray-600 dark:text-gray-400 text-xs font-medium">Edit</a>
         {% if current_user.is_admin %}
         <button type="button"
-          onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone.')"
+          onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone — download an encrypted backup first if you want to keep this data.')"
           class="text-red-500 dark:text-red-400 text-xs font-medium">Delete</button>
         {% endif %}
       </div>
@@ -130,7 +130,7 @@
                  class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-xs mr-3">Edit</a>
               {% if current_user.is_admin %}
               <button type="button"
-                onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone.')"
+                onclick="openDangerConfirm('{{ url_for('cases.delete', case_id=case.id) }}', 'Delete this case?', 'Its investigations, comments, notes, watchlist targets, and tracking links/hits will be permanently deleted too. This cannot be undone — download an encrypted backup first if you want to keep this data.')"
                 class="text-red-500 hover:text-red-400 text-xs">Delete</button>
               {% endif %}
             </td>
