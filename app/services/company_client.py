@@ -1,8 +1,16 @@
 """Company registry search — searches US SEC EDGAR, UK Companies House,
-CAC Nigeria, Corporations Canada, and Cyprus DRCOR in parallel.
+CAC Nigeria, Corporations Canada, Cyprus DRCOR, Singapore ACRA, Estonia's
+e-Business Register, Ireland CRO, Brazil Receita Federal, Australia ABN
+Lookup, and New Zealand NZBN in parallel.
 
-UK Companies House requires an API key configured in Settings.
-All other sources are free / public.
+UK Companies House, Australia ABN Lookup, and New Zealand NZBN require an
+API key configured in Settings (each is free to self-register for). All
+other sources are free / public, though several (Singapore, Estonia,
+Ireland, Brazil) are manual-search-only: their open data is published as
+bulk downloads or via APIs this app could not confirm a stable
+queryable-by-name endpoint for, so rather than guess and silently return
+the wrong thing, they return a direct link to the registry's own search
+page instead.
 """
 import httpx
 import concurrent.futures
@@ -166,22 +174,30 @@ def _search_uk_companies_house(name: str, api_key: Optional[str]) -> dict:
 
 
 def _search_nigeria_cac(name: str) -> dict:
-    """Search CAC Nigeria company registry."""
+    """Search CAC Nigeria company registry via the current front-office
+    search API (postapp.cac.gov.ng) — the richer of two CAC endpoints
+    confirmed by reading the real source of an open-source npm package
+    (`company-verify`) that uses it in production; the previous
+    `pre.cac.gov.ng/home/search_name` endpoint only returned
+    name/rc_number/status/type, with no address for correlating a hit on
+    the map or graph. This endpoint could not be live-tested from this
+    app's development sandbox (network egress to postapp.cac.gov.ng is
+    blocked there) — verify against a real search after deploying."""
     source = "CAC Nigeria"
     from urllib.parse import urlencode
     manual_url = "https://pre.cac.gov.ng/home/search_name?" + urlencode({"query": name})
     try:
         with get_http_client(timeout=_TIMEOUT) as client:
-            r = client.get(
-                "https://pre.cac.gov.ng/home/search_name",
-                params={"query": name},
-                headers={"User-Agent": _USER_AGENT},
+            r = client.post(
+                "https://postapp.cac.gov.ng/postapp/api/front-office/search/company-business-name-it",
+                json={"searchTerm": name},
+                headers={"User-Agent": _USER_AGENT, "Content-Type": "application/json"},
                 follow_redirects=True,
             )
             r.raise_for_status()
             data = r.json()
 
-        if not isinstance(data, list):
+        if not isinstance(data, dict) or not data.get("success") or not isinstance(data.get("data"), list):
             return {
                 "source": source,
                 "found": [],
@@ -191,12 +207,19 @@ def _search_nigeria_cac(name: str) -> dict:
             }
 
         found = []
-        for item in data:
+        for item in data["data"]:
             found.append({
-                "name": item.get("company_name", ""),
-                "rc_number": item.get("rc_number", ""),
-                "status": item.get("status", ""),
-                "type": item.get("type", ""),
+                "name": item.get("approvedName", ""),
+                "rc_number": item.get("rcNumber", ""),
+                "status": "Active" if item.get("active") else "Inactive",
+                "type": item.get("companyTypeName", ""),
+                "address": (
+                    item.get("address") or item.get("headOfficeAddress")
+                    or item.get("branchAddress") or ""
+                ),
+                "city": item.get("city", ""),
+                "state": item.get("state", ""),
+                "email": item.get("email") or "",
             })
         return {"source": source, "found": found, "error": None}
     except Exception:
@@ -206,6 +229,192 @@ def _search_nigeria_cac(name: str) -> dict:
             "error": None,
             "note": (
                 "CAC Nigeria portal could not be reached automatically. "
+                "Search manually via the link below."
+            ),
+            "manual_url": manual_url,
+        }
+
+
+def _search_singapore_acra(_name: str) -> dict:
+    """Singapore ACRA (Accounting and Corporate Regulatory Authority)
+    entity data is published as open data via data.gov.sg, but this app
+    could not confirm a stable, queryable-by-name endpoint for it (the
+    dataset's resource id is opaque and data.gov.sg has migrated its API
+    surface before) — rather than guess an id that might silently query
+    the wrong dataset, this stays manual-search-only, mirroring the
+    Cyprus DRCOR entry."""
+    return {
+        "source": "Singapore — ACRA",
+        "found": [],
+        "error": None,
+        "note": (
+            "ACRA company data is open via data.gov.sg, but this app has no "
+            "confirmed automated name-search for it yet. Search manually."
+        ),
+        "manual_url": "https://www.bizfile.gov.sg",
+    }
+
+
+def _search_estonia_business_register(_name: str) -> dict:
+    """Estonia's e-Business Register (RIK) opened its data for free in
+    2022, but publishes it primarily as bulk downloads rather than a
+    confirmed simple name-search API — manual-search-only for the same
+    reason as Singapore above."""
+    return {
+        "source": "Estonia — e-Business Register",
+        "found": [],
+        "error": None,
+        "note": (
+            "Estonia's e-Business Register data is open (RIK), but this app "
+            "has no confirmed automated name-search for it yet. Search manually."
+        ),
+        "manual_url": "https://ariregister.rik.ee/eng",
+    }
+
+
+def _search_ireland_cro(_name: str) -> dict:
+    """Ireland's CRO launched an Open Data Portal in 2024 (API + daily
+    bulk snapshots, CC-BY 4.0), but this app could not confirm a stable
+    dataset id for live name search — manual-search-only for now."""
+    return {
+        "source": "Ireland — CRO",
+        "found": [],
+        "error": None,
+        "note": (
+            "CRO company data is open (opendata.cro.ie), but this app has no "
+            "confirmed automated name-search for it yet. Search manually."
+        ),
+        "manual_url": "https://core.cro.ie/search",
+    }
+
+
+def _search_brazil_cnpj(_name: str) -> dict:
+    """Brazil's Receita Federal publishes the CNPJ registry only as bulk
+    monthly dumps — free re-publications (OpenCNPJ, BrasilAPI) built on
+    it generally support lookup by CNPJ number, not by company name, so
+    this stays manual-search-only rather than forcing a name-search
+    contract onto an API that doesn't offer one."""
+    return {
+        "source": "Brazil — Receita Federal (CNPJ)",
+        "found": [],
+        "error": None,
+        "note": (
+            "Brazil's CNPJ registry is open but is bulk/number-lookup "
+            "only, not name search. Search manually."
+        ),
+        "manual_url": "https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp",
+    }
+
+
+def _search_australia_abn(name: str, api_key: Optional[str]) -> dict:
+    """Search the Australian Business Register (ABN Lookup) by entity
+    name. The Business Names Register is open on data.gov.au but this
+    app could not confirm a stable resource id for it; instead this uses
+    ABR's own JSON web service (`abr.business.gov.au`), which needs a
+    free self-registered GUID. Could not be live-tested from this app's
+    development sandbox — verify the endpoint/field names after deploying."""
+    source = "Australia — ABN Lookup"
+    manual_url = "https://abr.business.gov.au/"
+    if not api_key:
+        return {
+            "source": source,
+            "found": [],
+            "error": None,
+            "note": (
+                "No ABN Lookup GUID configured. Register a free GUID at "
+                "abr.business.gov.au and add it in Settings, or search manually."
+            ),
+            "manual_url": manual_url,
+        }
+    try:
+        with get_http_client(timeout=_TIMEOUT) as client:
+            r = client.get(
+                "https://abr.business.gov.au/json/MatchingNames.aspx",
+                params={"name": name, "guid": api_key, "maxSearchResults": 10},
+                headers={"User-Agent": _USER_AGENT},
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+            text = r.text.strip()
+
+        # ABR's JSON endpoint wraps its payload in a JSONP callback by
+        # default; strip it defensively in case it always does regardless
+        # of any (undocumented) callback param.
+        if text.startswith("callback(") and text.endswith(")"):
+            text = text[len("callback("):-1]
+        import json as _json
+        data = _json.loads(text)
+
+        names = data.get("Names") or []
+        found = []
+        for item in names:
+            found.append({
+                "name": item.get("Name", ""),
+                "abn": item.get("Abn", ""),
+                "status": item.get("AbnStatus", ""),
+                "type": item.get("NameType", ""),
+            })
+        return {"source": source, "found": found, "error": None}
+    except Exception:
+        return {
+            "source": source,
+            "found": [],
+            "error": None,
+            "note": (
+                "ABN Lookup could not be reached automatically. "
+                "Search manually via the link below."
+            ),
+            "manual_url": manual_url,
+        }
+
+
+def _search_new_zealand_nzbn(name: str, api_key: Optional[str]) -> dict:
+    """Search the NZ Business Number (NZBN) register by entity name via
+    the Companies Office's public API gateway (api.business.govt.nz),
+    which authenticates via a free self-registered subscription key.
+    Could not be live-tested from this app's development sandbox —
+    verify the endpoint/field names after deploying."""
+    source = "New Zealand — NZBN"
+    manual_url = "https://www.companiesoffice.govt.nz"
+    if not api_key:
+        return {
+            "source": source,
+            "found": [],
+            "error": None,
+            "note": (
+                "No NZBN API key configured. Register a free key at "
+                "api.business.govt.nz and add it in Settings, or search manually."
+            ),
+            "manual_url": manual_url,
+        }
+    try:
+        with get_http_client(timeout=_TIMEOUT) as client:
+            r = client.get(
+                "https://api.business.govt.nz/gateway/nzbn/v5/entities",
+                params={"search-term": name},
+                headers={"User-Agent": _USER_AGENT, "Ocp-Apim-Subscription-Key": api_key},
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        items = data.get("items") or data.get("Items") or []
+        found = []
+        for item in items:
+            found.append({
+                "name": item.get("entityName") or item.get("name", ""),
+                "nzbn": item.get("nzbn", ""),
+                "status": item.get("entityStatusDescription") or item.get("status", ""),
+                "type": item.get("entityTypeDescription") or item.get("type", ""),
+            })
+        return {"source": source, "found": found, "error": None}
+    except Exception:
+        return {
+            "source": source,
+            "found": [],
+            "error": None,
+            "note": (
+                "NZBN API could not be reached automatically. "
                 "Search manually via the link below."
             ),
             "manual_url": manual_url,
@@ -384,12 +593,16 @@ def _google_dorks(name: str) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
-def search_companies(name: str, uk_api_key: Optional[str] = None) -> dict:
-    """Search company registries in parallel across five jurisdictions.
+def search_companies(name: str, uk_api_key: Optional[str] = None,
+                      au_api_key: Optional[str] = None,
+                      nz_api_key: Optional[str] = None) -> dict:
+    """Search company registries in parallel across eleven jurisdictions.
 
     Args:
         name: Company name to search for.
         uk_api_key: Optional UK Companies House API key (Basic auth username).
+        au_api_key: Optional Australia ABN Lookup GUID.
+        nz_api_key: Optional New Zealand NZBN API subscription key.
 
     Returns:
         {
@@ -400,20 +613,32 @@ def search_companies(name: str, uk_api_key: Optional[str] = None) -> dict:
                 "nigeria":  {...},
                 "canada":   {...},
                 "cyprus":   {...},
+                "singapore": {...},
+                "estonia":   {...},
+                "ireland":   {...},
+                "brazil":    {...},
+                "australia": {...},
+                "new_zealand": {...},
             }
         }
     """
     tasks = {
-        "us_edgar":   lambda: _search_us_edgar(name),
-        "uk":         lambda: _search_uk_companies_house(name, uk_api_key),
-        "nigeria":    lambda: _search_nigeria_cac(name),
-        "canada":     lambda: _search_canada_corporations(name),
-        "cyprus":     lambda: _search_cyprus_drcor(name),
-        "duckduckgo": lambda: _search_duckduckgo_business(name),
+        "us_edgar":    lambda: _search_us_edgar(name),
+        "uk":          lambda: _search_uk_companies_house(name, uk_api_key),
+        "nigeria":     lambda: _search_nigeria_cac(name),
+        "canada":      lambda: _search_canada_corporations(name),
+        "cyprus":      lambda: _search_cyprus_drcor(name),
+        "singapore":   lambda: _search_singapore_acra(name),
+        "estonia":     lambda: _search_estonia_business_register(name),
+        "ireland":     lambda: _search_ireland_cro(name),
+        "brazil":      lambda: _search_brazil_cnpj(name),
+        "australia":   lambda: _search_australia_abn(name, au_api_key),
+        "new_zealand": lambda: _search_new_zealand_nzbn(name, nz_api_key),
+        "duckduckgo":  lambda: _search_duckduckgo_business(name),
     }
 
     results: dict = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
         futures = {executor.submit(fn): key for key, fn in tasks.items()}
         for future in concurrent.futures.as_completed(futures):
             key = futures[future]

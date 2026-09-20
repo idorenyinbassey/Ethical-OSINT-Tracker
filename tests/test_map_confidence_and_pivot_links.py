@@ -63,6 +63,30 @@ def test_company_address_geocoded_into_suspected_marker(app, client, user_a, cas
     assert markers[0]["label"] == "Acme Corp Ltd"
 
 
+def test_company_address_geocoded_regardless_of_which_registry_key(app, client, user_a, case_of_a):
+    """map_data()'s company-address geocoding loop is generalized to scan
+    every registry key in results, not just "uk" — this seeds a hit under
+    "nigeria" (added once the CAC switch surfaced an address field) to
+    confirm it geocodes identically."""
+    from app.services import geocode_client
+
+    _seed(app, user_a.id, case_of_a.id, "company", "Acme Nigeria", {
+        "query": "Acme Nigeria",
+        "results": {"nigeria": {"found": [{"name": "Acme Nigeria Ltd", "address": "1 Lagos Street"}]}},
+    })
+    login(client, user_a.username)
+
+    fake_geocode = {"lat": 6.5, "lon": 3.4, "display_name": "1 Lagos Street, Lagos, Nigeria"}
+    with patch.object(geocode_client, "geocode", return_value=fake_geocode) as mock_geocode:
+        resp = client.get(f"/investigate/map/data?case_id={case_of_a.id}")
+
+    mock_geocode.assert_called_once_with("1 Lagos Street")
+    markers = resp.get_json()["markers"]
+    assert len(markers) == 1
+    assert markers[0]["confidence"] == "suspected"
+    assert markers[0]["label"] == "Acme Nigeria Ltd"
+
+
 def test_company_with_no_address_produces_no_marker(app, client, user_a, case_of_a):
     from app.services import geocode_client
 
