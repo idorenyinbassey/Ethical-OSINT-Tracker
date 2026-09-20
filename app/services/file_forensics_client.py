@@ -6,6 +6,7 @@ All analysis is local where possible; GPS reverse-geocoding uses Nominatim OSM (
 """
 import datetime
 import hashlib
+import math
 import mimetypes
 import os
 import stat
@@ -67,16 +68,37 @@ _geocode_cache: dict = {}
 
 
 def _safe_rational(value):
-    """Convert IFDRational / (num,den) tuple / scalar to float safely."""
+    """Convert IFDRational / (num,den) tuple / scalar to float safely.
+
+    A zero denominator is a common camera-stack encoding (seen from
+    OPPO/ColorOS and others) for "this component is exactly zero, no
+    fractional part" — e.g. a GPS seconds value on a whole-minute reading —
+    not corruption. Confirmed directly against Pillow: by the time a GPS
+    rational reaches this function via `Image.Exif.get_ifd()` it has
+    already been resolved to a bare Python float, and Pillow itself
+    collapses *any* zero-denominator rational (0/0 or a genuinely
+    undefined non-zero/0) into `float('nan')` during that resolution —
+    the numerator is gone by the time we see it, so nan is treated as the
+    harmless-zero case here too. This is what previously caused a real GPS
+    fix to be discarded (or, without this fix, silently corrupted into a
+    "nan, nan" coordinate) over one harmless component. The IFDRational/
+    tuple branches below still distinguish a zero from a non-zero
+    numerator, as defense in depth for any caller that hands this function
+    an unresolved rational directly.
+    """
     try:
         from PIL.TiffImagePlugin import IFDRational
         if isinstance(value, IFDRational):
-            return None if value.denominator == 0 else float(value.numerator) / float(value.denominator)
-        if isinstance(value, tuple) and len(value) == 2:
+            num, den = value.numerator, value.denominator
+        elif isinstance(value, tuple) and len(value) == 2:
             num, den = value
-            return None if den == 0 else float(num) / float(den)
-        return float(value)
-    except (TypeError, ZeroDivisionError, AttributeError):
+        else:
+            f = float(value)
+            return 0.0 if math.isnan(f) else f
+        if den == 0:
+            return 0.0 if num == 0 else None
+        return float(num) / float(den)
+    except (TypeError, ZeroDivisionError, AttributeError, ValueError):
         return None
 
 
@@ -159,14 +181,62 @@ def _image(path: Path) -> dict:
                                     alt = gps.get("GPSAltitude")
                                     if alt is not None:
                                         exif["GPS_Altitude"] = str(alt)
+                                    # GPS IFD structural fields — already present
+                                    # in `gps` (mapped via GPSTAGS above), just
+                                    # not previously surfaced.
+                                    direction = gps.get("GPSImgDirection")
+                                    if direction is not None:
+                                        resolved = _safe_rational(direction)
+                                        exif["GPS_Direction"] = str(resolved if resolved is not None else direction)
+                                    speed = gps.get("GPSSpeed")
+                                    if speed is not None:
+                                        resolved = _safe_rational(speed)
+                                        exif["GPS_Speed"] = str(resolved if resolved is not None else speed)
+                                    satellites = gps.get("GPSSatellites")
+                                    if satellites:
+                                        exif["GPS_Satellites"] = str(satellites)
+                                    dop = gps.get("GPSDOP")
+                                    if dop is not None:
+                                        resolved = _safe_rational(dop)
+                                        exif["GPS_DOP"] = str(resolved if resolved is not None else dop)
+                                    method = gps.get("GPSProcessingMethod")
+                                    if method:
+                                        decoded_method = (
+                                            method.decode("ascii", errors="ignore").strip("\x00 ")
+                                            if isinstance(method, bytes) else str(method)
+                                        )
+                                        if decoded_method:
+                                            exif["GPS_ProcessingMethod"] = decoded_method
                                 else:
                                     exif["GPS_Error"] = "GPS tag present but contains malformed/zero-denominator values"
                     except Exception as gps_exc:
                         exif["GPS_Error"] = str(gps_exc)
 
+                    # --- Exif sub-IFD (0x8769): ISO, exposure, lens, etc. —
+                    # a separate offset-referenced block, same reason GPS
+                    # needed get_ifd() above rather than showing up in the
+                    # plain raw.items() loop below.
+                    try:
+                        EXIF_IFD_TAG = 0x8769
+                        exif_ifd = raw.get_ifd(EXIF_IFD_TAG)
+                        if exif_ifd:
+                            for tag_id, val in exif_ifd.items():
+                                tag = ExifTags.TAGS.get(tag_id, str(tag_id))
+                                if val is None:
+                                    continue
+                                if isinstance(val, bytes):
+                                    decoded = val.decode("utf-8", errors="ignore").strip("\x00 ")
+                                    if decoded:
+                                        exif[str(tag)] = decoded
+                                else:
+                                    resolved = _safe_rational(val)
+                                    exif[str(tag)] = str(resolved) if resolved is not None else str(val)
+                    except Exception:
+                        pass  # Exif sub-IFD is optional; absence isn't an error
+
                     # --- All other tags
                     for tag_id, val in raw.items():
-                        if tag_id == GPS_IFD_TAG:
+                        if tag_id in (GPS_IFD_TAG, 0x8769):
                             continue  # already handled above
                         tag = ExifTags.TAGS.get(tag_id, str(tag_id))
                         if val is None:
