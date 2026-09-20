@@ -882,6 +882,40 @@ def export_pdf(case, investigations, investigator: str = "Unknown", app=None, sn
         pdf.ln()
     pdf.ln(6)
 
+    # ------------------------------------------------------- TEAM NOTES / JOURNAL
+    from app.repositories.case_comment_repository import list_comments
+    from app.repositories.case_note_repository import list_notes
+    comments = list_comments(case.id)
+    notes = list_notes(case.id)
+
+    if comments:
+        section_heading("TEAM NOTES")
+        for c in comments:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*NAVY)
+            pdf.cell(w(), 5, _pdf_safe(f"{_ts(c.created_at)} — {c.username}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*DARK)
+            pdf.set_x(pdf.l_margin + 4)
+            pdf.multi_cell(w() - 4, 5, _pdf_safe(c.body), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1)
+        pdf.ln(4)
+
+    if notes:
+        section_heading("INVESTIGATOR JOURNAL")
+        for n in notes:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*NAVY)
+            kind_label = (n.kind or "observation").replace("_", " ").upper()
+            pdf.cell(w(), 5, _pdf_safe(f"{_ts(n.created_at)} — {n.username} [{kind_label}]"),
+                     new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*DARK)
+            pdf.set_x(pdf.l_margin + 4)
+            pdf.multi_cell(w() - 4, 5, _pdf_safe(n.body), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1)
+        pdf.ln(4)
+
     # --------------------------------------------------------------- VISUALIZATIONS
     snapshots = _capture_snapshots(case, app, snapshot_user_id)
     viz_items = [("Location Map", snapshots.get("map")), ("Relationship Graph", snapshots.get("graph"))]
@@ -1077,6 +1111,32 @@ def export_html(case, investigations, investigator: str = "Unknown", app=None, s
         type_breakdown_html += f"<tr><td>{esc(knd.replace('_',' ').title())}</td><td>{cnt}</td></tr>\n"
 
     risk_html = "".join(f"<li>{esc(n)}</li>" for n in risk_notes)
+
+    # ---- Team Notes / Investigator Journal
+    from app.repositories.case_comment_repository import list_comments
+    from app.repositories.case_note_repository import list_notes
+    comments = list_comments(case.id)
+    notes = list_notes(case.id)
+
+    def _note_card(header, body):
+        return (
+            f'<div style="margin-bottom:.75rem;padding:.6rem .8rem;background:#f8fafc;'
+            f'border-left:3px solid #cbd5e1;border-radius:4px">'
+            f'<div style="font-size:.75rem;font-weight:700;color:#1e293b;margin-bottom:.25rem">{header}</div>'
+            f'<div style="font-size:.8rem;color:#374151;white-space:pre-wrap">{esc(body)}</div>'
+            f'</div>'
+        )
+
+    comments_html = "".join(
+        _note_card(f"{esc(_ts(c.created_at))} &mdash; {esc(c.username)}", c.body) for c in comments
+    ) or '<p class="no-data">No team notes recorded.</p>'
+    notes_html = "".join(
+        _note_card(
+            f"{esc(_ts(n.created_at))} &mdash; {esc(n.username)} "
+            f"[{esc((n.kind or 'observation').replace('_', ' ').upper())}]",
+            n.body,
+        ) for n in notes
+    ) or '<p class="no-data">No investigator journal entries recorded.</p>'
 
     # ---- Timeline
     sorted_invs = sorted(investigations, key=lambda x: x.created_at or datetime.datetime.min)
@@ -1397,6 +1457,22 @@ code {{ font-family: 'Courier New', monospace; font-size: 0.85em; }}
   </div>
 </div>
 
+<!-- TEAM NOTES -->
+<div class="section">
+  <div class="section-hdr">Team Notes</div>
+  <div class="section-body">
+    {comments_html}
+  </div>
+</div>
+
+<!-- INVESTIGATOR JOURNAL -->
+<div class="section">
+  <div class="section-hdr">Investigator Journal</div>
+  <div class="section-body">
+    {notes_html}
+  </div>
+</div>
+
 {f'''<!-- VISUALIZATIONS -->
 <div class="section">
   <div class="section-hdr">Visualizations</div>
@@ -1605,6 +1681,40 @@ def export_docx(case, investigations, investigator: str = "Unknown", app=None, s
         for cell in row.cells:
             for run in cell.paragraphs[0].runs:
                 run.font.size = Pt(8)
+
+    # -------------------------------------------------------- Team Notes / Journal
+    from app.repositories.case_comment_repository import list_comments
+    from app.repositories.case_note_repository import list_notes
+    comments = list_comments(case.id)
+    notes = list_notes(case.id)
+
+    def add_note_entries(entries, get_header):
+        if not entries:
+            p = doc.add_paragraph("None recorded.")
+            p.runs[0].italic = True
+            p.runs[0].font.color.rgb = RGBColor(107, 114, 128)
+            return
+        for entry in entries:
+            p = doc.add_paragraph()
+            r = p.add_run(get_header(entry))
+            r.bold = True
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(30, 41, 59)
+            body_p = doc.add_paragraph(entry.body)
+            for run in body_p.runs:
+                run.font.size = Pt(9)
+
+    doc.add_paragraph()
+    add_heading("TEAM NOTES", level=1)
+    add_note_entries(comments, lambda c: f"{_ts(c.created_at)} — {c.username}")
+
+    doc.add_paragraph()
+    add_heading("INVESTIGATOR JOURNAL", level=1)
+    add_note_entries(
+        notes,
+        lambda n: f"{_ts(n.created_at)} — {n.username} "
+                  f"[{(n.kind or 'observation').replace('_', ' ').upper()}]",
+    )
 
     # -------------------------------------------------------- Visualizations
     snapshots = _capture_snapshots(case, app, snapshot_user_id)
