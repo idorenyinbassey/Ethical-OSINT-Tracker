@@ -215,7 +215,15 @@ fetch(GRAPH_DATA_URL)
         font: { color: colors.font.color, background: colors.background, strokeWidth: 0, size: 13 },
         shape: n.group === "case" ? "diamond" : isEntity ? "star" : "dot",
         size: n.group === "case" ? 22 : isEntity ? 18 : 12,
-        is_entity: isEntity, group: n.group, value: n.value,
+        // `value` is stored as `entityValue`, not `value` — vis-network
+        // reserves the node option `value` for its own automatic node-size
+        // scaling feature (min/max across every node's `value`). Reusing it
+        // here silently overwrote each star node's explicit size with NaN
+        // (Math.min/max coerce these entity strings to Number), and a NaN
+        // radius makes the star shape's canvas lineTo() calls silent no-ops
+        // per the Canvas 2D spec — the star was computed and linked
+        // correctly but never actually drawn, with no error anywhere.
+        is_entity: isEntity, group: n.group, entityValue: n.value,
       };
     });
 
@@ -264,11 +272,11 @@ fetch(GRAPH_DATA_URL)
         pivotPanel.classList.add("hidden");
         return;
       }
-      const qs = new URLSearchParams({ query: node.value });
+      const qs = new URLSearchParams({ query: node.entityValue });
       if (CASE_IDS.length) qs.set("case_id", CASE_IDS[0]);
       pivotPanel.innerHTML = `<a href="${tool.endpoint}?${qs.toString()}" ` +
         `class="text-indigo-700 dark:text-indigo-300 hover:underline text-sm font-medium">` +
-        `Investigate "${escapeHtml(node.value)}" with ${tool.label} →</a>`;
+        `Investigate "${escapeHtml(node.entityValue)}" with ${tool.label} →</a>`;
       pivotPanel.classList.remove("hidden");
     });
   })
