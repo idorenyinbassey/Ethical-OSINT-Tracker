@@ -31,7 +31,15 @@
   <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
     Comparing {{ selected_case_ids|length }} cases — each result's tooltip/popup shows which case it belongs to, so they stay distinguishable.
   </p>
-  {% elif not selected_case_ids and cases %}
-  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">No case selected yet.</p>
+  {% elif not selected_case_ids %}
+  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+    Showing investigations not linked to any case.
+    {% if cases %}Select one above to scope this view to a case.{% endif %}
+  </p>
+  {% endif %}
+  {% if selected_case_ids %}
+  <p class="mt-2 text-xs">
+    <a href="{{ request.path }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">View investigations not linked to any case →</a>
+  </p>
   {% endif %}
 </div>

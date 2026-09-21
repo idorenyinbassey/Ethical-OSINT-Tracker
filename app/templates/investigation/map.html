@@ -23,10 +23,6 @@
   <span class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded-full text-white text-[10px] font-semibold" style="background:#d97706">Suspected</span> a stated address, unverified</span>
 </div>
 
-<div id="map-empty-state" class="hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400">
-  Select a case above to view its location map.
-</div>
-
 <div id="map-view" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden" style="height:560px;position:relative;">
   <div id="map" style="width:100%;height:100%;"></div>
   <div id="map-loading" class="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-400 text-sm z-10">
@@ -62,15 +58,10 @@ function markMapReady() {
   window.__mapReady = true;
 }
 
-if (!CASE_IDS.length) {
-  // No case selected at all (and no active case to default to, since the
-  // links that reach this page always pass one when set) — don't silently
-  // fall back to an account-wide dump; prompt for an explicit selection.
-  document.getElementById("map-loading").style.display = "none";
-  document.getElementById("map-view").classList.add("hidden");
-  document.getElementById("map-empty-state").classList.remove("hidden");
-  window.__mapReady = true;
-} else {
+// No case_id at all is not "nothing to show" — map_data() treats it as the
+// current user's own ad-hoc (not-yet-cased) investigations, a real,
+// reachable view. Always fetch; the "no markers" branch below already
+// covers genuine emptiness.
 const params = new URLSearchParams();
 CASE_IDS.forEach(id => params.append("case_id", id));
 const MAP_DATA_URL = "{{ url_for('investigation.map_data') }}?" + params.toString();
@@ -132,6 +123,5 @@ fetch(MAP_DATA_URL)
     document.getElementById("map-loading").textContent = "Failed to load map data: " + err.message;
     markMapReady();
   });
-}
 </script>
 {% endblock %}
