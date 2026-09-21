@@ -173,14 +173,16 @@ def _image(path: Path) -> dict:
                             if lat_raw and lon_raw:
                                 ld = _dms_to_decimal(lat_raw, lat_ref)
                                 lo = _dms_to_decimal(lon_raw, lon_ref)
-                                if ld is not None and lo is not None:
+                                if ld is not None and lo is not None and (ld != 0.0 or lo != 0.0):
                                     gps_lat, gps_lon = ld, lo
                                     exif["GPS_Coordinates"] = f"{ld:.6f}, {lo:.6f}"
                                     exif["GPS_Latitude"] = f"{ld:.6f} ({lat_ref})"
                                     exif["GPS_Longitude"] = f"{lo:.6f} ({lon_ref})"
                                     alt = gps.get("GPSAltitude")
                                     if alt is not None:
-                                        exif["GPS_Altitude"] = str(alt)
+                                        resolved_alt = _safe_rational(alt)
+                                        if resolved_alt is not None:
+                                            exif["GPS_Altitude"] = str(resolved_alt)
                                     # GPS IFD structural fields — already present
                                     # in `gps` (mapped via GPSTAGS above), just
                                     # not previously surfaced.
@@ -207,6 +209,26 @@ def _image(path: Path) -> dict:
                                         )
                                         if decoded_method:
                                             exif["GPS_ProcessingMethod"] = decoded_method
+                                elif ld is not None and lo is not None:
+                                    # (0, 0) — "Null Island" — is a well-known
+                                    # false-positive: a camera that fails to
+                                    # acquire a GPS fix commonly writes an
+                                    # all-zero GPS block as a placeholder
+                                    # rather than omitting the tag entirely,
+                                    # and _safe_rational()'s 0/0-means-"exact
+                                    # zero" handling (needed for a genuine
+                                    # whole-degree/minute/second reading) can't
+                                    # tell that apart from a real reading of
+                                    # exactly 0°0'0". A real photo taken at the
+                                    # actual intersection of the equator and
+                                    # prime meridian (open ocean, Gulf of
+                                    # Guinea) isn't realistic, so this
+                                    # combination is treated as "no fix," not
+                                    # plotted as a location.
+                                    exif["GPS_Error"] = (
+                                        "GPS tag present but resolved to (0, 0) — this almost always means "
+                                        "no GPS fix was acquired (a camera placeholder value), not a real-world location."
+                                    )
                                 else:
                                     exif["GPS_Error"] = "GPS tag present but contains malformed/zero-denominator values"
                     except Exception as gps_exc:
