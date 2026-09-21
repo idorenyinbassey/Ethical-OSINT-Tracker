@@ -132,7 +132,7 @@ Like Social Search, a live "N of M checked" progress bar shows while all 11 juri
 
 ### Phone Lookup (`/investigate/phone`)
 
-Uses NumVerify to return carrier, line type, country, and location. Requires a NumVerify API key in Settings.
+Works out of the box with no API key: validity, country, line type (mobile/landline/VoIP/toll-free/etc.), carrier, and area-code-level location come from the free, offline `phonenumbers` library (Google's libphonenumber port) — no network call, no signup. A configured NumVerify key (Settings) layers richer confirmation on top field-by-field where it actually has data, but is entirely optional now. Also runs a passive DuckDuckGo web search for public mentions of the number. Note: carrier/location lookups are prefix-based everywhere (free or paid) — a number kept while switching carriers or moving won't reflect its current real carrier or location.
 
 ### MAC Vendor Lookup (`/investigate/mac`)
 
@@ -450,10 +450,11 @@ Navigate to **Settings → API Settings**. Keys are stored encrypted in the data
 | `VirusTotal` | IP Lookup — threat intel | Optional |
 | `HIBP` | Email Analysis, Breach Check | Optional (free via XposedOrNot when unconfigured) |
 | `Hunter.io` | Email Analysis | Optional |
-| `NumVerify` | Phone Lookup | Yes |
+| `NumVerify` | Phone Lookup — richer confirmation on top of the free `phonenumbers`-based baseline | Optional |
 | `IMEIService` | IMEI Lookup (URL: `https://dash.imei.info/api`) — brand/model works free offline without it | Optional |
 | `ImageRecognition` | File Forensics — Google Cloud Vision | Optional |
 | `TorProxy` | Route all HTTP through Tor / a proxy | Optional |
+| `PasteMonitor` | Leak Monitor — runs by default via the free Hudson Rock Cavalier API; only needed in Settings to point at a different provider or to explicitly disable it | Optional |
 
 ### Configuring a Service
 

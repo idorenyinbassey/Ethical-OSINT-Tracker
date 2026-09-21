@@ -14,7 +14,7 @@ from app.repositories.case_repository import list_cases, get_case
 from app.utils.authz import can_access_case
 from app.services import (
     ip_client, rdap_client, hibp_client, hunter_client,
-    numverify_client, social_client, image_client, imei_client,
+    social_client, image_client, imei_client,
     virustotal_client, shodan_client,
 )
 
@@ -362,9 +362,8 @@ def phone():
         if not phone_num:
             flash("Phone number is required.", "error")
         else:
-            result = numverify_client.validate_phone(phone_num)
-            if result is None:
-                result = {"error": "NumVerify API not configured or unavailable."}
+            from app.services import phone_client
+            result = phone_client.lookup_phone(phone_num)
 
             conf = "CONFIRMED" if result and not result.get("error") and result.get("valid") else "UNVERIFIED"
             inv = find_or_update_recent(kind="phone", query=phone_num, result_json=json.dumps(result),
@@ -1438,7 +1437,7 @@ def paste_monitor():
             pastes = paste_client.check_pastes(query_str)
 
             if pastes is None:
-                error = "Leak monitor not configured or disabled. Add/enable it in Settings → PasteMonitor."
+                error = "Leak monitor is disabled. Re-enable it in Settings → PasteMonitor."
             else:
                 conf = "CONFIRMED" if pastes else "UNVERIFIED"
                 inv = find_or_update_recent(kind="paste_leak", query=query_str, result_json=json.dumps({"query": query_str, "pastes": pastes}),

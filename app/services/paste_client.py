@@ -2,9 +2,11 @@
 infostealer/compromised-credential intelligence matching a query (email,
 username, or domain). Keyless — no signup or API key required, unlike
 the previous provider (psbdmp.ws, a paste-dump scraper that has since
-shut down permanently). An admin can point base_url/api_key at a
-different provider with zero change to check_pastes()'s contract, since
-the actual request/parse is isolated in _query_cavalier.
+shut down permanently). Runs by default with no Settings configuration
+at all (see check_pastes()) — an admin can still point base_url/api_key
+at a different provider, or explicitly disable it, with zero change to
+check_pastes()'s contract, since the actual request/parse is isolated in
+_query_cavalier.
 
 Note this is a genuine change in data source, not just a URL swap: this
 returns infostealer infection intelligence (which compromised computers
@@ -47,12 +49,12 @@ def _query_cavalier(query: str, cfg) -> Optional[List[Dict]]:
     stealer log — this tool flags exposure, it doesn't redisplay
     harvested credentials.
     """
-    base = (cfg.base_url or _DEFAULT_BASE_URL).rstrip("/")
+    base = ((cfg.base_url if cfg else None) or _DEFAULT_BASE_URL).rstrip("/")
     endpoint = _ENDPOINT_BY_KIND[classify_query_kind(query)]
     param_name = endpoint.rsplit("-", 1)[-1]  # "email" / "domain" / "username"
     url = f"{base}/{endpoint}"
     params = {param_name: query}
-    if cfg.api_key:
+    if cfg and cfg.api_key:
         params["key"] = cfg.api_key
 
     with get_http_client(timeout=10) as client:
@@ -104,12 +106,16 @@ def _query_cavalier(query: str, cfg) -> Optional[List[Dict]]:
 @cached(ttl=1800)
 def check_pastes(query: str) -> Optional[List[Dict]]:
     """Search Hudson Rock's infostealer/leak intelligence for `query`
-    (email, username, or domain). Returns None if the monitor isn't
-    enabled or the search failed, [] for a genuine zero-hit search, or a
-    list of hits. Never raises.
+    (email, username, or domain). The underlying Cavalier API is free and
+    keyless, so this runs by default with no Settings configuration at
+    all — mirroring hibp_client's pattern, an admin can still fully
+    disable it by setting PasteMonitor's `is_enabled` to False, or point
+    `base_url`/`api_key` at a different provider. Returns None if
+    explicitly disabled or the search failed, [] for a genuine zero-hit
+    search, or a list of hits. Never raises.
     """
     cfg = get_by_service("PasteMonitor")
-    if not cfg or not cfg.is_enabled:
+    if cfg and not cfg.is_enabled:
         return None
 
     try:

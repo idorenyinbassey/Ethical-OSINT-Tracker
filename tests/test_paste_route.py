@@ -4,7 +4,7 @@ from unittest.mock import patch
 from tests.conftest import login
 
 
-def test_paste_monitor_not_configured_shows_flash(app, client, user_a, case_of_a):
+def test_paste_monitor_disabled_shows_flash(app, client, user_a, case_of_a):
     login(client, user_a.username)
     with patch("app.services.paste_client.check_pastes", return_value=None):
         resp = client.post(
@@ -14,7 +14,7 @@ def test_paste_monitor_not_configured_shows_flash(app, client, user_a, case_of_a
         )
 
     assert resp.status_code == 200
-    assert b"not configured" in resp.data.lower()
+    assert b"disabled" in resp.data.lower()
 
 
 def test_paste_monitor_zero_hits(app, client, user_a, case_of_a):

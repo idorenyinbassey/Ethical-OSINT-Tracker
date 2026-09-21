@@ -71,6 +71,9 @@ alembic>=1.13.0         # Schema migrations; run: alembic upgrade head
 # ── Encrypted case backup/restore ─────────────────────────────────────────────
 pyzipper>=0.3.6          # Real AES-256 zip encryption (stdlib zipfile only offers legacy ZipCrypto)
 
+# ── Phone Lookup (free, offline enrichment) ───────────────────────────────────
+phonenumbers>=8.13.0     # Google's libphonenumber port — validity/type/country/carrier/region, no key or network call needed; NumVerify (paid) is now optional bonus enrichment on top, not required
+
 # ── Report Map/Graph Snapshots (optional) ─────────────────────────────────────
 # Renders the live map/graph pages headlessly and embeds them in case
 # report exports. Fully optional — if not installed, reports skip this
