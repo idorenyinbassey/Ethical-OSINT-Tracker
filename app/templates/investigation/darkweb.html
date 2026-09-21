@@ -26,11 +26,28 @@
           </select>
         </div>
       {% endif %}
-      <button type="submit"
+      <button type="submit" id="darkweb-submit-btn"
         class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
         Search Dark Web
       </button>
     </form>
+    <script>
+      // A single AHMIA request, not a fan-out — no "N of M" to report, but
+      // still worth an immediate spinner instead of a blank wait on a
+      // multi-second Tor-index lookup. A plain native submit (no fetch/
+      // preventDefault) so the page navigates normally once the response
+      // arrives — this button's disabled state simply never outlives that
+      // navigation on success.
+      (function() {
+        var form = document.currentScript.previousElementSibling;
+        var btn = document.getElementById('darkweb-submit-btn');
+        if (!form || !btn) return;
+        form.addEventListener('submit', function() {
+          btn.disabled = true;
+          btn.textContent = 'Searching…';
+        });
+      })();
+    </script>
 
     <div class="mt-5 p-3 bg-yellow-900/20 border border-yellow-800 rounded-lg">
       <p class="text-xs text-yellow-400 font-semibold mb-1">Legal Notice</p>

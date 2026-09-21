@@ -50,6 +50,8 @@ def init_db():
         _add_column_if_missing(conn, "user", "totp_secret", "TEXT")
         _add_column_if_missing(conn, "user", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "user", "totp_recovery_codes", "TEXT NOT NULL DEFAULT ''")
+        # trackinglink: pause a link without deleting its hit history
+        _add_column_if_missing(conn, "trackinglink", "active", "INTEGER NOT NULL DEFAULT 1")
 
 def get_session():
     return Session(engine)

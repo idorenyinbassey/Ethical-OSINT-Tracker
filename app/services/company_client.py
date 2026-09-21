@@ -595,7 +595,8 @@ def _google_dorks(name: str) -> dict:
 
 def search_companies(name: str, uk_api_key: Optional[str] = None,
                       au_api_key: Optional[str] = None,
-                      nz_api_key: Optional[str] = None) -> dict:
+                      nz_api_key: Optional[str] = None,
+                      progress_cb=None) -> dict:
     """Search company registries in parallel across eleven jurisdictions.
 
     Args:
@@ -603,6 +604,9 @@ def search_companies(name: str, uk_api_key: Optional[str] = None,
         uk_api_key: Optional UK Companies House API key (Basic auth username).
         au_api_key: Optional Australia ABN Lookup GUID.
         nz_api_key: Optional New Zealand NZBN API subscription key.
+        progress_cb: Optional progress_cb(checked, total) called after each
+            registry's search resolves — lets a caller show a live "N of M
+            checked" indicator.
 
     Returns:
         {
@@ -638,6 +642,7 @@ def search_companies(name: str, uk_api_key: Optional[str] = None,
     }
 
     results: dict = {}
+    total = len(tasks)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
         futures = {executor.submit(fn): key for key, fn in tasks.items()}
         for future in concurrent.futures.as_completed(futures):
@@ -651,6 +656,8 @@ def search_companies(name: str, uk_api_key: Optional[str] = None,
                     "info": {},
                     "error": f"Unexpected error: {exc}",
                 }
+            if progress_cb:
+                progress_cb(len(results), total)
 
     # Google dorks are generated locally (no network), add after parallel block
     results["google_dorks"] = _google_dorks(name)

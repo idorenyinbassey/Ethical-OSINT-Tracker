@@ -336,6 +336,81 @@ def export_stix(case_id):
                      download_name=f"osint-stix-{safe_title or case_id}.json")
 
 
+@cases_bp.route("/<int:case_id>/backup", methods=["GET", "POST"])
+@login_required
+def backup(case_id):
+    """Download an AES-256-encrypted zip of everything scoped to this case
+    (investigations, comments, notes, watchlist targets, tracking links).
+    The password is never stored — only ever held for this one request."""
+    result = _get_case_with_access(case_id, action="export")
+    if not result:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    case = result["case"]
+    if request.method == "GET":
+        return render_template("cases/backup.html", case=case)
+
+    password = request.form.get("password", "")
+    confirm = request.form.get("password_confirm", "")
+    if len(password) < 8:
+        flash("Backup password must be at least 8 characters.", "error")
+        return redirect(url_for("cases.backup", case_id=case_id))
+    if password != confirm:
+        flash("Passwords do not match.", "error")
+        return redirect(url_for("cases.backup", case_id=case_id))
+
+    from app.services import case_backup
+    zip_bytes = case_backup.build_backup_zip(case, password)
+    from app.utils.audit import log as audit_log
+    audit_log("case.backup", entity_type="case", entity_id=case_id, detail=case.title)
+    safe_title = "".join(c for c in case.title if c.isalnum() or c in " -_")[:40].strip()
+    return send_file(io.BytesIO(zip_bytes), mimetype="application/zip",
+                     as_attachment=True, download_name=f"osint-backup-{safe_title or case_id}.zip")
+
+
+@cases_bp.route("/<int:case_id>/restore", methods=["GET", "POST"])
+@login_required
+def restore(case_id):
+    """Re-create a case's investigations/comments/notes/watchlist/tracking
+    links from a previously downloaded encrypted backup, with each
+    record's original timestamp preserved — as if it had never been
+    deleted. Existing data in the case is left alone; restored rows are
+    added alongside whatever's already there."""
+    result = _get_case_with_access(case_id, action="edit")
+    if not result:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    case = result["case"]
+    if request.method == "GET":
+        return render_template("cases/restore.html", case=case)
+
+    upload = request.files.get("backup_file")
+    password = request.form.get("password", "")
+    if not upload or not upload.filename:
+        flash("Choose a backup .zip file to restore.", "error")
+        return redirect(url_for("cases.restore", case_id=case_id))
+    if not password:
+        flash("Enter the backup's password.", "error")
+        return redirect(url_for("cases.restore", case_id=case_id))
+
+    from app.services import case_backup
+    try:
+        counts = case_backup.restore_backup_zip(case_id, upload.read(), password)
+    except case_backup.WrongPasswordError:
+        flash("Incorrect password for this backup file.", "error")
+        return redirect(url_for("cases.restore", case_id=case_id))
+    except case_backup.InvalidBackupError as e:
+        flash(str(e), "error")
+        return redirect(url_for("cases.restore", case_id=case_id))
+
+    from app.utils.audit import log as audit_log
+    audit_log("case.restore", entity_type="case", entity_id=case_id, detail=case.title)
+    flash(f"Restored {counts['investigations']} investigation(s), {counts['comments']} team note(s), "
+          f"{counts['notes']} journal entry/entries, {counts['watchlist']} watchlist target(s), and "
+          f"{counts['tracking_links']} tracking link(s) from the backup.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
 # ── Async report generation ───────────────────────────────────────────────────
 import threading, tempfile, uuid as _uuid
 

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Restore Case Backup – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-xl">
+  <a href="{{ url_for('cases.detail', case_id=case.id) }}" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm mb-2 inline-block">← Back to {{ case.title }}</a>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Restore from Backup</h1>
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+    Upload a previously downloaded encrypted backup <code>.zip</code>. Its investigations, comments, notes,
+    watchlist targets, and tracking links are re-created in this case with their original dates preserved —
+    existing data in this case is left alone; restored rows are added alongside it.
+  </p>
+
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Backup file (.zip)</label>
+        <input type="file" name="backup_file" accept=".zip" required
+          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Backup password</label>
+        <input type="password" name="password" required autocomplete="current-password"
+          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Restore into This Case
+        </button>
+        <a href="{{ url_for('cases.detail', case_id=case.id) }}"
+           class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

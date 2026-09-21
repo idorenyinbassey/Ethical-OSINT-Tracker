@@ -101,6 +101,8 @@ Username enumeration across **273+ platforms** simultaneously — no API key req
 
 Platforms include: Twitter/X, GitHub, Instagram, Reddit, LinkedIn, TikTok, Telegram, Twitch, Discord, Steam, Medium, Dev.to, HackerNews, Substack, Nairaland, Jobberman, Bluesky, Threads, HackerOne, TryHackMe, and many more.
 
+While a search runs, a live "N of M checked" progress bar replaces what would otherwise be a several-second blank wait.
+
 ### Person Search (`/investigate/person`)
 
 - Generates 12 curated Google dork / public records links (LinkedIn, news, court records, Nairaland, SEC EDGAR, Google Scholar)
@@ -125,6 +127,8 @@ Searches 11 jurisdictions in parallel:
 | New Zealand | NZBN (optional free key) |
 
 Hits with a structured address (currently UK and Nigeria) are geocoded onto the Location Map as a "suspected" marker, and registration numbers/emails feed the Relationship Graph so they can hub-link with other investigations.
+
+Like Social Search, a live "N of M checked" progress bar shows while all 11 jurisdictions are being queried.
 
 ### Phone Lookup (`/investigate/phone`)
 
@@ -221,7 +225,14 @@ The Link Tracker generates unique URLs and email pixels to silently collect inte
 | Timezone | JavaScript `Intl.DateTimeFormat().resolvedOptions().timeZone` |
 | Language | `navigator.language` |
 | Plugin list | `navigator.plugins` enumeration |
-| GPS coordinates | `navigator.geolocation.getCurrentPosition()` — browser shows its own permission dialog; stored only if the user grants it |
+| GPS coordinates | `navigator.geolocation.getCurrentPosition()` — only requested after the visitor sees an on-page notice and explicitly clicks "Share Location"; stored only if they grant the browser's own permission prompt. Not requested at all in Redirect mode, which navigates the visitor away too quickly for this to matter. |
+
+### Managing a Link
+
+- **Edit** — change the label, decoy mode, or redirect URL from the link's detail page at any time.
+- **Pause / Resume** — a paused link 404s for visitors and stops recording new hits, without deleting any hits it already captured. Use this to stop a link without losing its history; use **Delete** only when you want the hit history gone too.
+- **Delete** — permanently removes the link and every hit it recorded. Requires re-entering your own password to confirm, since this can't be undone.
+- **Sharing off-host** — the generated link is only reachable if a visitor can actually reach this server. To share it with someone outside your own network, run a tunnel (e.g. `ngrok http 3000` or a Cloudflare Tunnel) alongside the app and set `PUBLIC_BASE_URL` to the tunnel's public address (see `.env.example`) so the link shown on the detail page uses the reachable address instead of `localhost`.
 
 ### Email Tracking Pixel
 
@@ -255,6 +266,12 @@ The detail page polls for new hits every 3 seconds using JavaScript. New hits sl
 | In Progress | Being worked on |
 | Closed | Resolved |
 
+### Backup & Restore
+
+Closing or deleting a case permanently deletes its investigations, comments, notes, watchlist targets, and tracking links — there's no undo. Before doing either, download an **Encrypted Backup** (case detail page → "🔒 Encrypted Backup") — a password-protected `.zip` covering all of that data. The password is chosen at download time and is never stored by the app; if you lose it, the backup can't be recovered.
+
+To bring a backup's contents back — for example, after reopening a case that was previously closed and had its data wiped — use **↑ Restore Backup** and upload the file with its password. Every record is re-created with its original date preserved, as if it had never been deleted; tracking links get a fresh public token rather than reusing the old one.
+
 ### Threat Scoring
 
 Each case is automatically assigned a threat score (0–100) based on linked investigation confidence levels, dark web hits, and HIBP breach counts. The badge on the case list is colour-coded:
@@ -281,6 +298,8 @@ The Investigator Journal provides structured notes on a case (distinct from info
 - `lead` — a thread to investigate
 - `key_evidence` — a significant finding
 - `follow_up` — a pending action
+
+Both the Investigator Journal and Team Comments are included as their own sections in every exported report (PDF/HTML/DOCX).
 
 ### Auto Case Correlation
 

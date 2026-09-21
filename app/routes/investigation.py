@@ -96,7 +96,8 @@ def _investigation_before():
                             "investigation.watchlist", "investigation.watchlist_add",
                             "investigation.watchlist_remove", "investigation.watchlist_rescan",
                             "investigation.watchlist_dismiss_alert",
-                            "investigation.tag_investigation"):
+                            "investigation.tag_investigation",
+                            "investigation.scan_progress_status"):
         return
     # Require at least one case to exist (owned, or shared via a team —
     # a team-only member must not be locked out of every investigation
@@ -296,6 +297,19 @@ def email_header():
                            history=history, selected_case_id=case_id)
 
 
+# ── Scan progress polling (Social Search, Company Registry) ─────────────────
+# A tool page's own POST keeps running its scan synchronously and unchanged;
+# this is a purely additive side channel the page polls concurrently (via a
+# fetch()-based submit, not a native form post) to show "N of M checked"
+# instead of a blank wait. See app.utils.scan_progress.
+
+@investigation_bp.route("/scan-progress/<token>")
+@login_required
+def scan_progress_status(token):
+    from app.utils import scan_progress
+    return jsonify(scan_progress.get_progress(token))
+
+
 # ── Social Username Search ────────────────────────────────────────────────────
 
 @investigation_bp.route("/social", methods=["GET", "POST"])
@@ -318,7 +332,9 @@ def social():
             )
             status = 400
         else:
-            result = social_client.search_username(username)
+            from app.utils import scan_progress
+            progress_cb = scan_progress.make_callback(request.form.get("progress_token"))
+            result = social_client.search_username(username, progress_cb=progress_cb)
 
             confirmed = result.get("confirmed_count", 0)
             found = result.get("found_count", 0)
@@ -985,8 +1001,11 @@ def company():
             au_key = au_cfg.api_key if au_cfg and au_cfg.is_enabled else None
             nz_cfg = get_by_service("nzbn")
             nz_key = nz_cfg.api_key if nz_cfg and nz_cfg.is_enabled else None
+            from app.utils import scan_progress
+            progress_cb = scan_progress.make_callback(request.form.get("progress_token"))
             result = company_client.search_companies(
                 name, uk_api_key=uk_key, au_api_key=au_key, nz_api_key=nz_key,
+                progress_cb=progress_cb,
             )
 
             reg_results = result.get("results", {})

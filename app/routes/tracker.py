@@ -5,6 +5,7 @@ Management UI     (/tracker): investigator-facing — login required.
 """
 import io
 import json
+import os
 from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, abort, jsonify, make_response, session)
 from flask_login import login_required, current_user
@@ -12,8 +13,25 @@ from flask_login import login_required, current_user
 from app.repositories.tracking_repository import (
     create_link, get_link_by_token, get_link, list_links,
     delete_link, record_hit, update_hit_fingerprint, list_hits, count_hits,
+    update_link, set_active,
 )
 from app.repositories.case_repository import list_cases
+from app.utils.authz import verify_current_password
+
+_HITS_PAGE_SIZE = 50
+
+
+def _public_base_url() -> str:
+    """The base URL to build a shareable tracking link from. Prefers an
+    explicitly configured PUBLIC_BASE_URL (set this when the app is
+    reachable through a tunnel — ngrok, Cloudflare Tunnel — or a reverse
+    proxy whose forwarded headers aren't trusted, so a shared link always
+    points at the address the target can actually reach, not the
+    server's own local host/scheme) over the incoming request's own host,
+    which is only correct when TRUST_PROXY_HEADERS is also set (see
+    app/__init__.py) or there's no proxy in front at all."""
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip()
+    return configured.rstrip("/") if configured else request.host_url.rstrip("/")
 
 tracker_bp = Blueprint("tracker", __name__)
 
@@ -49,7 +67,7 @@ def _geolocate(ip: str) -> dict:
 @tracker_bp.route("/t/<token>")
 def land(token):
     link = get_link_by_token(token)
-    if not link:
+    if not link or not link.active:
         abort(404)
 
     ip = _real_ip()
@@ -74,7 +92,7 @@ def land(token):
 @tracker_bp.route("/t/<token>/px.gif")
 def pixel(token):
     link = get_link_by_token(token)
-    if not link:
+    if not link or not link.active:
         resp = make_response(_GIF1X1)
         resp.headers["Content-Type"] = "image/gif"
         resp.headers["Cache-Control"] = "no-store, no-cache"
@@ -174,11 +192,55 @@ def detail(token):
     link = get_link_by_token(token)
     if not link or link.user_id != current_user.id:
         abort(404)
-    hits = list_hits(link.id)
-    tracking_url = request.host_url.rstrip("/") + url_for("tracker.land", token=token)
-    pixel_url = request.host_url.rstrip("/") + url_for("tracker.pixel", token=token)
+    page = request.args.get("page", 1, type=int)
+    page = max(page, 1)
+    total_hits = count_hits(link.id)
+    hits = list_hits(link.id, limit=_HITS_PAGE_SIZE, offset=(page - 1) * _HITS_PAGE_SIZE)
+    base = _public_base_url()
+    tracking_url = base + url_for("tracker.land", token=token)
+    pixel_url = base + url_for("tracker.pixel", token=token)
     return render_template("tracker/detail.html", link=link, hits=hits,
-                           tracking_url=tracking_url, pixel_url=pixel_url)
+                           tracking_url=tracking_url, pixel_url=pixel_url,
+                           page=page, total_hits=total_hits, page_size=_HITS_PAGE_SIZE,
+                           has_more=(page * _HITS_PAGE_SIZE) < total_hits)
+
+
+@tracker_bp.route("/tracker/<token>/edit", methods=["GET", "POST"])
+@login_required
+def edit_link(token):
+    link = get_link_by_token(token)
+    if not link or link.user_id != current_user.id:
+        abort(404)
+
+    if request.method == "GET":
+        return render_template("tracker/edit.html", link=link)
+
+    label = request.form.get("label", "").strip()
+    decoy_mode = request.form.get("decoy_mode", "404")
+    redirect_url = request.form.get("redirect_url", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if not label:
+        flash("Label is required.", "error")
+        return redirect(url_for("tracker.edit_link", token=token))
+
+    update_link(link.id, label=label, decoy_mode=decoy_mode, redirect_url=redirect_url, notes=notes)
+    flash("Tracking link updated.", "success")
+    return redirect(url_for("tracker.detail", token=token))
+
+
+@tracker_bp.route("/tracker/<token>/toggle", methods=["POST"])
+@login_required
+def toggle_active(token):
+    """Pause or resume a link without deleting it — a paused link 404s
+    for visitors and stops recording new hits, but its existing hit
+    history stays intact (unlike delete, which wipes both)."""
+    link = get_link_by_token(token)
+    if not link or link.user_id != current_user.id:
+        abort(404)
+    set_active(link.id, not link.active)
+    flash(f"Tracking link {'resumed' if not link.active else 'paused'}.", "success")
+    return redirect(url_for("tracker.detail", token=token))
 
 
 @tracker_bp.route("/tracker/<token>/hits.json")
@@ -187,7 +249,7 @@ def hits_json(token):
     link = get_link_by_token(token)
     if not link or link.user_id != current_user.id:
         return jsonify([]), 404
-    hits = list_hits(link.id)
+    hits = list_hits(link.id, limit=_HITS_PAGE_SIZE)
     return jsonify([{
         "id":           h.id,
         "hit_type":     h.hit_type,
@@ -218,6 +280,9 @@ def delete(token):
     link = get_link_by_token(token)
     if not link or link.user_id != current_user.id:
         abort(404)
+    if not verify_current_password(current_user, request.form.get("password", "")):
+        flash("Incorrect password — tracking link was not deleted.", "error")
+        return redirect(url_for("tracker.detail", token=token))
     delete_link(link.id)
     flash("Tracking link deleted.", "success")
     return redirect(url_for("tracker.index"))

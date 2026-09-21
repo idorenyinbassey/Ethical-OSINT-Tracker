@@ -9,7 +9,7 @@ from app.repositories.base import session_scope
 def _dl(t: TrackingLink) -> TrackingLink:
     return TrackingLink(id=t.id, token=t.token, label=t.label, case_id=t.case_id,
                         user_id=t.user_id, decoy_mode=t.decoy_mode, redirect_url=t.redirect_url,
-                        notes=t.notes, created_at=t.created_at)
+                        notes=t.notes, active=t.active, created_at=t.created_at)
 
 
 def _dh(h: TrackingHit) -> TrackingHit:
@@ -67,6 +67,32 @@ def list_links_by_case(case_id: int) -> List[TrackingLink]:
         return [_dl(r) for r in session.exec(stmt).all()]
 
 
+def update_link(link_id: int, label: str, decoy_mode: str, redirect_url: str, notes: str) -> bool:
+    with session_scope() as session:
+        link = session.get(TrackingLink, link_id)
+        if not link:
+            return False
+        link.label = label
+        link.decoy_mode = decoy_mode
+        link.redirect_url = redirect_url
+        link.notes = notes
+        session.add(link)
+        return True
+
+
+def set_active(link_id: int, active: bool) -> bool:
+    """Pause or resume a link without touching its hit history — the only
+    way to stop a link from recording new hits used to be deleting it
+    outright, which threw away everything it had already captured."""
+    with session_scope() as session:
+        link = session.get(TrackingLink, link_id)
+        if not link:
+            return False
+        link.active = active
+        session.add(link)
+        return True
+
+
 def delete_link(link_id: int) -> None:
     with session_scope() as session:
         for hit in session.exec(select(TrackingHit).where(TrackingHit.link_id == link_id)).all():
@@ -94,12 +120,20 @@ def update_hit_fingerprint(hit_id: int, **kwargs) -> None:
             session.add(hit)
 
 
-def list_hits(link_id: int) -> List[TrackingHit]:
+def list_hits(link_id: int, limit: int | None = 100, offset: int = 0) -> List[TrackingHit]:
+    """Newest-first hits for a link. Defaults to the newest 100 — a link
+    left running for a while can accumulate far more hits than a single
+    page should ever try to render or poll at once. Pass limit=None for
+    the full history (e.g. a case backup export)."""
     with session_scope() as session:
-        rows = session.exec(
+        stmt = (
             select(TrackingHit).where(TrackingHit.link_id == link_id)
             .order_by(TrackingHit.created_at.desc())
-        ).all()
+            .offset(offset)
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        rows = session.exec(stmt).all()
         return [_dh(h) for h in rows]
 
 
