@@ -151,6 +151,46 @@ def test_image_extracts_exif_sub_ifd_camera_settings():
         path.unlink()
 
 
+def test_image_all_zero_gps_block_is_not_treated_as_null_island():
+    # A camera that never acquired a GPS fix commonly writes an all-zero GPS
+    # block as a placeholder instead of omitting the tag — resolving that to
+    # (0.0, 0.0) would plot a fake "exact" marker at Null Island (equator x
+    # prime meridian) on the map. Confirmed real-world regression: the 0/0
+    # fix above (needed for a genuine whole-second reading) can't otherwise
+    # tell a placeholder apart from an actual reading of exactly 0°0'0".
+    path = _build_jpeg_with_exif(gps_ifd={
+        1: "N", 2: (IFDRational(0, 0), IFDRational(0, 0), IFDRational(0, 0)),
+        3: "E", 4: (IFDRational(0, 0), IFDRational(0, 0), IFDRational(0, 0)),
+        6: IFDRational(0, 0),
+    })
+    try:
+        meta = _image(path)["metadata"]
+        assert "GPS_Coordinates" not in meta
+        assert "GPS_Latitude" not in meta
+        assert "GPS_Longitude" not in meta
+        assert "GPS_Altitude" not in meta
+        assert "no GPS fix" in meta["GPS_Error"]
+    finally:
+        path.unlink()
+
+
+def test_image_gps_altitude_zero_denominator_is_not_shown_as_nan():
+    # GPSAltitude alone encoded as 0/0 (no reading) previously leaked
+    # Pillow's own "nan" string straight to the user instead of being
+    # resolved or omitted.
+    path = _build_jpeg_with_exif(gps_ifd={
+        1: "N", 2: (IFDRational(51, 1), IFDRational(30, 1), IFDRational(0, 1)),
+        3: "E", 4: (IFDRational(0, 1), IFDRational(7, 1), IFDRational(0, 1)),
+        6: IFDRational(0, 0),
+    })
+    try:
+        meta = _image(path)["metadata"]
+        assert meta["GPS_Altitude"] == "0.0"
+        assert "nan" not in meta.get("GPS_Altitude", "")
+    finally:
+        path.unlink()
+
+
 def test_image_with_no_gps_tag_has_no_gps_fields():
     path = _build_jpeg_with_exif(top_level={0x0110: "Generic Camera"})
     try:
