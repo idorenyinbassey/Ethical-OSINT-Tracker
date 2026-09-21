@@ -46,9 +46,20 @@ def _client_factory(get_impl):
     return factory
 
 
-def test_check_pastes_returns_none_when_not_configured():
-    with patch.object(paste_client, "get_by_service", return_value=None):
-        assert paste_client.check_pastes("nobody-query-1@example.com") is None
+def test_check_pastes_falls_through_to_cavalier_when_no_config_row():
+    # The underlying Cavalier API is free and keyless, so no PasteMonitor
+    # config row at all should still run the search against the default
+    # base URL, not silently return None — mirrors hibp_client's
+    # equivalent no-config-row behavior.
+    def get_impl(url, **kwargs):
+        assert "cavalier.hudsonrock.com" in url
+        return _FakeResponse({"stealers": []})
+
+    with patch.object(paste_client, "get_by_service", return_value=None), \
+         patch.object(paste_client, "get_http_client", _client_factory(get_impl)):
+        result = paste_client.check_pastes("nobody-query-1@example.com")
+
+    assert result == []
 
 
 def test_check_pastes_returns_none_when_disabled():
