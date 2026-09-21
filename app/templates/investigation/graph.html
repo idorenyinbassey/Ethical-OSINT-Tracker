@@ -7,10 +7,6 @@
 
 {% include "investigation/_case_picker.html" %}
 
-<div id="graph-empty-state" class="hidden bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400">
-  Select a case above to view its relationship graph.
-</div>
-
 <div id="graph-pivot-panel" class="hidden mb-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg"></div>
 
 <div id="graph-no-hubs-note" class="hidden mb-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300">
@@ -179,14 +175,10 @@ function escapeHtml(s) {
 window.__graphReady = false;
 window.__graphNodeCount = 0;
 
-if (!CASE_IDS.length) {
-  // No case selected at all — don't silently fall back to an account-wide
-  // dump; prompt for an explicit selection instead.
-  document.getElementById("graph-loading").style.display = "none";
-  document.getElementById("graph-view").classList.add("hidden");
-  document.getElementById("graph-empty-state").classList.remove("hidden");
-  window.__graphReady = true;
-} else {
+// No case_id at all is not "nothing to show" — graph_data() treats it as
+// the current user's own ad-hoc (not-yet-cased) investigations, a real,
+// reachable view (e.g. Watchlist targets added with no case). Always
+// fetch; the "no nodes" branch below already covers genuine emptiness.
 const graphParams = new URLSearchParams();
 CASE_IDS.forEach(id => graphParams.append("case_id", id));
 const GRAPH_DATA_URL = "{{ url_for('investigation.graph_data') }}?" + graphParams.toString();
@@ -284,6 +276,5 @@ fetch(GRAPH_DATA_URL)
     document.getElementById("graph-loading").textContent = "Failed to load graph: " + err.message;
     window.__graphReady = true;
   });
-}
 </script>
 {% endblock %}
