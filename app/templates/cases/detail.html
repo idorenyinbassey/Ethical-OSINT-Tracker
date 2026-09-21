@@ -27,6 +27,10 @@
          class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
         Graph
       </a>
+      <a href="{{ url_for('cases.analysis', case_id=case.id) }}"
+         class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        AI Analysis
+      </a>
       {% if can_edit %}
       <a href="{{ url_for('cases.edit', case_id=case.id) }}"
          class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
@@ -290,6 +294,7 @@
           {% if note.kind == 'key_evidence' %}bg-yellow-900/20 border-yellow-800
           {% elif note.kind == 'lead' %}bg-blue-900/20 border-blue-800
           {% elif note.kind == 'follow_up' %}bg-purple-900/20 border-purple-800
+          {% elif note.kind == 'ai_analysis' %}bg-teal-900/20 border-teal-800
           {% else %}bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700{% endif %}">
           <div class="flex items-center justify-between mb-1">
             <div class="flex items-center gap-2">
@@ -299,8 +304,9 @@
                 {% if note.kind == 'key_evidence' %}bg-yellow-800 text-yellow-200
                 {% elif note.kind == 'lead' %}bg-blue-800 text-blue-200
                 {% elif note.kind == 'follow_up' %}bg-purple-800 text-purple-200
+                {% elif note.kind == 'ai_analysis' %}bg-teal-800 text-teal-200
                 {% else %}bg-gray-700 text-gray-300{% endif %}">
-                {{ note.kind.replace('_', ' ').title() }}
+                {{ 'AI Analysis' if note.kind == 'ai_analysis' else note.kind.replace('_', ' ').title() }}
               </span>
               <span class="text-xs text-gray-500">{{ note.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
             </div>

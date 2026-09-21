@@ -132,6 +132,55 @@ def detail(case_id):
                            default_open_kind=default_open_kind)
 
 
+@cases_bp.route("/<int:case_id>/analysis", methods=["GET", "POST"])
+@login_required
+def analysis(case_id):
+    """AI-assisted case analysis/strategy suggestions and report-summary
+    drafting. Local AI (Ollama) is always offered — it never leaves the
+    machine and needs no configuration. Cloud AI (Gemini) is only ever
+    offered when an admin has explicitly configured a key, since using it
+    means this case's data is sent to Google. A generated result is
+    persisted as an Investigator Journal entry (kind="ai_analysis"), which
+    means it automatically shows up in every existing report export
+    format's Journal section — no separate report pipeline needed.
+    """
+    from app.services import ai_client
+
+    case = get_case(case_id)
+    if not case:
+        flash("Case not found.", "error")
+        return redirect(url_for("cases.index"))
+    if not can_access_case(case, current_user, action="comment"):
+        abort(403)
+
+    if request.method == "POST":
+        backend = request.form.get("backend", "local")
+        analysis_type = request.form.get("analysis_type", "strategy")
+        if backend == "cloud" and not ai_client.is_cloud_configured():
+            flash("Cloud AI is not configured. Add a GeminiAI API key in Settings first.", "error")
+            return redirect(url_for("cases.analysis", case_id=case_id))
+
+        investigations = list_by_case(case_id)
+        comments = list_comments(case_id)
+        notes = list_notes(case_id)
+        result = ai_client.analyze_case(case, investigations, comments, notes,
+                                         backend=backend, analysis_type=analysis_type)
+        if result["ok"]:
+            label = "Strategy Analysis" if analysis_type == "strategy" else "Report Summary"
+            add_note(case_id=case_id, user_id=current_user.id, username=current_user.username,
+                     kind="ai_analysis", body=f"[{label} — {result['source']}]\n\n{result['text']}")
+            flash(f"AI {label.lower()} generated via {result['source']}.", "success")
+        else:
+            flash(f"AI analysis failed: {result['error']}", "error")
+        return redirect(url_for("cases.analysis", case_id=case_id))
+
+    if not can_access_case(case, current_user, action="read"):
+        abort(403)
+    ai_notes = [n for n in list_notes(case_id) if n.kind == "ai_analysis"]
+    return render_template("cases/analysis.html", case=case, ai_notes=ai_notes,
+                           cloud_available=ai_client.is_cloud_configured())
+
+
 @cases_bp.route("/<int:case_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit(case_id):
