@@ -305,6 +305,15 @@ Both the Investigator Journal and Team Comments are included as their own sectio
 
 A "Related Cases" panel on the case detail page lists other cases that share investigation targets (same IP, domain, username, email, crypto address, etc.) — surfaced automatically without any manual linking.
 
+### AI Analysis & Strategy
+
+The **AI Analysis** button on a case's page (`/cases/<id>/analysis`) generates advisory strategy suggestions or a draft report summary from everything investigated so far in that case. Two backends, always an explicit choice — never chained automatically:
+
+- **Local AI (Ollama)** — the default, works with zero setup in Settings. Requires [Ollama](https://ollama.com) installed and running on the machine hosting this app, with a model pulled (`ollama pull llama3.2` by default; override the model in Settings → LocalAI). Nothing about the case is ever sent anywhere.
+- **Cloud AI (Google Gemini, free tier)** — optional, only shown once an admin configures a `GeminiAI` API key in Settings. **Using it sends this case's investigation summaries, team notes, and journal entries to Google's servers** — the page shows this warning before you can use it. Only use it for cases where that's acceptable.
+
+Generated text is saved as an Investigator Journal entry (tagged "AI Analysis"), so it's visible on the case page and automatically included in every exported report format alongside the rest of the journal — no separate AI report pipeline to manage.
+
 ### Bulk CSV Import
 
 Upload a CSV file from the case detail page to batch-run investigation targets. The CSV must have a column named `target` and optionally a `kind` column (defaults to `ip`).
@@ -455,6 +464,8 @@ Navigate to **Settings → API Settings**. Keys are stored encrypted in the data
 | `ImageRecognition` | File Forensics — Google Cloud Vision | Optional |
 | `TorProxy` | Route all HTTP through Tor / a proxy | Optional |
 | `PasteMonitor` | Leak Monitor — runs by default via the free Hudson Rock Cavalier API; only needed in Settings to point at a different provider or to explicitly disable it | Optional |
+| `LocalAI` | AI Analysis & Strategy — Ollama, runs by default with no key; only needed in Settings to override the model or disable it | Optional |
+| `GeminiAI` | AI Analysis & Strategy — optional richer cloud alternative; case data is sent to Google when used | Optional |
 
 ### Configuring a Service
 

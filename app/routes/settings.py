@@ -33,6 +33,9 @@ SERVICES = [
     {"name": "companies_house", "label": "UK Companies House (Company Registry search — optional, free key)", "default_url": "https://api.company-information.service.gov.uk"},
     {"name": "abn_lookup", "label": "Australia ABN Lookup (Company Registry search — optional, free GUID)", "default_url": "https://abr.business.gov.au"},
     {"name": "nzbn", "label": "New Zealand NZBN (Company Registry search — optional, free key)", "default_url": "https://api.business.govt.nz"},
+    # AI-assisted case analysis
+    {"name": "LocalAI", "label": "Local AI (Ollama — free, private; runs by default with no key needed, case data never leaves this machine)", "default_url": ""},
+    {"name": "GeminiAI", "label": "Cloud AI (Google Gemini, free tier — optional; case data is sent to Google when used)", "default_url": "https://generativelanguage.googleapis.com"},
     # Outbound alerting
     {"name": "Notifications", "label": "Notifications — webhook on watchlist change (ntfy.sh, Discord, Slack, etc.)", "default_url": ""},
 ]

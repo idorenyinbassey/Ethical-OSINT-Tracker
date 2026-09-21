@@ -40,6 +40,10 @@
             <p class="text-xs text-gray-500 mt-1">Receives a JSON POST ({"subject", "body", ...}) whenever a watched target changes.</p>
           </div>
         </div>
+        {% elif service.name == 'LocalAI' %}
+        <input type="hidden" name="api_key" value="">
+        <input type="hidden" name="base_url" value="">
+        <p class="text-xs text-gray-500">No API key or URL to configure — always connects to Ollama's own default local address (127.0.0.1:11434), which never leaves this machine. Use "Enabled" below to fully turn off local AI attempts, and the model name field to override the default.</p>
         {% else %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -65,6 +69,13 @@
             <textarea name="notes" rows="2"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm font-mono"
               placeholder='{"github": "ghp_xxx", "twitter": "bearer_xxx"}'>{{ cfg.notes if cfg else '' }}</textarea>
+          </div>
+        {% elif service.name in ('LocalAI', 'GeminiAI') %}
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Model name (optional — leave blank for the default)</label>
+            <input type="text" name="notes" value="{{ cfg.notes if cfg else '' }}"
+              placeholder="{{ 'llama3.2' if service.name == 'LocalAI' else 'gemini-2.0-flash' }}"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
           </div>
         {% else %}
           <input type="hidden" name="notes" value="{{ cfg.notes if cfg else '' }}">

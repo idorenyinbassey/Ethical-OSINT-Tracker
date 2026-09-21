@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}AI Analysis – {{ case.title }} – OSINT Tracker{% endblock %}
+
+{% block content %}
+<div class="mb-5">
+  <a href="{{ url_for('cases.detail', case_id=case.id) }}" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm mb-2 inline-block">← Back to {{ case.title }}</a>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">AI Analysis &amp; Strategy</h1>
+  <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Advisory only — a human investigator reviews and decides on any action. Generated text is saved as an Investigator Journal entry and included in future report exports.</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+    <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-2">Local AI (Ollama)</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Runs entirely on this machine — nothing about this case is sent anywhere. Requires <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" class="underline">Ollama</a> installed and running with a model pulled.</p>
+    <form method="post" class="space-y-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="backend" value="local">
+      <button type="submit" name="analysis_type" value="strategy"
+        class="w-full bg-teal-600 hover:bg-teal-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Suggest Strategy &amp; Next Steps
+      </button>
+      <button type="submit" name="analysis_type" value="summary"
+        class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+        Draft Report Summary
+      </button>
+    </form>
+  </div>
+
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+    <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-2">Cloud AI (Google Gemini)</h2>
+    {% if cloud_available %}
+      <p class="text-xs text-amber-600 dark:text-amber-400 mb-4">⚠ Using this sends this case's investigation summaries, team notes, and journal entries to Google's servers. Only use this if that's acceptable for this case's data.</p>
+      <form method="post" class="space-y-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="backend" value="cloud">
+        <button type="submit" name="analysis_type" value="strategy"
+          class="w-full bg-amber-600 hover:bg-amber-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Suggest Strategy &amp; Next Steps
+        </button>
+        <button type="submit" name="analysis_type" value="summary"
+          class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Draft Report Summary
+        </button>
+      </form>
+    {% else %}
+      <p class="text-xs text-gray-500 dark:text-gray-400">Not configured. Add a <code>GeminiAI</code> API key in <a href="{{ url_for('settings.index') }}" class="underline">Settings</a> to enable this optional, richer cloud alternative.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+  <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Past AI Analyses ({{ ai_notes|length }})</h2>
+  {% if ai_notes %}
+    <div class="space-y-3">
+      {% for note in ai_notes %}
+        <div class="bg-teal-900/10 border border-teal-800 rounded-lg p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs px-1.5 py-0.5 rounded font-medium bg-teal-800 text-teal-200">AI Analysis</span>
+            <span class="text-xs text-gray-500">{{ note.username }} · {{ note.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ note.body }}</p>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-gray-500 dark:text-gray-400">No AI analysis generated yet for this case.</p>
+  {% endif %}
+</div>
+{% endblock %}
