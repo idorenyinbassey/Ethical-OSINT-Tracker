@@ -1,0 +1,80 @@
+{#
+Shared progress-bar behavior for a long-running fan-out scan (Social
+Search, Company Registry). Expects the including page to have:
+  - a <form id="scan-form"> wrapping the tool's own search fields
+  - a submit button with id="scan-submit-btn"
+  - a hidden progress block with ids scan-progress-wrap / -bar / -count
+    (see social.html/company.html for the exact markup)
+
+The form's own POST route runs its scan exactly as before, synchronously,
+and is not otherwise changed — this only adds a side channel: the browser
+generates a random token, submits the form via fetch() (not a native
+POST, so it doesn't block the page) with that token attached, and polls
+GET /investigate/scan-progress/<token> concurrently to show "N of M
+checked" while the real request is still in flight. When the fetch
+resolves with the same fully-rendered HTML the route always returned,
+that HTML replaces the whole page — no client-side re-implementation of
+result rendering needed.
+#}
+<script>
+(function() {
+  const form = document.getElementById('scan-form');
+  if (!form) return;
+  const submitBtn = document.getElementById('scan-submit-btn');
+  const wrap = document.getElementById('scan-progress-wrap');
+  const bar = document.getElementById('scan-progress-bar');
+  const countEl = document.getElementById('scan-progress-count');
+  if (!submitBtn || !wrap || !bar || !countEl) return;
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const token = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'p' + Date.now() + Math.random().toString(36).slice(2);
+
+    const formData = new FormData(form);
+    formData.set('progress_token', token);
+
+    const origLabel = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Searching…';
+    wrap.classList.remove('hidden');
+    bar.style.width = '0%';
+    countEl.textContent = '0 / 0';
+
+    let polling = true;
+    (async function poll() {
+      while (polling) {
+        try {
+          const r = await fetch('/investigate/scan-progress/' + token);
+          if (r.ok) {
+            const data = await r.json();
+            if (data.total) {
+              const pct = Math.min(100, Math.round((data.checked / data.total) * 100));
+              bar.style.width = pct + '%';
+              countEl.textContent = data.checked + ' / ' + data.total;
+            }
+          }
+        } catch (err) { /* keep polling — a single failed poll isn't fatal */ }
+        await new Promise(function(res) { setTimeout(res, 500); });
+      }
+    })();
+
+    fetch(form.action || window.location.href, { method: 'POST', body: formData })
+      .then(function(resp) { return resp.text(); })
+      .then(function(html) {
+        polling = false;
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(function() {
+        polling = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = origLabel;
+        wrap.classList.add('hidden');
+        alert('Search failed — please try again.');
+      });
+  });
+})();
+</script>

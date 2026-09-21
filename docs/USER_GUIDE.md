@@ -101,6 +101,8 @@ Username enumeration across **273+ platforms** simultaneously — no API key req
 
 Platforms include: Twitter/X, GitHub, Instagram, Reddit, LinkedIn, TikTok, Telegram, Twitch, Discord, Steam, Medium, Dev.to, HackerNews, Substack, Nairaland, Jobberman, Bluesky, Threads, HackerOne, TryHackMe, and many more.
 
+While a search runs, a live "N of M checked" progress bar replaces what would otherwise be a several-second blank wait.
+
 ### Person Search (`/investigate/person`)
 
 - Generates 12 curated Google dork / public records links (LinkedIn, news, court records, Nairaland, SEC EDGAR, Google Scholar)
@@ -125,6 +127,8 @@ Searches 11 jurisdictions in parallel:
 | New Zealand | NZBN (optional free key) |
 
 Hits with a structured address (currently UK and Nigeria) are geocoded onto the Location Map as a "suspected" marker, and registration numbers/emails feed the Relationship Graph so they can hub-link with other investigations.
+
+Like Social Search, a live "N of M checked" progress bar shows while all 11 jurisdictions are being queried.
 
 ### Phone Lookup (`/investigate/phone`)
 

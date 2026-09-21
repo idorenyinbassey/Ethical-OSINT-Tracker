@@ -9,7 +9,7 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <!-- Left panel: form + stats -->
   <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <form method="post" class="space-y-4">
+    <form method="post" class="space-y-4" id="scan-form">
       <div>
         <label class="block text-sm text-gray-400 mb-1">Username</label>
         <input type="text" name="query" required placeholder="e.g. johndoe"
@@ -27,11 +27,21 @@
           </select>
         </div>
       {% endif %}
-      <button type="submit"
+      <button type="submit" id="scan-submit-btn"
         class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
         Search Platforms
       </button>
+      <div id="scan-progress-wrap" class="hidden">
+        <div class="flex justify-between text-xs text-gray-400 mb-1">
+          <span>Checking platforms…</span>
+          <span id="scan-progress-count">0 / 0</span>
+        </div>
+        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+          <div id="scan-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width:0%"></div>
+        </div>
+      </div>
     </form>
+    {% include "investigation/_scan_progress.html" %}
 
     {% if result %}
       <div class="mt-5 space-y-2">

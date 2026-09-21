@@ -1765,9 +1765,13 @@ def _check_site(name: str, defn: dict, username: str) -> dict:
     return result
 
 
-def search_username(username: str) -> dict:
-    """Search for a username across all configured sites (local + Sherlock) concurrently."""
+def search_username(username: str, progress_cb=None) -> dict:
+    """Search for a username across all configured sites (local + Sherlock)
+    concurrently. progress_cb(checked, total), if given, is called after
+    each site check resolves — lets a caller show a live "N of M checked"
+    indicator for what would otherwise be an opaque multi-second wait."""
     all_sites = _get_all_sites()
+    total = len(all_sites)
     results = []
     with ThreadPoolExecutor(max_workers=20) as pool:
         futures = {pool.submit(_check_site, name, defn, username): name for name, defn in all_sites.items()}
@@ -1776,6 +1780,8 @@ def search_username(username: str) -> dict:
                 results.append(future.result())
             except Exception:
                 pass
+            if progress_cb:
+                progress_cb(len(results), total)
 
     results.sort(key=lambda r: r["site"])
     found = [r for r in results if r["found"]]
