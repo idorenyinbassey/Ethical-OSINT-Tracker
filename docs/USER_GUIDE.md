@@ -221,7 +221,14 @@ The Link Tracker generates unique URLs and email pixels to silently collect inte
 | Timezone | JavaScript `Intl.DateTimeFormat().resolvedOptions().timeZone` |
 | Language | `navigator.language` |
 | Plugin list | `navigator.plugins` enumeration |
-| GPS coordinates | `navigator.geolocation.getCurrentPosition()` — browser shows its own permission dialog; stored only if the user grants it |
+| GPS coordinates | `navigator.geolocation.getCurrentPosition()` — only requested after the visitor sees an on-page notice and explicitly clicks "Share Location"; stored only if they grant the browser's own permission prompt. Not requested at all in Redirect mode, which navigates the visitor away too quickly for this to matter. |
+
+### Managing a Link
+
+- **Edit** — change the label, decoy mode, or redirect URL from the link's detail page at any time.
+- **Pause / Resume** — a paused link 404s for visitors and stops recording new hits, without deleting any hits it already captured. Use this to stop a link without losing its history; use **Delete** only when you want the hit history gone too.
+- **Delete** — permanently removes the link and every hit it recorded. Requires re-entering your own password to confirm, since this can't be undone.
+- **Sharing off-host** — the generated link is only reachable if a visitor can actually reach this server. To share it with someone outside your own network, run a tunnel (e.g. `ngrok http 3000` or a Cloudflare Tunnel) alongside the app and set `PUBLIC_BASE_URL` to the tunnel's public address (see `.env.example`) so the link shown on the detail page uses the reachable address instead of `localhost`.
 
 ### Email Tracking Pixel
 

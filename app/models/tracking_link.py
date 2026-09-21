@@ -13,4 +13,5 @@ class TrackingLink(SQLModel, table=True):
     decoy_mode: str = Field(default="404")   # 404 | blank | redirect
     redirect_url: str = Field(default="")
     notes: str = Field(default="")
+    active: bool = Field(default=True)  # paused links 404 without deleting hit history
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)

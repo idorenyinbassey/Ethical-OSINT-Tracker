@@ -31,6 +31,16 @@ def create_app():
 
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
+    # Trust X-Forwarded-* headers only when explicitly told to — needed
+    # for Link Tracker's generated URLs (and anything else built from
+    # request.host_url/url_for) to come out correct behind a reverse
+    # proxy or tunnel (ngrok, Cloudflare Tunnel, nginx). Off by default:
+    # blindly trusting these headers with no proxy in front would let a
+    # direct client spoof its own apparent IP/scheme.
+    if os.getenv("TRUST_PROXY_HEADERS", "0") == "1":
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
