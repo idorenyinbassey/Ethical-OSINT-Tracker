@@ -17,7 +17,20 @@ tzdata                  # IANA timezone DB fallback (Termux/minimal systems lack
 python-dotenv>=1.0.0    # Load environment variables from a .env file
 
 # ── Database ──────────────────────────────────────────────────────────────────
-sqlmodel>=0.0.21
+# Upper-bounded: sqlmodel 0.0.45 started strictly rejecting naive
+# datetime.datetime values on any column not explicitly typed
+# NaiveDatetime, raising "Datetime values must have timezone information"
+# on the very first write (e.g. creating the admin account). Every model
+# in this app stores naive UTC timestamps (datetime.now()/utcnow()) — a
+# fresh `pip install`/`pipx install` with no ceiling here pulls the
+# latest sqlmodel and breaks immediately before the app can even
+# initialize its database. Confirmed 0.0.44 is the last safe release
+# (0.0.42/0.0.43/0.0.44 all behave the same as before; 0.0.45/0.0.46
+# reproduce the break). Migrating every model to timezone-aware
+# datetimes is real follow-up work (touches every created_at/updated_at
+# field and anything that later compares/formats them) — this pin is a
+# deliberate, minimal fix to restore installs now, not deferred neglect.
+sqlmodel>=0.0.21,<0.0.45
 PyMySQL==1.1.1          # MySQL driver; SQLite is used by default (no extra package)
 
 # ── Authentication & Security ─────────────────────────────────────────────────
