@@ -163,22 +163,38 @@ def domain():
     case_id = _resolve_case_context()
     result = None
     inv = None
+    finder_result = None
     if request.method == "POST":
+        action = request.form.get("action", "whois")
         domain_name = request.form.get("query", "").strip()
         if not domain_name:
             flash("Domain is required.", "error")
+        elif action == "find_email":
+            first_name = request.form.get("first_name", "").strip()
+            last_name = request.form.get("last_name", "").strip()
+            if not first_name or not last_name:
+                flash("First and last name are required to find an email.", "error")
+            else:
+                finder_result = hunter_client.find_email(domain_name, first_name, last_name)
+                if finder_result is None:
+                    flash("Hunter.io is not configured — Email Finder is unavailable.", "error")
+                elif finder_result.get("found"):
+                    flash(f"Hunter.io found a likely email for {first_name} {last_name} at {domain_name}.", "success")
+                else:
+                    flash(f"Hunter.io could not find a confident email match for {first_name} {last_name} at {domain_name}.", "info")
         else:
             result = rdap_client.fetch_domain(domain_name)
             if result is None:
                 flash(f"WHOIS lookup failed for '{domain_name}'. The domain may not exist or RDAP is temporarily unavailable.", "error")
             else:
+                result["hunter_domain_search"] = hunter_client.domain_search(domain_name)
                 conf = "CONFIRMED" if result and not result.get("error") else "UNVERIFIED"
                 inv = find_or_update_recent(kind="domain", query=domain_name, result_json=json.dumps(result),
                                       user_id=current_user.id, case_id=case_id, confidence=conf)
                 flash(f"Domain lookup complete for {domain_name}.", "success")
 
     history = list_by_case_and_kind(case_id, "domain", exclude_id=inv.id if inv else None) if case_id else []
-    return render_template("investigation/domain.html", cases=cases, result=result,
+    return render_template("investigation/domain.html", cases=cases, result=result, finder_result=finder_result,
                            history=history, selected_case_id=case_id, prefill_query=_prefill_query())
 
 
@@ -638,6 +654,9 @@ def _extract_entities(inv, data: dict, inv_node_id: str, entity_map: dict) -> No
             data.get("registrant", {}).get("email") if isinstance(data.get("registrant"), dict) else None)
         if reg_email:
             _reg("email", reg_email)
+        for entry in (data.get("hunter_domain_search") or {}).get("emails", []):
+            if entry.get("email"):
+                _reg("email", entry["email"])
     elif kind == "email":
         email = data.get("email") or data.get("address") or inv.query
         _reg("email", email)
