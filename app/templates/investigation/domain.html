@@ -25,14 +25,40 @@
           </select>
         </div>
       {% endif %}
-      <button type="submit"
+      <button type="submit" name="action" value="whois"
         class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
         Lookup Domain
       </button>
+
+      <div class="border-t border-gray-800 pt-4 mt-4">
+        <p class="text-sm text-gray-400 mb-1">Hunter.io — Find Email</p>
+        <p class="text-xs text-gray-500 mb-3">Guess a specific person's email at the domain above (requires Hunter.io to be configured).</p>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <input type="text" name="first_name" placeholder="First name"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+          <input type="text" name="last_name" placeholder="Last name"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm">
+        </div>
+        <button type="submit" name="action" value="find_email"
+          class="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+          Find Email
+        </button>
+      </div>
     </form>
   </div>
 
-  <div class="lg:col-span-2">
+  <div class="lg:col-span-2 space-y-6">
+    {% if finder_result %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-3">Hunter.io — Email Finder Result</h2>
+        {% if finder_result.found %}
+          <p class="text-sm text-white">Found: <span class="font-mono text-indigo-400">{{ finder_result.email }}</span></p>
+          <p class="text-xs text-gray-500 mt-1">Score: {{ finder_result.score }}{% if finder_result.position %} · {{ finder_result.position }}{% endif %}</p>
+        {% else %}
+          <p class="text-sm text-gray-400">No confident email match found.{% if finder_result.error %} ({{ finder_result.error }}){% endif %}</p>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if result %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <h2 class="text-base font-semibold text-white mb-4">Registration Details</h2>
@@ -67,6 +93,42 @@
           {% endif %}
         </dl>
       </div>
+      {% if result.hunter_domain_search %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-1">Hunter.io — Emails Found</h2>
+          <p class="text-xs text-gray-500 mb-4">
+            {{ result.hunter_domain_search.organization or 'Organization unknown' }}
+            {% if result.hunter_domain_search.pattern %} · pattern: <span class="font-mono">{{ result.hunter_domain_search.pattern }}</span>{% endif %}
+            · {{ result.hunter_domain_search.total_emails }} email(s) indexed
+          </p>
+          {% if result.hunter_domain_search.emails %}
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm text-left">
+                <thead>
+                  <tr class="text-gray-500 border-b border-gray-800">
+                    <th class="py-2 pr-4">Email</th>
+                    <th class="py-2 pr-4">Name</th>
+                    <th class="py-2 pr-4">Position</th>
+                    <th class="py-2">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for e in result.hunter_domain_search.emails %}
+                    <tr class="border-b border-gray-800/50">
+                      <td class="py-2 pr-4 text-white font-mono">{{ e.email }}</td>
+                      <td class="py-2 pr-4 text-gray-300">{{ (e.first_name ~ ' ' ~ e.last_name).strip() or '—' }}</td>
+                      <td class="py-2 pr-4 text-gray-300">{{ e.position or '—' }}</td>
+                      <td class="py-2 text-gray-300">{{ e.confidence if e.confidence is not none else '—' }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-sm text-gray-500">No emails found for this domain.</p>
+          {% endif %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
         Enter a domain and run lookup to see results.

@@ -254,6 +254,39 @@ def test_graph_data_links_shared_email_between_social_and_email(app, client, use
     assert len(entity_edges) == 2
 
 
+def test_graph_data_links_shared_email_between_domain_hunter_search_and_email(app, client, user_a, case_of_a):
+    from app.repositories.investigation_repository import create_investigation
+
+    login(client, user_a.username)
+    with app.app_context():
+        create_investigation(kind="email", query="hunter-found@example.com",
+                             result_json=json.dumps({"email": "hunter-found@example.com", "breaches": []}),
+                             user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
+        domain_result = {
+            "domain": "example.com",
+            "registrar": "Example Registrar",
+            "hunter_domain_search": {
+                "organization": "Example Inc",
+                "pattern": "{first}.{last}@example.com",
+                "total_emails": 1,
+                "emails": [{"email": "hunter-found@example.com", "first_name": "Jane",
+                            "last_name": "Doe", "position": "Engineer", "confidence": 90}],
+            },
+        }
+        create_investigation(kind="domain", query="example.com", result_json=json.dumps(domain_result),
+                             user_id=user_a.id, case_id=case_of_a.id, confidence="CONFIRMED")
+
+    resp = client.get(f"/investigate/graph/data?case_id={case_of_a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+
+    entity_nodes = [n for n in data["nodes"] if n["group"] == "entity_email" and "hunter-found@example.com" in n["id"]]
+    assert len(entity_nodes) == 1
+
+    entity_edges = [e for e in data["edges"] if e["to"] == entity_nodes[0]["id"]]
+    assert len(entity_edges) == 2
+
+
 def test_graph_data_typosquat_with_no_registered_hits_has_no_child_nodes(app, client, user_a, case_of_a):
     from app.repositories.investigation_repository import create_investigation
 
