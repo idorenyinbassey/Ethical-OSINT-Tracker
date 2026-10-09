@@ -244,3 +244,43 @@ def test_no_case_selected_shows_no_history_section(app, client, user_a, case_of_
     resp = client.get("/investigate/ip")
     assert resp.status_code == 200
     assert "Previous results in this case" not in resp.data.decode()
+
+
+# ── Sidebar links carry the active case (regression) ─────────────────────────
+#
+# Reported bug: navigating to a tool page via the sidebar (rather than the
+# page's own "Link to Case" dropdown, or a deep link that already has
+# ?case_id=) lost all history, even with an active case and real data,
+# because the sidebar's <a href> for every one of these ~18 tool pages never
+# carried case_id — unlike the Location Map / Relationship Graph links right
+# below them, which already did. _resolve_case_context() only ever reads
+# case_id from the request itself, never from session['active_case_id'], so
+# a link with no case_id always resolves to "no case selected" regardless of
+# what's actually active. Fixed in app/templates/base.html by giving those
+# links the same `case_id=active_case.id if active_case else None` treatment.
+
+def test_sidebar_link_carries_active_case_id(app, client, user_a, case_of_a):
+    login(client, user_a.username)
+    # A POST with a case selected sets session['active_case_id'] (see
+    # investigation.py's before_request hook) — the normal way a case
+    # becomes "active".
+    client.post("/investigate/ip", data={"query": "8.8.8.8", "case_id": case_of_a.id},
+                 follow_redirects=True)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert f'/investigate/domain?case_id={case_of_a.id}'.encode() in resp.data
+    assert f'/investigate/ip?case_id={case_of_a.id}'.encode() in resp.data
+
+
+def test_following_sidebar_link_shows_history_for_active_case(app, client, user_a, case_of_a):
+    _seed(app, user_a.id, case_of_a.id, "ip", "8.8.8.8")
+    login(client, user_a.username)
+    client.post("/investigate/ip", data={"query": "1.1.1.1", "case_id": case_of_a.id},
+                 follow_redirects=True)
+
+    # Exactly what a user does next: click the sidebar link (no case_id
+    # typed manually) rather than hit the bare route URL.
+    resp = client.get(f"/investigate/ip?case_id={case_of_a.id}")
+    assert resp.status_code == 200
+    assert "Previous results in this case" in resp.data.decode()
